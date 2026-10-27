@@ -15,7 +15,7 @@ const RESET_MINUTES = 30;
 const VERIFY_HOURS = 48;
 const RECOVERY_CODES = 10;
 
-import { BCRYPT_ROUNDS } from "./password";
+import { BCRYPT_ROUNDS, passwordSchema } from "./password";
 
 export { BCRYPT_ROUNDS };
 const DUMMY_HASH = bcrypt.hashSync("zamanlama-dengeleme", BCRYPT_ROUNDS);
@@ -352,5 +352,68 @@ export class AuthService {
     });
     await this.sendVerification(result.user.id);
     return this.completeLogin(result.user.id, meta, false);
+  }
+
+  /* ------------------------- İşletme daveti ------------------------- */
+
+  private async findOpenInvite(token: string) {
+    const invite = await this.db.tenantInvite.findUnique({ where: { tokenHash: sha256(token) }, include: { tenant: { select: { name: true, status: true } } } });
+    if (!invite || invite.status !== "SENT" || !invite.expiresAt || invite.expiresAt <= new Date()) {
+      throw new BadRequestException("Davet bağlantısı geçersiz veya süresi dolmuş");
+    }
+    if (invite.tenant.status === "SUSPENDED" || invite.tenant.status === "CANCELLED") throw new ForbiddenException("Bu işletme şu anda kullanılamıyor");
+    return invite;
+  }
+
+  /** Davet sayfası için yalnızca davetin kendisine ait bilgiler (geçerli belirteçle). */
+  async previewInvite(token: string) {
+    const invite = await this.findOpenInvite(token);
+    const existing = await this.db.user.findUnique({ where: { email: invite.email }, select: { id: true } });
+    return { salon: invite.tenant.name, email: invite.email, fullName: invite.fullName, existingAccount: !!existing };
+  }
+
+  /**
+   * Daveti kabul eder. Yeni kullanıcıda hesap oluşturulur ve oturum açılır.
+   * Aynı e-postayla hesap varsa mevcut parola istenir; oturum açılmaz (2FA atlanmasın diye normal girişe yönlendirilir).
+   * Belirteç tek kullanımlıktır; eşzamanlı isteklerde yalnızca biri başarılı olur.
+   */
+  async acceptInvite(token: string, password: string, meta: ClientMeta) {
+    const invite = await this.findOpenInvite(token);
+    const existing = await this.db.user.findUnique({ where: { email: invite.email } });
+    if (existing) {
+      if (existing.isPlatformAdmin || !existing.isActive) throw new ForbiddenException("Bu hesapla davet kabul edilemez");
+      if (!(await bcrypt.compare(password, existing.passwordHash))) {
+        await this.audit.logPlatform({ tenantId: invite.tenantId, action: "tenant.invite_accept_failed", actorId: existing.id, ip: meta.ip });
+        throw new UnauthorizedException("Parola hatalı");
+      }
+    } else {
+      const parsed = passwordSchema.safeParse(password);
+      if (!parsed.success) throw new BadRequestException(parsed.error.issues[0]?.message ?? "Parola uygun değil");
+    }
+    const passwordHash = existing ? null : await bcrypt.hash(password, BCRYPT_ROUNDS);
+    const userId = await this.db.$transaction(async (tx) => {
+      const claimed = await tx.tenantInvite.updateMany({
+        where: { id: invite.id, status: "SENT", tokenHash: sha256(token), expiresAt: { gt: new Date() } },
+        data: { status: "ACCEPTED", acceptedAt: new Date(), tokenHash: null },
+      });
+      if (claimed.count !== 1) throw new BadRequestException("Davet bağlantısı geçersiz veya süresi dolmuş");
+      const user =
+        existing ??
+        (await tx.user.create({
+          data: { email: invite.email, fullName: invite.fullName, passwordHash: passwordHash!, emailVerifiedAt: new Date() },
+        }));
+      await tx.tenantInvite.update({ where: { id: invite.id }, data: { acceptedUserId: user.id } });
+      await tx.membership.upsert({
+        where: { tenantId_userId: { tenantId: invite.tenantId, userId: user.id } },
+        create: { tenantId: invite.tenantId, userId: user.id, role: invite.role },
+        update: { role: invite.role, isActive: true },
+      });
+      await tx.auditLog.create({
+        data: { tenantId: invite.tenantId, actorId: user.id, action: "tenant.invite_accepted", entity: "TenantInvite", entityId: invite.id, ip: meta.ip, metadata: { newAccount: !existing } },
+      });
+      return user.id;
+    });
+    if (existing) return { accepted: true as const, loginRequired: true as const };
+    return { accepted: true as const, ...(await this.completeLogin(userId, meta, false)) };
   }
 }

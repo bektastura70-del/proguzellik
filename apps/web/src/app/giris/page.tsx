@@ -13,7 +13,7 @@ function LoginForm() {
   const params = useSearchParams();
   const initial = params.get("sure") ? "Oturumunuzun süresi doldu, lütfen tekrar giriş yapın." : params.get("mfa") ? "Bu işlem için iki adımlı doğrulama ile yeniden giriş yapın." : null;
   const [error, setError] = useState<string | null>(initial);
-  const [info] = useState<string | null>(params.get("sifirlandi") ? "Parolanız güncellendi. Yeni parolanızla giriş yapabilirsiniz." : null);
+  const [info] = useState<string | null>(params.get("sifirlandi") ? "Parolanız güncellendi. Yeni parolanızla giriş yapabilirsiniz." : params.get("davet") ? "Davet kabul edildi. Mevcut hesabınızla giriş yapın." : null);
   const [busy, setBusy] = useState(false);
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [useRecovery, setUseRecovery] = useState(false);

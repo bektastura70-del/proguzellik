@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { loadEnv } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 import { EmailProvider } from "./email.provider";
 import { EmailTemplate, render } from "./templates";
@@ -19,10 +20,12 @@ export class EmailService {
    */
   async send(to: string, tpl: EmailTemplate, opts: { dedupeKey?: string } = {}) {
     const { subject, html, text } = render(tpl);
+    // Gövde (bağlantı/belirteç içerebilir) yalnızca test sağlayıcısında ve canlı olmayan ortamda kaydedilir.
+    const storeBody = this.provider.storesBody && loadEnv().NODE_ENV !== "production";
     let rec;
     try {
       rec = await this.prisma.platform.outboundEmail.create({
-        data: { to, template: tpl.name, subject, body: this.provider.storesBody ? text : null, status: "QUEUED", provider: this.provider.name, dedupeKey: opts.dedupeKey },
+        data: { to, template: tpl.name, subject, body: storeBody ? text : null, status: "QUEUED", provider: this.provider.name, dedupeKey: opts.dedupeKey },
       });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { skipped: true as const };

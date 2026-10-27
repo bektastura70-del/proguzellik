@@ -68,6 +68,12 @@ export function loadEnv(): Env {
 export const registrationEnabled = (env: Pick<Env, "REGISTRATION_ENABLED" | "NODE_ENV">) =>
   env.REGISTRATION_ENABLED ? env.REGISTRATION_ENABLED === "1" : env.NODE_ENV !== "production";
 
+/**
+ * Davet e-postası gerçekten iletilebilir mi? Canlıda yalnızca SMTP ile. Aksi hâlde davet "teslim bekliyor"
+ * durumunda kalır ve bağlantı (belirteç) hiç üretilmez.
+ */
+export const inviteDeliveryEnabled = (env: Pick<Env, "EMAIL_MODE" | "NODE_ENV">) => env.EMAIL_MODE === "smtp" || env.NODE_ENV !== "production";
+
 export const appUrl = (env: Env) => (env.APP_URL ?? env.WEB_ORIGIN.split(",")[0]).replace(/\/$/, "");
 
 /**

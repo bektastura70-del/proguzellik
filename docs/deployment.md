@@ -149,6 +149,13 @@ Dosyalar: `infra/production/` (compose, `.env.example`, betikler, Caddy bloğu).
 11. Caddy: `/opt/edge/Caddyfile` yedeği alınır, `Caddyfile.proguzellik.snippet` içeriği **sona eklenir**, `caddy validate` ardından `caddy reload` (restart değil). Sertifika Let's Encrypt ile otomatik alınır.
 12. Duman testi: `https://proguzellik.com/giris` açılır, sahip girişi + 2FA, `/kayit` "kayıtlar kapalı" gösterir, kayıt isteği 403.
 
+### İşletme ekleme (kayıt kapalıyken)
+Herkese açık kayıt canlıda kapalıdır. SaaS sahibi `/yonetim` → **Yeni işletme** ile güzellik merkezini (ad, sahip adı/e-postası, paket, 1–60 gün deneme) oluşturur; sahibe tek kullanımlık, 7 gün geçerli davet bağlantısı e-postayla gider (`/davet`). Bağlantı API yanıtında, panelde, loglarda veya denetim kayıtlarında görünmez; veritabanında yalnızca SHA-256 özeti tutulur ve canlıda e-posta gövdesi kaydedilmez.
+- **SMTP yoksa** (`EMAIL_MODE=mock`, canlı): davet "Davet bekliyor (e-posta yok)" durumunda kalır, belirteç hiç üretilmez. SMTP yapılandırıldıktan sonra işletme detayında **Daveti yeniden gönder**.
+- Yeniden gönderim önceki bağlantıyı geçersiz kılar; iptal edilen, kabul edilen veya süresi dolan bağlantı çalışmaz. Aynı işletmede tek açık davet olabilir.
+- Davetli e-posta zaten bir hesaba aitse kabul için o hesabın parolası istenir ve oturum açılmaz (normal giriş + 2FA). Platform yöneticisi hesapları davet edilemez.
+- **Pasife al / Aktifleştir** gerekçeyle yapılır; işletme önceki durumuna döner. Paket düşürme aktif personel sınırını aşamaz. Tüm işlemler denetim kaydına (`platform.tenant_*`, `platform.invite_*`, `tenant.invite_accepted`) yazılır.
+
 ### Yeni sürüm
 1. `backup.sh` (yedek) → 2. `archive-image.sh <çalışan-sürüm>` (gece `docker image prune` önceki imajı silebilir) → 3. yeni imajları yükle → 4. `docker compose run --rm migrate node dist/cli/migrate.js status` ile bekleyenleri gör → 5. `.env`'de `APP_VERSION` güncelle → 6. `docker compose run --rm migrate` → 7. `docker compose up -d api web` → 8. duman testi.
 

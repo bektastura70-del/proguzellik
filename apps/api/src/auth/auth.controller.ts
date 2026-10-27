@@ -27,6 +27,11 @@ const forgotSchema = z.object({ email: z.string().email().max(200) });
 const tokenSchema = z.string().min(20).max(200);
 const resetSchema = z.object({ token: tokenSchema, newPassword: passwordSchema });
 const verifySchema = z.object({ token: tokenSchema });
+const acceptInviteSchema = z.object({
+  token: tokenSchema,
+  password: z.string().min(1).max(200),
+  kvkkAccepted: z.literal(true, { error: "KVKK aydınlatma metni onaylanmalı" }),
+});
 const mfaVerifySchema = z
   .object({ mfaToken: z.string().min(10).max(2000), code: z.string().regex(/^\d{6}$/).optional(), recoveryCode: z.string().min(8).max(20).optional() })
   .refine((v) => !!v.code !== !!v.recoveryCode, "Doğrulama kodu veya kurtarma kodu girin");
@@ -76,6 +81,23 @@ export class AuthController {
     const body = new ZodPipe(registerSchema).transform(raw);
     this.rateLimit.hit(`register:${req.ip}`, 10, 60 * 60_000);
     return this.auth.registerBusiness(body, meta(req));
+  }
+
+  /** Belirteç URL'de değil gövdede gönderilir (erişim günlüklerine düşmesin). */
+  @Public()
+  @Post("invite/preview")
+  @HttpCode(200)
+  invitePreview(@Body(new ZodPipe(verifySchema)) body: z.infer<typeof verifySchema>, @Req() req: Request) {
+    this.rateLimit.hit(`invite:${req.ip}`, 30, 60 * 60_000);
+    return this.auth.previewInvite(body.token);
+  }
+
+  @Public()
+  @Post("accept-invite")
+  @HttpCode(200)
+  acceptInvite(@Body(new ZodPipe(acceptInviteSchema)) body: z.infer<typeof acceptInviteSchema>, @Req() req: Request) {
+    this.rateLimit.hit(`invite:${req.ip}`, 30, 60 * 60_000);
+    return this.auth.acceptInvite(body.token, body.password, meta(req));
   }
 
   @Public()

@@ -5,6 +5,7 @@ export type EmailTemplate =
   | { name: "password_changed"; vars: { fullName: string } }
   | { name: "email_verify"; vars: { fullName: string; link: string } }
   | { name: "mfa_enabled"; vars: { fullName: string } }
+  | { name: "tenant_invite"; vars: { fullName: string; salon: string; link: string; days: number } }
   | { name: "trial_ending"; vars: { salon: string; days: number; link: string } }
   | { name: "trial_ended"; vars: { salon: string; link: string } }
   | { name: "payment_failed"; vars: { salon: string; graceDays: number; link: string } }
@@ -39,6 +40,11 @@ export function render(t: EmailTemplate): { subject: string; html: string; text:
       subject = "E-posta adresinizi doğrulayın";
       paras = [`Merhaba ${esc(t.vars.fullName)},`, "ProGüzellik hesabınızı güvenle kullanabilmek için e-posta adresinizi doğrulayın."];
       cta = { label: "E-postamı doğrula", link: t.vars.link };
+      break;
+    case "tenant_invite":
+      subject = `${t.vars.salon} – ProGüzellik davetiniz`;
+      paras = [`Merhaba ${esc(t.vars.fullName)},`, `${esc(t.vars.salon)} işletmesinin yöneticisi olarak ProGüzellik'e davet edildiniz.`, `Hesabınızı oluşturmak için aşağıdaki bağlantıyı ${t.vars.days} gün içinde kullanın. Bağlantı yalnızca bir kez çalışır.`, "Bu daveti beklemiyorsanız e-postayı yok sayabilirsiniz."];
+      cta = { label: "Daveti kabul et", link: t.vars.link };
       break;
     case "mfa_enabled":
       subject = "İki adımlı doğrulama açıldı";

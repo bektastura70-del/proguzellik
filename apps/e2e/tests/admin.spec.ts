@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { PASSWORD } from "../env";
 import { apiGet, authFile, expectToast, login, uniq } from "./helpers";
+import { lastEmail } from "./totp";
 
 test.describe("İşletme sahibi modülleri", () => {
   test.use({ storageState: authFile("owner") });
@@ -107,27 +108,84 @@ test.describe("İşletme sahibi modülleri", () => {
 test.describe("SaaS sahibi paneli", () => {
   test.use({ storageState: authFile("platform") });
 
-  test("istatistikler, işletme listesi, askıya alma ve geri açma", async ({ page, browser }) => {
+  test("istatistikler, işletme listesi, pasife alma ve geri açma", async ({ page, browser }) => {
     await page.goto("/yonetim");
     await expect(page.getByText("MRR (aylık gelir)")).toBeVisible();
     const row = page.getByRole("row").filter({ hasText: "Örnek Kuaför" });
     await expect(row).toContainText("kuafor@proguzellik.local");
     await row.getByRole("button", { name: "Yönet" }).click();
-    await page.getByRole("dialog").getByLabel("Durum").selectOption("SUSPENDED");
-    await page.getByRole("dialog").getByRole("button", { name: "Kaydet" }).click();
-    await expectToast(page, "İşletme güncellendi");
+    const dlg = page.getByRole("dialog");
+    await dlg.getByRole("button", { name: "Pasife al" }).click();
+    await dlg.getByLabel("Pasife alma gerekçesi").fill("E2E test");
+    await dlg.getByRole("button", { name: "Pasife al" }).click();
+    await expectToast(page, "İşletme pasife alındı");
+    await expect(dlg).toContainText("Pasif: E2E test");
     await expect(row).toContainText("Askıda");
 
     const ctx = await browser.newContext({ storageState: authFile("other") });
     const p2 = await ctx.newPage();
     const res = await p2.request.get("/api/p/customers");
     expect(res.status()).toBe(403);
+
+    await dlg.getByRole("button", { name: "Aktifleştir" }).click();
+    await expectToast(page, "İşletme aktifleştirildi");
+    await expect(row).not.toContainText("Askıda");
+    expect((await p2.request.get("/api/p/customers")).status()).toBe(200);
+    await ctx.close();
+  });
+
+  test("yeni güzellik merkezi oluşturulur, sahip daveti kabul eder ve yalnızca kendi işletmesini görür", async ({ page, browser }) => {
+    const name = uniq("Davetli Salon");
+    const email = `${uniq("davet").replace(" ", "-")}@ornek.test`;
+    await page.goto("/yonetim");
+    await page.getByRole("button", { name: "Yeni işletme" }).click();
+    const dlg = page.getByRole("dialog");
+    await dlg.getByLabel("İşletme adı").fill(name);
+    await dlg.getByLabel("Sahip adı soyadı").fill("Davetli Sahip");
+    await dlg.getByLabel("Sahip e-postası").fill(email);
+    await dlg.getByLabel("Paket").selectOption("STARTER");
+    await dlg.getByLabel("Deneme süresi (gün)").fill("21");
+    await dlg.getByRole("button", { name: "Oluştur ve davet et" }).click();
+    await expectToast(page, /oluşturuldu\. Davet e-postası gönderildi/);
+
+    await page.getByLabel("İşletme ara").fill(name.split(" ").pop()!);
+    const row = page.getByRole("row").filter({ hasText: name });
+    await expect(row).toContainText("Başlangıç");
+    await expect(row).toContainText("Davet gönderildi");
+    await row.getByRole("button", { name: "Yönet" }).click();
+    // Bağlantı panelde gösterilmez
+    await expect(page.getByRole("dialog")).not.toContainText("token=");
+    await page.getByRole("dialog").getByRole("button", { name: "Kapat" }).click();
+
+    // Bağlantı yalnızca e-postada (test sağlayıcısının kaydı)
+    const body = lastEmail(email, `${name} – ProGüzellik davetiniz`);
+    const link = /https?:\/\/\S+\/davet\?token=[A-Za-z0-9_-]+/.exec(body)![0];
+    const path = new URL(link).pathname + new URL(link).search;
+
+    const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const p2 = await ctx.newPage();
+    await p2.goto(path);
+    await expect(p2.getByText(`${name} işletmesinin yöneticisi`)).toBeVisible();
+    await expect(p2).toHaveURL(/\/davet$/); // belirteç adres çubuğundan kaldırılır
+    await p2.getByLabel("Parola", { exact: true }).fill("DavetParola2026");
+    await p2.getByLabel("Parola (tekrar)").fill("DavetParola2026");
+    await p2.getByRole("checkbox").check();
+    await p2.getByRole("button", { name: "Daveti kabul et" }).click();
+    await expect(p2).toHaveURL(/\/panel/);
+    await expect(p2.getByText(name).first()).toBeVisible();
+    const me = await (await p2.request.get("/api/p/auth/me")).json();
+    expect(me.memberships.map((m: { tenant: { name: string } }) => m.tenant.name)).toEqual([name]);
+    // Bağlantı ikinci kez kullanılamaz
+    const ctx3 = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const p3 = await ctx3.newPage();
+    await p3.goto(path);
+    await expect(p3.getByText(/geçersiz veya süresi dolmuş/)).toBeVisible();
+    await ctx3.close();
     await ctx.close();
 
-    await row.getByRole("button", { name: "Yönet" }).click();
-    await page.getByRole("dialog").getByLabel("Durum").selectOption("ACTIVE");
-    await page.getByRole("dialog").getByRole("button", { name: "Kaydet" }).click();
-    await expect(row).toContainText("Aktif");
+    await page.reload();
+    await page.getByLabel("İşletme ara").fill(name.split(" ").pop()!);
+    await expect(page.getByRole("row").filter({ hasText: name })).toContainText(email);
   });
 
   test("paket fiyatı güncellenir", async ({ page }) => {

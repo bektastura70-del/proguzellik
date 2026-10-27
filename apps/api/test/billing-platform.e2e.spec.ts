@@ -125,12 +125,13 @@ describe("Abonelik paketleri, deneme süresi ve SaaS sahibi paneli", () => {
   });
 
   it("platform işletmeyi askıya alır; işletme erişemez; tekrar açılır", async () => {
-    await admin.patch(`/platform/tenants/${B.tenant.id}`).send({ status: "SUSPENDED" }).expect(200);
+    await admin.post(`/platform/tenants/${B.tenant.id}/suspend`).send({ reason: "Test askıya alma" }).expect(200);
     await b.get("/customers").expect(403);
-    await admin.patch(`/platform/tenants/${B.tenant.id}`).send({ status: "ACTIVE" }).expect(200);
+    await admin.post(`/platform/tenants/${B.tenant.id}/reactivate`).expect(200);
     await b.get("/customers").expect(200);
-    const logs = await su.auditLog.count({ where: { tenantId: B.tenant.id, action: "platform.tenant_updated" } });
-    expect(logs).toBe(2);
+    const actions = (await su.auditLog.findMany({ where: { tenantId: B.tenant.id } })).map((l) => l.action);
+    expect(actions.filter((a) => a === "platform.tenant_suspended")).toHaveLength(1);
+    expect(actions.filter((a) => a === "platform.tenant_reactivated")).toHaveLength(1);
   });
 
   it("deneme süresini uzatma ve paket fiyatı güncelleme", async () => {

@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Logo } from "@/components/logo";
+import { InviteBadge, NewTenantDialog, TenantDetailDialog } from "@/components/platform/tenant-admin";
 import { Alert, Badge, Button, Card, CardHeader, Dialog, Field, Input, Select, Spinner, Stat, Table, Td, statusTone, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { dateTr, STATUS_TR, tl } from "@/lib/format";
 
 type Stats = { tenants: { total: number; byStatus: Record<string, number> }; byPlan: Record<string, number>; signupsLast30Days: number; appointmentsLast30Days: number; mrr: string; activeSubscriptions: number };
-type TenantRow = { id: string; name: string; slug: string; status: string; planCode: string; trialEndsAt: string | null; createdAt: string; plan: { name: string; maxStaff: number }; _count: { customers: number; staff: number; memberships: number }; owner: { email: string; fullName: string } | null };
+type TenantRow = { id: string; name: string; slug: string; status: string; planCode: string; trialEndsAt: string | null; createdAt: string; plan: { name: string; maxStaff: number }; _count: { customers: number; staff: number; memberships: number }; owner: { email: string; fullName: string } | null; openInvite: { email: string; status: string; expiresAt: string | null } | null };
 type Plan = { code: string; name: string; maxStaff: number; monthlyPrice: string; yearlyPrice: string; isActive: boolean };
 
 export default function PlatformPage() {
@@ -18,7 +19,8 @@ export default function PlatformPage() {
   const stats = useApi<Stats>("/platform/stats");
   const tenants = useApi<TenantRow[]>(`/platform/tenants?${new URLSearchParams({ ...(status ? { status } : {}), ...(search ? { search } : {}) })}`);
   const plans = useApi<Plan[]>("/platform/plans");
-  const [edit, setEdit] = useState<TenantRow | null>(null);
+  const [detail, setDetail] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [planEdit, setPlanEdit] = useState<Plan | null>(null);
   const jobs = useApi<{ id: string; runKey: string; status: string; startedAt: string; finishedAt: string | null; result: Record<string, unknown> | null; error: string | null }[]>("/platform/jobs");
 
@@ -48,12 +50,13 @@ export default function PlatformPage() {
         <CardHeader
           title="İşletmeler"
           action={
-            <div className="flex gap-2">
-              <Input placeholder="Ara" className="h-9 w-44" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <div className="flex flex-wrap gap-2">
+              <Input placeholder="Ara (ad, adres, e-posta)" aria-label="İşletme ara" className="h-9 w-52" value={search} onChange={(e) => setSearch(e.target.value)} />
               <Select className="h-9 w-40" value={status} onChange={(e) => setStatus(e.target.value)}>
                 <option value="">Tüm durumlar</option>
                 {["TRIAL", "ACTIVE", "PAST_DUE", "SUSPENDED", "CANCELLED"].map((s) => <option key={s} value={s}>{STATUS_TR[s]}</option>)}
               </Select>
+              <Button size="sm" className="h-9" onClick={() => setCreating(true)}>Yeni işletme</Button>
             </div>
           }
         />
@@ -61,13 +64,13 @@ export default function PlatformPage() {
           {tenants.data?.map((t) => (
             <tr key={t.id}>
               <Td><div className="font-medium">{t.name}</div><div className="text-xs text-neutral-500">/{t.slug}</div></Td>
-              <Td className="text-xs">{t.owner?.fullName}<div className="text-neutral-500">{t.owner?.email}</div></Td>
+              <Td className="text-xs">{t.owner ? <>{t.owner.fullName}<div className="text-neutral-500">{t.owner.email}</div></> : t.openInvite ? <><div className="text-neutral-500">{t.openInvite.email}</div><InviteBadge status={t.openInvite.status} /></> : <span className="text-neutral-400">—</span>}</Td>
               <Td>{t.plan.name}</Td>
               <Td><Badge tone={statusTone(t.status)}>{STATUS_TR[t.status]}</Badge>{t.status === "TRIAL" && t.trialEndsAt && <div className="text-xs text-neutral-500">{dateTr(t.trialEndsAt, { day: "numeric", month: "short" })}</div>}</Td>
               <Td>{t._count.staff}/{t.plan.maxStaff}</Td>
               <Td>{t._count.customers}</Td>
               <Td>{dateTr(t.createdAt, { day: "numeric", month: "short", year: "numeric" })}</Td>
-              <Td><Button size="sm" variant="ghost" onClick={() => setEdit(t)}>Yönet</Button></Td>
+              <Td><Button size="sm" variant="ghost" onClick={() => setDetail(t.id)}>Yönet</Button></Td>
             </tr>
           ))}
         </Table>
@@ -103,23 +106,8 @@ export default function PlatformPage() {
           ))}
         </Table>
       </Card>
-      {edit && (
-        <Dialog open onClose={() => setEdit(null)} title={edit.name}>
-          <form className="space-y-4" onSubmit={async (e) => {
-            e.preventDefault();
-            const f = new FormData(e.currentTarget);
-            try {
-              await api(`/platform/tenants/${edit.id}`, { method: "PATCH", body: { status: f.get("status"), planCode: f.get("planCode"), ...(f.get("trialEndsAt") ? { trialEndsAt: new Date(`${f.get("trialEndsAt")}T23:59:00+03:00`).toISOString() } : {}) } });
-              toast("İşletme güncellendi"); setEdit(null); tenants.reload(); stats.reload();
-            } catch (err) { toast((err as Error).message, "red"); }
-          }}>
-            <Field label="Durum"><Select name="status" defaultValue={edit.status}>{["TRIAL", "ACTIVE", "PAST_DUE", "SUSPENDED", "CANCELLED"].map((s) => <option key={s} value={s}>{STATUS_TR[s]}</option>)}</Select></Field>
-            <Field label="Paket"><Select name="planCode" defaultValue={edit.planCode}><option value="STARTER">Başlangıç</option><option value="PROFESSIONAL">Profesyonel</option><option value="SMART">Akıllı</option></Select></Field>
-            <Field label="Deneme bitişi (uzat)"><Input name="trialEndsAt" type="date" /></Field>
-            <Button className="w-full">Kaydet</Button>
-          </form>
-        </Dialog>
-      )}
+      {creating && <NewTenantDialog onClose={() => setCreating(false)} onCreated={() => { setCreating(false); tenants.reload(); stats.reload(); }} />}
+      {detail && <TenantDetailDialog id={detail} onClose={() => setDetail(null)} onChanged={() => { tenants.reload(); stats.reload(); }} />}
       {planEdit && (
         <Dialog open onClose={() => setPlanEdit(null)} title={`${planEdit.name} paketi`}>
           <form className="space-y-4" onSubmit={async (e) => {

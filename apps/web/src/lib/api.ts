@@ -28,7 +28,7 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
       ? data.errors.map((e: { message: string }) => e.message).join(", ")
       : Array.isArray(data?.message) ? data.message.join(", ") : (data?.message ?? "Beklenmeyen bir hata oluştu");
     if (typeof window !== "undefined") {
-      const publicAuth = /^\/auth\/(login|register|forgot-password|reset-password|verify-email|mfa\/verify)/.test(path);
+      const publicAuth = /^\/auth\/(login|register|forgot-password|reset-password|verify-email|mfa\/verify|invite|accept-invite)/.test(path);
       // Oturum sona erdiyse (süre, çıkış veya başka cihazdan kapatma) giriş sayfasına yönlendir.
       if (res.status === 401 && !publicAuth) window.location.href = "/giris?sure=doldu";
       if (res.status === 403 && data?.code === "PASSWORD_CHANGE_REQUIRED") window.location.href = "/parola-degistir";

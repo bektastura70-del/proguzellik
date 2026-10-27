@@ -1,4 +1,5 @@
-import { Body, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, Req } from "@nestjs/common";
+import type { Request } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { AuditService } from "../audit/audit.service";
@@ -7,14 +8,30 @@ import { JobsService } from "../jobs/jobs.service";
 import { AuthUser, CurrentUser, PlatformAdmin } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
 import { PrismaService } from "../prisma/prisma.service";
+import { DEFAULT_TRIAL_DAYS, inviteSelect, TenantAdminService } from "./tenant-admin.service";
 
+const planCode = z.enum(["STARTER", "PROFESSIONAL", "SMART"]);
+const createTenantSchema = z.object({
+  name: z.string().trim().min(2, "İşletme adı en az 2 karakter olmalı").max(120),
+  ownerName: z.string().trim().min(2, "Sahip adı en az 2 karakter olmalı").max(120),
+  ownerEmail: z.string().trim().toLowerCase().email("Geçerli bir e-posta girin").max(200),
+  phone: z.string().trim().max(30).optional(),
+  planCode: planCode.default("PROFESSIONAL"),
+  trialDays: z.number().int().min(1, "Deneme süresi en az 1 gün").max(60, "Deneme süresi en fazla 60 gün").default(DEFAULT_TRIAL_DAYS),
+});
+const inviteSchema = z.object({
+  fullName: z.string().trim().min(2).max(120),
+  email: z.string().trim().toLowerCase().email("Geçerli bir e-posta girin").max(200),
+});
+const suspendSchema = z.object({ reason: z.string().trim().min(3, "Gerekçe girin").max(300) });
 const listSchema = z.object({
-  search: z.string().max(100).optional(),
+  search: z.string().trim().max(100).optional(),
   status: z.enum(["TRIAL", "ACTIVE", "PAST_DUE", "SUSPENDED", "CANCELLED"]).optional(),
 });
 const tenantUpdate = z.object({
-  status: z.enum(["TRIAL", "ACTIVE", "PAST_DUE", "SUSPENDED", "CANCELLED"]).optional(),
-  planCode: z.enum(["STARTER", "PROFESSIONAL", "SMART"]).optional(),
+  // Pasife alma/açma ayrı uç noktalarla (gerekçe ve denetim kaydıyla) yapılır.
+  status: z.enum(["TRIAL", "ACTIVE", "PAST_DUE", "CANCELLED"]).optional(),
+  planCode: planCode.optional(),
   trialEndsAt: z.string().datetime({ offset: true }).optional(),
 });
 const planUpdate = z.object({
@@ -34,6 +51,7 @@ export class PlatformController {
     private readonly subs: SubscriptionsService,
     private readonly jobs: JobsService,
     private readonly audit: AuditService,
+    private readonly tenantAdmin: TenantAdminService,
   ) {}
 
   @Get("stats")
@@ -74,9 +92,10 @@ export class PlatformController {
         plan: { select: { name: true, maxStaff: true } },
         _count: { select: { customers: true, staff: true, memberships: true } },
         memberships: { where: { role: "OWNER" }, take: 1, select: { user: { select: { email: true, fullName: true } } } },
+        invites: { where: { status: { in: ["PENDING_DELIVERY", "SENT"] } }, take: 1, select: { email: true, status: true, expiresAt: true } },
       },
     });
-    return rows.map(({ memberships, ...t }) => ({ ...t, owner: memberships[0]?.user ?? null }));
+    return rows.map(({ memberships, invites, ...t }) => ({ ...t, owner: memberships[0]?.user ?? null, openInvite: invites[0] ?? null }));
   }
 
   @Get("tenants/:id")
@@ -87,6 +106,7 @@ export class PlatformController {
         plan: true,
         subscriptions: { orderBy: { createdAt: "desc" }, include: { payments: true } },
         memberships: { select: { role: true, isActive: true, user: { select: { email: true, fullName: true, lastLoginAt: true } } } },
+        invites: { orderBy: { createdAt: "desc" }, take: 10, select: inviteSelect },
         _count: { select: { customers: true, staff: true, services: true } },
       },
     });
@@ -94,9 +114,46 @@ export class PlatformController {
     return t;
   }
 
+  /** Yeni güzellik merkezi: işletme deneme sürecinde açılır, sahibine e-posta daveti gider (SMTP yoksa bekler). */
+  @Post("tenants")
+  createTenant(@CurrentUser() u: AuthUser, @Body(new ZodPipe(createTenantSchema)) b: z.infer<typeof createTenantSchema>, @Req() req: Request) {
+    return this.tenantAdmin.create(u.id, b, req.ip);
+  }
+
+  @Post("tenants/:id/invite")
+  invite(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(inviteSchema)) b: z.infer<typeof inviteSchema>, @Req() req: Request) {
+    return this.tenantAdmin.invite(id, u.id, b, req.ip);
+  }
+
+  @Post("tenants/:id/invite/resend")
+  @HttpCode(200)
+  resendInvite(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Req() req: Request) {
+    return this.tenantAdmin.resend(id, u.id, req.ip);
+  }
+
+  @Post("tenants/:id/invite/revoke")
+  @HttpCode(200)
+  revokeInvite(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Req() req: Request) {
+    return this.tenantAdmin.revoke(id, u.id, req.ip);
+  }
+
+  @Post("tenants/:id/suspend")
+  @HttpCode(200)
+  suspend(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(suspendSchema)) b: z.infer<typeof suspendSchema>, @Req() req: Request) {
+    return this.tenantAdmin.suspend(id, u.id, b.reason, req.ip);
+  }
+
+  @Post("tenants/:id/reactivate")
+  @HttpCode(200)
+  reactivate(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Req() req: Request) {
+    return this.tenantAdmin.reactivate(id, u.id, req.ip);
+  }
+
   @Patch("tenants/:id")
   async updateTenant(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(tenantUpdate)) b: z.infer<typeof tenantUpdate>) {
-    if (!(await this.prisma.platform.tenant.findUnique({ where: { id } }))) throw new NotFoundException("İşletme bulunamadı");
+    const current = await this.prisma.platform.tenant.findUnique({ where: { id } });
+    if (!current) throw new NotFoundException("İşletme bulunamadı");
+    if (b.planCode && b.planCode !== current.planCode) await this.tenantAdmin.assertPlanFits(id, b.planCode);
     const updated = await this.prisma.platform.tenant.update({
       where: { id },
       data: { ...b, ...(b.trialEndsAt ? { trialEndsAt: new Date(b.trialEndsAt) } : {}) },
