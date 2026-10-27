@@ -12,5 +12,10 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "2.5.8",
+    "typescript": "5.9.2",
+    "@types/node": "22.18.6"
   }
 }
