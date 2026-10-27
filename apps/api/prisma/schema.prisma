@@ -42,6 +42,9 @@ model Tenant {
   memberships Membership[]
   auditLogs   AuditLog[]
   customers   Customer[]
+  categories  ServiceCategory[]
+  services    Service[]
+  staff       StaffMember[]
 }
 
 model User {
@@ -116,6 +119,7 @@ model Customer {
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customerNotes CustomerNote[]
+  appointments  Appointment[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, phone])
@@ -133,5 +137,144 @@ model CustomerNote {
   // Bileşik yabancı anahtar: not ancak aynı işletmenin müşterisine bağlanabilir.
   customer Customer @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Cascade)
 
+  @@index([tenantId, customerId])
+}
+
+// ---------------------------------------------------------------------
+// Hizmetler, personel, çalışma saatleri, randevular
+// ---------------------------------------------------------------------
+model ServiceCategory {
+  id        String @id @default(uuid()) @db.Uuid
+  tenantId  String @db.Uuid
+  name      String
+  sortOrder Int    @default(0)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  services Service[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+}
+
+model Service {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  categoryId     String?  @db.Uuid
+  name           String
+  description    String?
+  durationMin    Int
+  price          Decimal  @db.Decimal(12, 2)
+  color          String?
+  isActive       Boolean  @default(true)
+  onlineBookable Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category     ServiceCategory? @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
+  staff        StaffService[]
+  appointments Appointment[]
+
+  @@unique([tenantId, id])
+}
+
+model StaffMember {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  userId         String?  @db.Uuid
+  displayName    String
+  title          String?
+  phone          String?
+  color          String?
+  commissionRate Decimal  @default(0) @db.Decimal(5, 2)
+  isActive       Boolean  @default(true)
+  onlineBookable Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  services     StaffService[]
+  workingHours WorkingHour[]
+  timeOff      TimeOff[]
+  appointments Appointment[]
+
+  @@unique([tenantId, id])
+}
+
+model StaffService {
+  tenantId  String @db.Uuid
+  staffId   String @db.Uuid
+  serviceId String @db.Uuid
+
+  staff   StaffMember @relation(fields: [tenantId, staffId], references: [tenantId, id], onDelete: Cascade)
+  service Service     @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([staffId, serviceId])
+}
+
+// weekday: 0=Pazar ... 6=Cumartesi; dakika cinsinden gün içi saat (09:00 = 540)
+model WorkingHour {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  staffId  String @db.Uuid
+  weekday  Int
+  startMin Int
+  endMin   Int
+
+  staff StaffMember @relation(fields: [tenantId, staffId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, staffId])
+}
+
+model TimeOff {
+  id       String   @id @default(uuid()) @db.Uuid
+  tenantId String   @db.Uuid
+  staffId  String   @db.Uuid
+  startsAt DateTime
+  endsAt   DateTime
+  reason   String?
+
+  staff StaffMember @relation(fields: [tenantId, staffId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, staffId, startsAt])
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum BookingSource {
+  PANEL
+  ONLINE
+}
+
+model Appointment {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @db.Uuid
+  customerId      String            @db.Uuid
+  staffId         String            @db.Uuid
+  serviceId       String            @db.Uuid
+  startsAt        DateTime
+  endsAt          DateTime
+  status          AppointmentStatus @default(BOOKED)
+  price           Decimal           @db.Decimal(12, 2)
+  source          BookingSource     @default(PANEL)
+  notes           String?
+  cancelReason    String?
+  createdById     String?           @db.Uuid
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  customer Customer    @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Restrict)
+  staff    StaffMember @relation(fields: [tenantId, staffId], references: [tenantId, id], onDelete: Restrict)
+  service  Service     @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, startsAt])
+  @@index([tenantId, staffId, startsAt])
   @@index([tenantId, customerId])
 }
