@@ -50,11 +50,14 @@ Online randevu sayfası: `http://localhost:3000/r/isilti-guzellik`
 ## Testler
 
 ```bash
-pnpm test        # API: 109 test, gerçek PostgreSQL + Redis üzerinde (ayrı proguzellik_test veritabanı)
+pnpm test        # API: 116 test, gerçek PostgreSQL + Redis (ayrı proguzellik_test veritabanı)
+pnpm test:e2e    # Tarayıcı: 118 Playwright testi (masaüstü/tablet/mobil), sistem Chrome'u ile
 pnpm turbo run typecheck build
 ```
 
-Testler `proguzellik_test` veritabanını kullanır, geliştirme verisine dokunmaz.
+- API testleri `proguzellik_test`, tarayıcı testleri `proguzellik_e2e` veritabanını kullanır; geliştirme verisine dokunmaz.
+- Tarayıcı testleri API'yi 4200, web'i 3200 portunda kendisi başlatır ve her çalıştırmada E2E veritabanına uydurma demo verisini yeniden yükler.
+- Rapor: `apps/e2e/playwright-report/index.html`
 
 ## Modüller
 
