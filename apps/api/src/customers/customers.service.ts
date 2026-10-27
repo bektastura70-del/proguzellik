@@ -1,0 +1,185 @@
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import { AuditService } from "../audit/audit.service";
+import { TenantInfo } from "../common/decorators";
+import { PrismaService, Tx } from "../prisma/prisma.service";
+
+export interface CustomerInput {
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  email?: string;
+  birthDate?: string;
+  gender?: string;
+  notes?: string;
+  tags?: string[];
+  source?: string;
+  kvkkConsent?: boolean;
+  marketingConsent?: boolean;
+}
+
+@Injectable()
+export class CustomersService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
+
+  private toData(input: Partial<CustomerInput>) {
+    const { kvkkConsent, birthDate, ...rest } = input;
+    return {
+      ...rest,
+      ...(birthDate !== undefined ? { birthDate: birthDate ? new Date(birthDate) : null } : {}),
+      ...(kvkkConsent ? { kvkkConsentAt: new Date() } : {}),
+    };
+  }
+
+  private uniqueGuard(e: unknown): never {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      throw new ConflictException("Bu telefon numarası ile kayıtlı müşteri var");
+    }
+    throw e;
+  }
+
+  async list(t: TenantInfo, q: { search?: string; page: number; pageSize: number; tag?: string }) {
+    return this.prisma.withTenant(t, async (tx) => {
+      const where: Prisma.CustomerWhereInput = { anonymizedAt: null };
+      if (q.search) {
+        const s = q.search.trim();
+        where.OR = [
+          { firstName: { contains: s, mode: "insensitive" } },
+          { lastName: { contains: s, mode: "insensitive" } },
+          { phone: { contains: s.replace(/\s/g, "") } },
+          { email: { contains: s, mode: "insensitive" } },
+        ];
+      }
+      if (q.tag) where.tags = { has: q.tag };
+      const [items, total] = await Promise.all([
+        tx.customer.findMany({
+          where,
+          orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+          skip: (q.page - 1) * q.pageSize,
+          take: q.pageSize,
+        }),
+        tx.customer.count({ where }),
+      ]);
+      return { items, total, page: q.page, pageSize: q.pageSize };
+    });
+  }
+
+  async get(t: TenantInfo, id: string) {
+    return this.prisma.withTenant(t, (tx) => this.find(tx, id));
+  }
+
+  async find(tx: Tx, id: string) {
+    const c = await tx.customer.findUnique({ where: { id } });
+    if (!c) throw new NotFoundException("Müşteri bulunamadı");
+    return c;
+  }
+
+  create(t: TenantInfo, input: CustomerInput) {
+    return this.prisma
+      .withTenant(t, async (tx) => {
+        const c = await tx.customer.create({ data: { tenantId: t.tenantId, ...this.toData(input), firstName: input.firstName, lastName: input.lastName },
+        });
+        await this.audit.log(tx, {
+          tenantId: t.tenantId,
+          actorId: t.userId,
+          action: "customer.created",
+          entity: "Customer",
+          entityId: c.id,
+        });
+        return c;
+      })
+      .catch((e) => this.uniqueGuard(e));
+  }
+
+  update(t: TenantInfo, id: string, input: Partial<CustomerInput>) {
+    return this.prisma
+      .withTenant(t, async (tx) => {
+        const c = await this.find(tx, id);
+        if (c.anonymizedAt) throw new ConflictException("Anonimleştirilmiş müşteri düzenlenemez");
+        return tx.customer.update({ where: { id }, data: this.toData(input) });
+      })
+      .catch((e) => this.uniqueGuard(e));
+  }
+
+  addNote(t: TenantInfo, id: string, body: string) {
+    return this.prisma.withTenant(t, async (tx) => {
+      await this.find(tx, id);
+      return tx.customerNote.create({
+        data: { tenantId: t.tenantId, customerId: id, authorId: t.userId, body },
+      });
+    });
+  }
+
+  /** Müşteri geçmişi: notlar, randevular, paketler ve ödemeler. */
+  history(t: TenantInfo, id: string) {
+    return this.prisma.withTenant(t, async (tx) => {
+      const customer = await this.find(tx, id);
+      const notes = await tx.customerNote.findMany({
+        where: { customerId: id },
+        orderBy: { createdAt: "desc" },
+      });
+      const extra = await this.historyExtras(tx, id);
+      return { customer, notes, ...extra };
+    });
+  }
+
+  /** Sonraki modüller (randevu, paket, kasa) bu kancayı genişletir. */
+  protected async historyExtras(_tx: Tx, _id: string): Promise<Record<string, unknown>> {
+    return {};
+  }
+
+  /** KVKK m.11: kişisel verilerin bir kopyası (JSON). */
+  exportData(t: TenantInfo, id: string) {
+    return this.prisma.withTenant(t, async (tx) => {
+      const customer = await this.find(tx, id);
+      const notes = await tx.customerNote.findMany({ where: { customerId: id } });
+      const extra = await this.historyExtras(tx, id);
+      await this.audit.log(tx, {
+        tenantId: t.tenantId,
+        actorId: t.userId,
+        action: "customer.exported",
+        entity: "Customer",
+        entityId: id,
+      });
+      return { exportedAt: new Date().toISOString(), customer, notes, ...extra };
+    });
+  }
+
+  /**
+   * KVKK m.7: silme/anonimleştirme. Mali kayıtlar yasal saklama süresi için korunur,
+   * kişiyi tanımlayan alanlar geri döndürülemez şekilde silinir.
+   */
+  anonymize(t: TenantInfo, id: string) {
+    return this.prisma.withTenant(t, async (tx) => {
+      const c = await this.find(tx, id);
+      if (c.anonymizedAt) return c;
+      await tx.customerNote.deleteMany({ where: { customerId: id } });
+      const updated = await tx.customer.update({
+        where: { id },
+        data: {
+          firstName: "Anonim",
+          lastName: "Müşteri",
+          phone: null,
+          email: null,
+          birthDate: null,
+          gender: null,
+          notes: null,
+          tags: [],
+          marketingConsent: false,
+          anonymizedAt: new Date(),
+        },
+      });
+      await this.audit.log(tx, {
+        tenantId: t.tenantId,
+        actorId: t.userId,
+        action: "customer.anonymized",
+        entity: "Customer",
+        entityId: id,
+      });
+      return updated;
+    });
+  }
+}

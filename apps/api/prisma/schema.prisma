@@ -41,6 +41,7 @@ model Tenant {
 
   memberships Membership[]
   auditLogs   AuditLog[]
+  customers   Customer[]
 }
 
 model User {
@@ -90,4 +91,47 @@ model AuditLog {
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, createdAt])
+}
+
+// ---------------------------------------------------------------------
+// Müşteri CRM
+// ---------------------------------------------------------------------
+model Customer {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @db.Uuid
+  firstName        String
+  lastName         String
+  phone            String?
+  email            String?
+  birthDate        DateTime? @db.Date
+  gender           String?
+  notes            String?
+  tags             String[]  @default([])
+  source           String?
+  kvkkConsentAt    DateTime?
+  marketingConsent Boolean   @default(false)
+  anonymizedAt     DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerNotes CustomerNote[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, phone])
+  @@index([tenantId, lastName, firstName])
+}
+
+model CustomerNote {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  customerId String   @db.Uuid
+  authorId   String?  @db.Uuid
+  body       String
+  createdAt  DateTime @default(now())
+
+  // Bileşik yabancı anahtar: not ancak aynı işletmenin müşterisine bağlanabilir.
+  customer Customer @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, customerId])
 }
