@@ -36,7 +36,7 @@ importers:
         specifier: 11.1.6
         version: 11.1.6(@nestjs/common@11.1.6(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.6)
       '@prisma/client':
-        specifier: ^6.16.0
+        specifier: 6.19.3
         version: 6.19.3(prisma@6.19.3(typescript@5.9.2))(typescript@5.9.2)
       bcryptjs:
         specifier: ^3.0.2
@@ -50,6 +50,9 @@ importers:
       nodemailer:
         specifier: ^7.0.0
         version: 7.0.13
+      prisma:
+        specifier: 6.19.3
+        version: 6.19.3(typescript@5.9.2)
       reflect-metadata:
         specifier: 0.2.2
         version: 0.2.2
@@ -87,9 +90,6 @@ importers:
       jest:
         specifier: ^29.7.0
         version: 29.7.0(@types/node@22.18.6)
-      prisma:
-        specifier: ^6.16.0
-        version: 6.19.3(typescript@5.9.2)
       supertest:
         specifier: ^7.1.0
         version: 7.3.1

@@ -1,18 +1,16 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Req } from "@nestjs/common";
+import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { z } from "zod";
 import { AuthUser, CurrentUser, Public } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
+import { loadEnv, registrationEnabled } from "../config/env";
 import { AuthService, ClientMeta } from "./auth.service";
 import { RateLimitService } from "./rate-limit.service";
 import { SessionService } from "./session.service";
 
-export const passwordSchema = z
-  .string()
-  .min(10, "Parola en az 10 karakter olmalı")
-  .max(200)
-  .regex(/[A-Za-zÇĞİÖŞÜçğıöşü]/, "Parola harf içermeli")
-  .regex(/[0-9]/, "Parola rakam içermeli");
+import { passwordSchema } from "./password";
+
+export { passwordSchema };
 
 const loginSchema = z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) });
 const changeSchema = z.object({ currentPassword: z.string().min(1).max(200), newPassword: passwordSchema });
@@ -63,9 +61,19 @@ export class AuthController {
     return this.auth.verifyMfa(body.mfaToken, body, meta(req));
   }
 
+  /** Web kayıt sayfası bu bilgiyle formu gösterir ya da "kayıtlar kapalı" mesajı verir. */
+  @Public()
+  @Get("registration")
+  registration() {
+    return { enabled: registrationEnabled(loadEnv()) };
+  }
+
   @Public()
   @Post("register")
-  register(@Body(new ZodPipe(registerSchema)) body: z.infer<typeof registerSchema>, @Req() req: Request) {
+  register(@Body() raw: unknown, @Req() req: Request) {
+    // Kayıt kapalıyken gövde doğrulanmadan reddedilir (gövde ne olursa olsun 403).
+    if (!registrationEnabled(loadEnv())) throw new ForbiddenException("Yeni işletme kaydı şu anda kapalı");
+    const body = new ZodPipe(registerSchema).transform(raw);
     this.rateLimit.hit(`register:${req.ip}`, 10, 60 * 60_000);
     return this.auth.registerBusiness(body, meta(req));
   }

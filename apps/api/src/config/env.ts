@@ -41,6 +41,8 @@ const schema = z.object({
   BILLING_GRACE_DAYS: z.coerce.number().min(0).max(60).default(7),
   TRIAL_REMINDER_DAYS: z.coerce.number().min(1).max(14).default(3),
   TRUST_PROXY: z.enum(["0", "1"]).default("1"),
+  // Yeni işletme kaydı. Tanımsızsa: canlıda (NODE_ENV=production) kapalı, diğer ortamlarda açık.
+  REGISTRATION_ENABLED: z.enum(["0", "1"]).optional(),
 });
 
 export type Env = z.infer<typeof schema>;
@@ -61,6 +63,10 @@ export function loadEnv(): Env {
   cached = parsed.data;
   return cached;
 }
+
+/** Herkese açık işletme kaydı açık mı? Canlıda yalnızca REGISTRATION_ENABLED=1 ile açılır. */
+export const registrationEnabled = (env: Pick<Env, "REGISTRATION_ENABLED" | "NODE_ENV">) =>
+  env.REGISTRATION_ENABLED ? env.REGISTRATION_ENABLED === "1" : env.NODE_ENV !== "production";
 
 export const appUrl = (env: Env) => (env.APP_URL ?? env.WEB_ORIGIN.split(",")[0]).replace(/\/$/, "");
 
@@ -89,6 +95,7 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
   if (env.PAYMENT_MODE === "mock") warn("PAYMENT_MODE=mock: gerçek ödeme alınmaz; canlı satıştan önce ödeme sağlayıcısı entegre edilmeli");
   if (env.AI_MODE === "anthropic" && !raw.ANTHROPIC_API_KEY) err("AI_MODE=anthropic için ANTHROPIC_API_KEY gerekli");
   if (env.JOBS_ENABLED !== "1") warn("JOBS_ENABLED=0: günlük abonelik görevi bu süreçte çalışmaz (başka bir süreçte çalıştığından emin olun)");
+  if (env.REGISTRATION_ENABLED === "1") warn("REGISTRATION_ENABLED=1: herkese açık işletme kaydı açık");
   if (raw.DISABLE_RATE_LIMIT === "1") err("DISABLE_RATE_LIMIT canlıda kullanılamaz");
   return issues;
 }

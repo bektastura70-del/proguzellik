@@ -15,7 +15,9 @@ const RESET_MINUTES = 30;
 const VERIFY_HOURS = 48;
 const RECOVERY_CODES = 10;
 
-export const BCRYPT_ROUNDS = 12;
+import { BCRYPT_ROUNDS } from "./password";
+
+export { BCRYPT_ROUNDS };
 const DUMMY_HASH = bcrypt.hashSync("zamanlama-dengeleme", BCRYPT_ROUNDS);
 
 export function slugify(input: string): string {

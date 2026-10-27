@@ -1,0 +1,25 @@
+# ProGüzellik — edge-caddy için site bloğu. HENÜZ UYGULANMADI.
+# Yalnızca DNS (A @ ve www → VPS IP) yayıldıktan ve /health/ready 200 döndükten sonra,
+# /opt/edge/Caddyfile yedeklenip SONUNA eklenir; ardından:
+#   docker exec edge-caddy caddy validate --config /etc/caddy/Caddyfile
+#   docker exec edge-caddy caddy reload --config /etc/caddy/Caddyfile     (restart DEĞİL)
+# Diğer site blokları ve global ayarlar DEĞİŞTİRİLMEZ.
+
+www.proguzellik.com {
+	redir https://proguzellik.com{uri} permanent
+}
+
+proguzellik.com {
+	encode zstd gzip
+	request_body {
+		max_size 2MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	# Kayıt API'de zaten kapalı; vekilde de ikinci katman olarak engellenir (kayıt açılınca kaldırılır).
+	@register path /api/auth/register /api/p/auth/register
+	respond @register 403
+	reverse_proxy proguzellik-web:3000
+}

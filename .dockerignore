@@ -1,0 +1,16 @@
+# Gizli bilgiler ve yerel çıktılar imaj bağlamına girmez
+**/.env
+**/.env.*
+!**/.env.example
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+**/*.log
+backups
+.git
+.claude
+apps/e2e
+docs

@@ -1,0 +1,154 @@
+# ProGüzellik — CANLI ortam (VPS: /opt/proguzellik). Diğer projelerden tamamen yalıtılmıştır:
+#  - Kendi proje adı, ağı, volume'ları ve konteyner adları ("proguzellik-prod-*"). Başka projenin
+#    PostgreSQL/Redis'i kullanılmaz.
+#  - Hiçbir port host'a yayınlanmaz. Yalnızca "web" ortak ters vekil ağına (edge_proxy) bağlanır;
+#    api, postgres ve redis dışarıya kapalı "internal" ağdadır (internet çıkışı da yoktur).
+#  - Migration normal başlangıçta ÇALIŞMAZ; yalnızca "migrate" servisiyle elle çalıştırılır.
+#
+# Kullanım (/opt/proguzellik içinde, .env dosyası yanında):
+#   docker compose run --rm migrate                      # migration (önce yedek!)
+#   docker compose up -d postgres redis api web          # uygulama
+#   docker compose run --rm -it api node dist/cli/create-owner.js --email ... --name "..."
+# Ayrıntı: docs/deployment.md
+name: proguzellik-prod
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:16-alpine
+    container_name: proguzellik-prod-postgres
+    environment:
+      POSTGRES_USER: ${PG_OWNER_USER:-proguzellik_owner}
+      POSTGRES_PASSWORD: ${PG_OWNER_PASSWORD:?PG_OWNER_PASSWORD gerekli}
+      POSTGRES_DB: ${PG_DB:-proguzellik}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 768m
+    cpus: 1.0
+    shm_size: 128m
+
+  redis:
+    <<: *hardening
+    image: redis:7-alpine
+    container_name: proguzellik-prod-redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD gerekli}
+    # BullMQ için noeviction zorunlu
+    command: ["sh", "-c", "exec redis-server --appendonly yes --maxmemory 96mb --maxmemory-policy noeviction --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - redis_data:/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 128m
+    cpus: 0.5
+
+  api:
+    <<: *hardening
+    image: proguzellik-api:${APP_VERSION:?APP_VERSION gerekli (ör. git commit kısaltması)}
+    container_name: proguzellik-prod-api
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    # Uygulama sürecine migration sahibi (DATABASE_URL) VERİLMEZ.
+    environment:
+      NODE_ENV: production
+      API_PORT: "4000"
+      APP_DATABASE_URL: postgresql://app_tenant:${APP_TENANT_DB_PASSWORD:?}@postgres:5432/${PG_DB:-proguzellik}
+      PLATFORM_DATABASE_URL: postgresql://app_platform:${APP_PLATFORM_DB_PASSWORD:?}@postgres:5432/${PG_DB:-proguzellik}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      QUEUE_PREFIX: proguzellik
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET gerekli}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:?MFA_ENCRYPTION_KEY gerekli}
+      MFA_ENFORCE_PLATFORM: "1"
+      WEB_ORIGIN: ${PUBLIC_URL:?PUBLIC_URL gerekli}
+      APP_URL: ${PUBLIC_URL}
+      TRUST_PROXY: "1"
+      # Başlangıçta kapalı: herkese açık işletme kaydı yok
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-0}
+      # Entegrasyonlar pasif: gerçek servise bağlanılmaz (api'nin internet çıkışı da yoktur)
+      EMAIL_MODE: mock
+      WHATSAPP_MODE: mock
+      PAYMENT_MODE: mock
+      AI_MODE: mock
+      JOBS_ENABLED: "1"
+      JOBS_CRON: "0 3 * * *"
+    networks: [internal]
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    cap_drop: [ALL]
+    mem_limit: 512m
+    cpus: 1.0
+
+  web:
+    <<: *hardening
+    image: proguzellik-web:${APP_VERSION:?}
+    container_name: proguzellik-prod-web
+    depends_on:
+      api: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      API_URL: http://api:4000
+      TRUST_PROXY: "1"
+      HOSTNAME: 0.0.0.0
+    networks:
+      internal: {}
+      edge:
+        # edge-caddy bu adla ulaşır: reverse_proxy proguzellik-web:3000
+        aliases: [proguzellik-web]
+    read_only: true
+    tmpfs: ["/tmp:size=64m", "/app/.next/cache:size=128m,uid=1000,gid=1000"]
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/giris').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    mem_limit: 512m
+    cpus: 1.0
+
+  # Tek seferlik migration. Normal "up" ile başlamaz (profil: ops).
+  migrate:
+    image: proguzellik-api:${APP_VERSION:?}
+    profiles: [ops]
+    restart: "no"
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://${PG_OWNER_USER:-proguzellik_owner}:${PG_OWNER_PASSWORD}@postgres:5432/${PG_DB:-proguzellik}
+    command: ["node", "dist/cli/migrate.js", "deploy", "--confirm"]
+    networks: [internal]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+
+networks:
+  internal:
+    name: proguzellik_prod_internal
+    internal: true
+  edge:
+    name: ${EDGE_NETWORK:-edge_proxy}
+    external: true
+
+volumes:
+  pg_data:
+    name: proguzellik_prod_pg
+  redis_data:
+    name: proguzellik_prod_redis

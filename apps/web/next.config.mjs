@@ -1,4 +1,4 @@
-import type { NextConfig } from "next";
+// JS (TS değil): canlı imajda TypeScript olmadan yüklenebilsin.
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -21,7 +21,8 @@ const securityHeaders = [
   },
 ];
 
-const nextConfig: NextConfig = {
+/** @type {import("next").NextConfig} */
+const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   async headers() {
