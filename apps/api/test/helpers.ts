@@ -49,9 +49,18 @@ export async function createApp(): Promise<INestApplication> {
   return app;
 }
 
+/** Giriş yapar; geçici parolalı (davet edilen) kullanıcıda parolayı değiştirip aynı token'ı döner. */
 export async function login(app: INestApplication, email: string, password = TEST_PASSWORD) {
   const res = await request(app.getHttpServer()).post("/auth/login").send({ email, password }).expect(200);
-  return res.body.accessToken as string;
+  const token = res.body.accessToken as string;
+  if (res.body.user?.mustChangePassword) {
+    await request(app.getHttpServer())
+      .post("/auth/change-password")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ currentPassword: password, newPassword: `${password}Yn1` })
+      .expect(200);
+  }
+  return token;
 }
 
 /** Oturumlu ve işletme bağlamlı istek yardımcısı. */

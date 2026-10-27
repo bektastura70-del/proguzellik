@@ -77,6 +77,7 @@ export class AuthService {
         email: true,
         fullName: true,
         isPlatformAdmin: true,
+        mustChangePassword: true,
         memberships: {
           where: { isActive: true },
           select: {
@@ -89,6 +90,22 @@ export class AuthService {
       },
     });
     return user;
+  }
+
+  async changePassword(userId: string, current: string, next: string, ip?: string) {
+    const db = this.prisma.platform;
+    const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
+    if (!(await bcrypt.compare(current, user.passwordHash))) {
+      await this.audit.logPlatform({ action: "auth.password_change_failed", actorId: userId, ip });
+      throw new UnauthorizedException("Mevcut parola hatalı");
+    }
+    if (current === next) throw new ConflictException("Yeni parola eskisinden farklı olmalı");
+    await db.user.update({
+      where: { id: userId },
+      data: { passwordHash: await bcrypt.hash(next, BCRYPT_ROUNDS), mustChangePassword: false },
+    });
+    await this.audit.logPlatform({ action: "auth.password_changed", actorId: userId, ip });
+    return { changed: true };
   }
 
   /** Yeni işletme kaydı: 14 günlük deneme ile başlar, kayıt olan kişi OWNER olur. */

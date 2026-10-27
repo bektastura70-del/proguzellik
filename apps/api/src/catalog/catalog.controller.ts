@@ -1,4 +1,4 @@
-import { Body, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from "@nestjs/common";
+import { Body, ConflictException, Controller, Delete, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { CurrentTenant, Roles, TenantInfo } from "../common/decorators";
 import { moneySchema } from "../common/schemas";
@@ -32,6 +32,27 @@ export class CatalogController {
   @Roles("OWNER", "MANAGER")
   createCategory(@CurrentTenant() t: TenantInfo, @Body(new ZodPipe(categorySchema)) b: z.infer<typeof categorySchema>) {
     return this.prisma.withTenant(t, (tx) => tx.serviceCategory.create({ data: { tenantId: t.tenantId, ...b } }));
+  }
+
+  @Patch("service-categories/:id")
+  @Roles("OWNER", "MANAGER")
+  updateCategory(@CurrentTenant() t: TenantInfo, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(categorySchema.partial())) b: Partial<z.infer<typeof categorySchema>>) {
+    return this.prisma.withTenant(t, async (tx) => {
+      if (!(await tx.serviceCategory.findUnique({ where: { id } }))) throw new NotFoundException("Kategori bulunamadı");
+      return tx.serviceCategory.update({ where: { id }, data: b });
+    });
+  }
+
+  @Delete("service-categories/:id")
+  @Roles("OWNER", "MANAGER")
+  deleteCategory(@CurrentTenant() t: TenantInfo, @Param("id", ParseUUIDPipe) id: string) {
+    return this.prisma.withTenant(t, async (tx) => {
+      if (!(await tx.serviceCategory.findUnique({ where: { id } }))) throw new NotFoundException("Kategori bulunamadı");
+      const used = await tx.service.count({ where: { categoryId: id } });
+      if (used) throw new ConflictException(`Bu kategoride ${used} hizmet var; önce hizmetleri taşıyın`);
+      await tx.serviceCategory.delete({ where: { id } });
+      return { deleted: true };
+    });
   }
 
   @Get("services")

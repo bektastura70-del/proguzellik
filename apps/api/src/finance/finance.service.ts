@@ -15,8 +15,8 @@ export class FinanceService {
   ) {}
 
   list(t: TenantInfo, q: { from: string; to: string; type?: TransactionType; customerId?: string; staffId?: string }) {
-    return this.prisma.withTenant(t, (tx) =>
-      tx.financeTransaction.findMany({
+    return this.prisma.withTenant(t, async (tx) => {
+      const rows = await tx.financeTransaction.findMany({
         where: {
           occurredAt: { gte: new Date(q.from), lt: new Date(q.to) },
           ...(q.type ? { type: q.type } : {}),
@@ -28,8 +28,16 @@ export class FinanceService {
           customer: { select: { id: true, firstName: true, lastName: true } },
           staff: { select: { id: true, displayName: true } },
         },
-      }),
-    );
+      });
+      const incomeIds = rows.filter((r) => r.type === "INCOME").map((r) => r.id);
+      const refunds = incomeIds.length
+        ? await tx.financeTransaction.groupBy({ by: ["refundOfId"], where: { refundOfId: { in: incomeIds } }, _sum: { amount: true } })
+        : [];
+      return rows.map((r) => {
+        const refunded = D(refunds.find((x) => x.refundOfId === r.id)?._sum.amount);
+        return r.type === "INCOME" ? { ...r, refundedAmount: money(refunded), refundable: money(D(r.amount).minus(refunded)) } : r;
+      });
+    });
   }
 
   private async assertRefs(tx: Tx, b: { customerId?: string; appointmentId?: string; customerPackageId?: string; staffId?: string }) {

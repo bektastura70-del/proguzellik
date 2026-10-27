@@ -169,6 +169,17 @@ export class CustomersService {
     return this.prisma.withTenant(t, async (tx) => {
       const c = await this.find(tx, id);
       if (c.anonymizedAt) return c;
+      // Bekleyen randevular iptal edilir; planlı bildirimler gönderilmez.
+      const upcoming = await tx.appointment.findMany({
+        where: { customerId: id, status: { in: ["BOOKED", "CONFIRMED"] } },
+        select: { id: true },
+      });
+      if (upcoming.length) {
+        const ids = upcoming.map((a) => a.id);
+        await tx.appointment.updateMany({ where: { id: { in: ids } }, data: { status: "CANCELLED", cancelReason: "KVKK silme talebi" } });
+        await tx.notification.updateMany({ where: { appointmentId: { in: ids }, status: "QUEUED" }, data: { status: "SKIPPED" } });
+      }
+      await tx.notification.updateMany({ where: { recipient: c.phone ?? "__none__", status: "QUEUED" }, data: { status: "SKIPPED" } });
       await tx.customerNote.deleteMany({ where: { customerId: id } });
       const updated = await tx.customer.update({
         where: { id },

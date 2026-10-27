@@ -20,6 +20,7 @@ const updateSchema = z.object({
   staffId: z.string().uuid().optional(),
   notes: z.string().max(1000).optional(),
   ignoreSchedule: z.boolean().optional(),
+  price: moneySchema.optional(),
 });
 const statusSchema = z.object({
   status: z.enum(["CONFIRMED", "COMPLETED", "CANCELLED", "NO_SHOW"]),

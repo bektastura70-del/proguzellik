@@ -47,9 +47,12 @@ export class AuthGuard implements CanActivate {
     }
     const user = await this.prisma.platform.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, isActive: true, isPlatformAdmin: true },
+      select: { id: true, isActive: true, isPlatformAdmin: true, mustChangePassword: true },
     });
     if (!user || !user.isActive) throw new UnauthorizedException("Oturum geçersiz");
+    if (user.mustChangePassword && !["/auth/me", "/auth/change-password"].includes(req.path)) {
+      throw new ForbiddenException({ message: "Devam etmek için parolanızı değiştirin", code: "PASSWORD_CHANGE_REQUIRED" });
+    }
     req.user = { id: user.id, isPlatformAdmin: user.isPlatformAdmin };
 
     if (this.reflector.getAllAndOverride<boolean>(PLATFORM_ADMIN, targets)) {

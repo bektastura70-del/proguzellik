@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { TenantInfo } from "../common/decorators";
 import { PrismaService, Tx } from "../prisma/prisma.service";
 
@@ -62,6 +62,14 @@ export class StaffService {
     return this.prisma.withTenant(t, async (tx) => {
       const s = await this.find(tx, id);
       if (input.isActive === true && !s.isActive) await this.limits.assertCanAddStaff(tx, t.tenantId);
+      if (input.isActive === false && s.isActive) {
+        const upcoming = await tx.appointment.count({
+          where: { staffId: id, status: { in: ["BOOKED", "CONFIRMED"] }, startsAt: { gt: new Date() } },
+        });
+        if (upcoming > 0) {
+          throw new ConflictException(`Personelin ${upcoming} bekleyen randevusu var. Önce başka personele aktarın veya iptal edin.`);
+        }
+      }
       await this.assertMember(tx, input.userId);
       return tx.staffMember.update({ where: { id }, data: input });
     });
@@ -102,6 +110,16 @@ export class StaffService {
         data: { tenantId: t.tenantId, staffId: id, startsAt: new Date(input.startsAt), endsAt: new Date(input.endsAt), reason: input.reason },
       });
     });
+  }
+
+  timeOffRange(t: TenantInfo, from: string, to: string) {
+    return this.prisma.withTenant(t, (tx) =>
+      tx.timeOff.findMany({
+        where: { startsAt: { lt: new Date(to) }, endsAt: { gt: new Date(from) } },
+        orderBy: { startsAt: "asc" },
+        include: { staff: { select: { id: true, displayName: true } } },
+      }),
+    );
   }
 
   listTimeOff(t: TenantInfo, id: string) {

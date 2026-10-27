@@ -52,6 +52,7 @@ export class UsersService {
           fullName: input.fullName,
           phone: input.phone,
           passwordHash: await bcrypt.hash(temporaryPassword, BCRYPT_ROUNDS),
+          mustChangePassword: true,
         },
       });
     }

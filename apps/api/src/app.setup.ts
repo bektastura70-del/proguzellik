@@ -1,5 +1,6 @@
 import type { INestApplication } from "@nestjs/common";
 import type { NestExpressApplication } from "@nestjs/platform-express";
+import { PrismaExceptionFilter } from "./common/prisma-exception.filter";
 import { loadEnv } from "./config/env";
 
 /** Uygulama ve testler için ortak HTTP ayarları. */
@@ -15,6 +16,7 @@ export function configureApp(app: INestApplication) {
     res.setHeader("Referrer-Policy", "no-referrer");
     next();
   });
+  app.useGlobalFilters(new PrismaExceptionFilter());
   app.enableShutdownHooks();
   return app;
 }

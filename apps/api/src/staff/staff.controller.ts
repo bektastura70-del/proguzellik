@@ -33,6 +33,21 @@ const timeOffSchema = z
   .object({ startsAt: z.string().datetime(), endsAt: z.string().datetime(), reason: z.string().max(200).optional() })
   .refine((v) => new Date(v.startsAt) < new Date(v.endsAt), "Başlangıç bitişten önce olmalı");
 
+const rangeSchema = z
+  .object({ from: z.string().datetime({ offset: true }), to: z.string().datetime({ offset: true }) })
+  .refine((v) => new Date(v.to).getTime() - new Date(v.from).getTime() <= 62 * 86_400_000, "En fazla 62 günlük aralık");
+
+@Controller("time-off")
+export class TimeOffController {
+  constructor(private readonly staff: StaffService) {}
+
+  @Get()
+  @Roles()
+  range(@CurrentTenant() t: TenantInfo, @Query(new ZodPipe(rangeSchema)) q: z.infer<typeof rangeSchema>) {
+    return this.staff.timeOffRange(t, q.from, q.to);
+  }
+}
+
 @Controller("staff")
 export class StaffController {
   constructor(private readonly staff: StaffService) {}

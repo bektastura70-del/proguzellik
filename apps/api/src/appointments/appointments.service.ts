@@ -127,7 +127,10 @@ export class AppointmentsService {
       .catch(AppointmentsService.overlapGuard);
   }
 
-  async reschedule(t: TenantInfo, id: string, input: { startsAt?: string; staffId?: string; notes?: string; ignoreSchedule?: boolean }) {
+  async reschedule(t: TenantInfo, id: string, input: { startsAt?: string; staffId?: string; notes?: string; ignoreSchedule?: boolean; price?: number }) {
+    if (input.price !== undefined && !["OWNER", "MANAGER"].includes(t.role)) {
+      throw new ForbiddenException("Fiyat değiştirme yetkiniz yok");
+    }
     if (input.ignoreSchedule && !["OWNER", "MANAGER"].includes(t.role)) {
       throw new ForbiddenException("Çalışma saati dışı randevu için yetkiniz yok");
     }
@@ -146,7 +149,22 @@ export class AppointmentsService {
         if (!input.ignoreSchedule && (input.startsAt || input.staffId)) {
           await this.availability.assertWithinSchedule(tx, t.tenantId, staffId, startsAt, endsAt);
         }
-        return tx.appointment.update({ where: { id }, data: { staffId, startsAt, endsAt, notes: input.notes ?? appt.notes } });
+        if (input.price !== undefined && appt.customerPackageId) throw new BadRequestException("Paketli randevunun fiyatı değiştirilemez");
+        const updated = await tx.appointment.update({
+          where: { id },
+          data: { staffId, startsAt, endsAt, notes: input.notes ?? appt.notes, ...(input.price !== undefined ? { price: input.price } : {}) },
+        });
+        if (input.startsAt || input.staffId) {
+          await this.audit.log(tx, {
+            tenantId: t.tenantId,
+            actorId: t.userId,
+            action: "appointment.rescheduled",
+            entity: "Appointment",
+            entityId: id,
+            metadata: { from: appt.startsAt.toISOString(), to: startsAt.toISOString(), staffId },
+          });
+        }
+        return updated;
       })
       .catch(AppointmentsService.overlapGuard);
   }
