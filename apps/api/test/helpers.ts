@@ -44,7 +44,7 @@ export async function createTenantWithUser(
 
 export async function createApp(): Promise<INestApplication> {
   const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  const app = configureApp(mod.createNestApplication());
+  const app = configureApp(mod.createNestApplication({ rawBody: true }));
   await app.init();
   return app;
 }

@@ -547,3 +547,36 @@ model SubscriptionPayment {
 
   @@index([tenantId, createdAt])
 }
+
+// ---------------------------------------------------------------------
+// Bildirimler (WhatsApp Cloud API; yerelde test sağlayıcısı)
+// ---------------------------------------------------------------------
+enum NotificationStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  SKIPPED
+}
+
+model Notification {
+  id                String             @id @default(uuid()) @db.Uuid
+  tenantId          String             @db.Uuid
+  channel           String             @default("WHATSAPP")
+  recipient         String
+  template          String
+  payload           Json
+  status            NotificationStatus @default(QUEUED)
+  appointmentId     String?            @db.Uuid
+  scheduledFor      DateTime           @default(now())
+  providerMessageId String?            @unique
+  error             String?
+  attempts          Int                @default(0)
+  sentAt            DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, appointmentId])
+}

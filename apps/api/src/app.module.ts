@@ -16,8 +16,10 @@ import { BillingModule } from "./billing/billing.module";
 import { PlatformModule } from "./platform/platform.module";
 import { SettingsModule } from "./settings/settings.module";
 import { PublicBookingModule } from "./public-booking/public-booking.module";
+import { NotificationsModule } from "./notifications/notifications.module";
+import { AssistantModule } from "./assistant/assistant.module";
 
 @Module({
-  imports: [PrismaModule, AuditModule, AuthModule, HealthModule, UsersModule, CustomersModule, CatalogModule, StaffModule, AppointmentsModule, PackagesModule, FinanceModule, StockModule, ReportsModule, BillingModule, PlatformModule, SettingsModule, PublicBookingModule],
+  imports: [PrismaModule, AuditModule, AuthModule, HealthModule, UsersModule, CustomersModule, CatalogModule, StaffModule, AppointmentsModule, PackagesModule, FinanceModule, StockModule, ReportsModule, BillingModule, PlatformModule, SettingsModule, PublicBookingModule, NotificationsModule, AssistantModule],
 })
 export class AppModule {}

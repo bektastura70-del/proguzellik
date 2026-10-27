@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { AppointmentsService } from "../appointments/appointments.service";
+import { AppointmentHooks, AppointmentsService } from "../appointments/appointments.service";
 import { AvailabilityService } from "../appointments/availability.service";
 import { AuditService } from "../audit/audit.service";
 import { loadEnv } from "../config/env";
@@ -29,6 +29,7 @@ export class PublicBookingService {
     private readonly availability: AvailabilityService,
     private readonly audit: AuditService,
     private readonly appointments: AppointmentsService,
+    private readonly hooks: AppointmentHooks,
   ) {}
 
   /** Online rezervasyona açık işletmeyi slug ile bulur (yalnızca herkese açık alanlar). */
@@ -162,7 +163,8 @@ export class PublicBookingService {
       if (appt.startsAt.getTime() - Date.now() < CANCEL_MIN_HOURS * 3_600_000) {
         throw new ConflictException(`Randevuya ${CANCEL_MIN_HOURS} saatten az kaldığı için lütfen işletmeyi arayın`);
       }
-      await tx.appointment.update({ where: { id: appt.id }, data: { status: "CANCELLED", cancelReason: "Müşteri online iptal etti" } });
+      const updated = await tx.appointment.update({ where: { id: appt.id }, data: { status: "CANCELLED", cancelReason: "Müşteri online iptal etti" } });
+      await this.hooks.onStatusChanged(tx, updated);
       await this.audit.log(tx, { tenantId: t.id, action: "booking.online_cancelled", entity: "Appointment", entityId: appt.id });
       return { cancelled: true };
     });

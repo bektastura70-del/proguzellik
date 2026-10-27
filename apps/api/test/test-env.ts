@@ -18,4 +18,9 @@ export function applyTestEnv() {
   process.env.SKIP_ENV_FILE = "1";
   process.env.DISABLE_RATE_LIMIT = "1";
   process.env.NODE_ENV = "test";
+  process.env.QUEUE_PREFIX = "proguzellik-test";
+  process.env.WHATSAPP_MODE = "mock";
+  process.env.WHATSAPP_APP_SECRET = "test-app-secret";
+  process.env.WHATSAPP_VERIFY_TOKEN = "test-verify-token";
+  process.env.AI_MODE = "mock";
 }
