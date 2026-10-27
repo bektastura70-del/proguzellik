@@ -125,7 +125,7 @@ Dosyalar: `infra/production/` (compose, `.env.example`, betikler, Caddy bloğu).
 /opt/proguzellik/images/             önceki sürüm imaj arşivleri (son 3)
 ```
 
-**Yalıtım:** proje adı `proguzellik-prod`, konteynerler `proguzellik-prod-*`, volume'lar `proguzellik_prod_pg`/`proguzellik_prod_redis`, iç ağ `proguzellik_prod_internal` (internal: internet çıkışı yok). Host'a hiçbir port yayınlanmaz. Yalnızca `web`, ortak `edge_proxy` ağına `proguzellik-web` adıyla bağlanır. Diğer projelerin veritabanı, Redis, volume ve ağları kullanılmaz; mevcut Caddy blokları ve global ayarlar değiştirilmez. Konteynerler salt okunur dosya sistemi, `no-new-privileges`, `cap_drop: ALL` ve bellek/CPU sınırlarıyla çalışır (toplam ~1.9 GB).
+**Yalıtım:** proje adı `proguzellik-prod`, servisler postgres/redis/api/worker/web, konteynerler `proguzellik-prod-*`, volume'lar `proguzellik_prod_pg`/`proguzellik_prod_redis`, iç ağ `proguzellik_prod_internal` (internal: internet çıkışı yok). Host'a hiçbir port yayınlanmaz. Yalnızca `web`, ortak `edge_proxy` ağına `proguzellik-web` adıyla bağlanır. Diğer projelerin veritabanı, Redis, volume ve ağları kullanılmaz; mevcut Caddy blokları ve global ayarlar değiştirilmez. Konteynerler salt okunur dosya sistemi, `no-new-privileges`, `cap_drop: ALL` ve bellek/CPU sınırlarıyla çalışır (toplam ~1.9 GB).
 
 **Pasif entegrasyonlar:** compose `EMAIL_MODE`, `WHATSAPP_MODE`, `PAYMENT_MODE`, `AI_MODE` değerlerini `mock` olarak sabitler; API'nin internet çıkışı da yoktur. Kayıt `REGISTRATION_ENABLED=0` ile kapalıdır (Caddy bloğu ayrıca kayıt yolunu 403 ile engeller).
 
@@ -142,11 +142,11 @@ Dosyalar: `infra/production/` (compose, `.env.example`, betikler, Caddy bloğu).
 4. `docker compose up -d postgres redis`
 5. `docker compose run --rm migrate` (boş veritabanına migration; seed **çalıştırılmaz**, demo hesap/test verisi taşınmaz)
 6. `infra/production/set-db-role-passwords.sh` (uygulama rollerine giriş izni)
-7. `docker compose up -d api web` → `docker inspect -f '{{.State.Health.Status}}' proguzellik-prod-api` = healthy
+7. `docker compose up -d api worker web` → `docker compose ps` ile api/worker/web `healthy`. Bildirim kuyruğu ve günlük abonelik görevi yalnızca `worker` servisinde çalışır (API'de `JOBS_ENABLED=0`, `NOTIFICATIONS_WORKER=0`).
 8. `docker compose run --rm -it api node dist/cli/create-owner.js --email <e-posta> --name "<Ad Soyad>"` → ilk girişte 2FA kurulumu
 9. Yedek cron'u: `/etc/cron.d/proguzellik-backup` → `45 3 * * * root /opt/proguzellik/infra/production/backup.sh >> /opt/proguzellik/backups/backup.log 2>&1`; ilk yedekte `infra/scripts/verify-backup.sh` tatbikatı (`PG_CONTAINER=proguzellik-prod-postgres PGUSER=proguzellik_owner`).
 10. DNS (Hostinger paneli): `@` A → VPS IP, `www` → aynı; TTL 300. Yayılmayı `dig +short proguzellik.com` ile doğrulayın.
-11. Caddy: `/opt/edge/Caddyfile` yedeği alınır, `Caddyfile.proguzellik.snippet` içeriği **sona eklenir**, `caddy validate` ardından `caddy reload` (restart değil). Sertifika Let's Encrypt ile otomatik alınır.
+11. Ortak ağa bağlanma: `.env` içinde `COMPOSE_FILE=docker-compose.yml:docker-compose.edge.yml` yapılıp `docker compose up -d --no-deps web` (yalnızca web, `proguzellik-web` adıyla `edge_proxy`'ye katılır). Caddy: `/opt/edge/Caddyfile` yedeği alınır, `Caddyfile.proguzellik.snippet` içeriği **sona eklenir**, `caddy validate` ardından `caddy reload` (restart değil). Sertifika Let's Encrypt ile otomatik alınır.
 12. Duman testi: `https://proguzellik.com/giris` açılır, sahip girişi + 2FA, `/kayit` "kayıtlar kapalı" gösterir, kayıt isteği 403.
 
 ### İşletme ekleme (kayıt kapalıyken)

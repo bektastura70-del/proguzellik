@@ -3,7 +3,8 @@
 set -euo pipefail
 PROD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${ENV_FILE:-$PROD_DIR/.env}"
-COMPOSE=(docker compose --project-directory "$PROD_DIR" -f "$PROD_DIR/docker-compose.yml" --env-file "$ENV_FILE")
+# COMPOSE_FILE .env içinden okunur (kenar ağı katmanı dahil olsun diye -f verilmez)
+COMPOSE=(docker compose --project-directory "$PROD_DIR" --env-file "$ENV_FILE")
 IMAGE_DIR="${IMAGE_DIR:-/opt/proguzellik/images}"
 BACKUP_DIR="${BACKUP_DIR:-/opt/proguzellik/backups}"
 

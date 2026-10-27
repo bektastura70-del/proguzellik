@@ -24,13 +24,17 @@ avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
 
 # 3) Yalıtım: ortak vekil ağı var, isim çakışması yok
 edge=$(env_get EDGE_NETWORK 2>/dev/null || true); edge=${edge:-edge_proxy}
-docker network inspect "$edge" >/dev/null 2>&1 && ok "Vekil ağı mevcut: $edge" || bad "Vekil ağı yok: $edge"
+if [[ "$(env_get COMPOSE_FILE 2>/dev/null || true)" == *edge* ]]; then
+  docker network inspect "$edge" >/dev/null 2>&1 && ok "Vekil ağı mevcut: $edge" || bad "Vekil ağı yok: $edge"
+else
+  ok "Ortak vekil ağına bağlanılmıyor (yalıtılmış kurulum)"
+fi
 for c in $(docker ps -a --format '{{.Names}}'); do
   if [[ "$c" == proguzellik-prod-* ]] && [[ "$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$c")" != "proguzellik-prod" ]]; then
     bad "Başka projeye ait konteyner adı çakışıyor: $c"
   fi
 done
-grep -qE '^\s+ports:' "$PROD_DIR/docker-compose.yml" && bad "Compose dosyasında host'a yayınlanan port var" || ok "Host'a yayınlanan port yok"
+grep -qE '^\s+ports:' "$PROD_DIR"/docker-compose*.yml && bad "Compose dosyasında host'a yayınlanan port var" || ok "Host'a yayınlanan port yok"
 
 # 4) .env: izin ve gizli değer biçimi (değerler yazdırılmaz)
 if [[ -f "$ENV_FILE" ]]; then

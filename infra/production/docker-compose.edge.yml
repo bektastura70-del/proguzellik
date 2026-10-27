@@ -1,0 +1,15 @@
+# Yayına alma adımı: yalnızca "web" servisini ortak ters vekil ağına bağlar.
+# Etkinleştirme (.env):  COMPOSE_FILE=docker-compose.yml:docker-compose.edge.yml
+# ardından:              docker compose up -d --no-deps web
+services:
+  web:
+    networks:
+      internal: {}
+      edge:
+        # edge-caddy bu adla ulaşır: reverse_proxy proguzellik-web:3000
+        aliases: [proguzellik-web]
+
+networks:
+  edge:
+    name: ${EDGE_NETWORK:-edge_proxy}
+    external: true

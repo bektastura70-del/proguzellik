@@ -1,13 +1,15 @@
 # ProGüzellik — CANLI ortam (VPS: /opt/proguzellik). Diğer projelerden tamamen yalıtılmıştır:
 #  - Kendi proje adı, ağı, volume'ları ve konteyner adları ("proguzellik-prod-*"). Başka projenin
 #    PostgreSQL/Redis'i kullanılmaz.
-#  - Hiçbir port host'a yayınlanmaz. Yalnızca "web" ortak ters vekil ağına (edge_proxy) bağlanır;
-#    api, postgres ve redis dışarıya kapalı "internal" ağdadır (internet çıkışı da yoktur).
+#  - Hiçbir port host'a yayınlanmaz. İlk kurulumda hiçbir servis ortak ağa bağlanmaz. Yayına alırken
+#    yalnızca "web", docker-compose.edge.yml ile ortak vekil ağına (edge_proxy) eklenir
+#    (.env: COMPOSE_FILE=docker-compose.yml:docker-compose.edge.yml). api, worker, postgres ve redis
+#    dışarıya kapalı "internal" ağdadır (internet çıkışı da yoktur).
 #  - Migration normal başlangıçta ÇALIŞMAZ; yalnızca "migrate" servisiyle elle çalıştırılır.
 #
 # Kullanım (/opt/proguzellik içinde, .env dosyası yanında):
 #   docker compose run --rm migrate                      # migration (önce yedek!)
-#   docker compose up -d postgres redis api web          # uygulama
+#   docker compose up -d postgres redis api worker web   # uygulama
 #   docker compose run --rm -it api node dist/cli/create-owner.js --email ... --name "..."
 # Ayrıntı: docs/deployment.md
 name: proguzellik-prod
@@ -68,7 +70,7 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     # Uygulama sürecine migration sahibi (DATABASE_URL) VERİLMEZ.
-    environment:
+    environment: &app-env
       NODE_ENV: production
       API_PORT: "4000"
       APP_DATABASE_URL: postgresql://app_tenant:${APP_TENANT_DB_PASSWORD:?}@postgres:5432/${PG_DB:-proguzellik}
@@ -88,7 +90,9 @@ services:
       WHATSAPP_MODE: mock
       PAYMENT_MODE: mock
       AI_MODE: mock
-      JOBS_ENABLED: "1"
+      # Kuyruk işçileri ve günlük görev yalnızca "worker" servisinde çalışır.
+      JOBS_ENABLED: "0"
+      NOTIFICATIONS_WORKER: "0"
       JOBS_CRON: "0 3 * * *"
     networks: [internal]
     read_only: true
@@ -96,6 +100,31 @@ services:
     cap_drop: [ALL]
     mem_limit: 512m
     cpus: 1.0
+
+  worker:
+    <<: *hardening
+    image: proguzellik-api:${APP_VERSION:?}
+    container_name: proguzellik-prod-worker
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *app-env
+      JOBS_ENABLED: "1"
+      NOTIFICATIONS_WORKER: "1"
+    command: ["node", "dist/cli/worker.js"]
+    networks: [internal]
+    read_only: true
+    tmpfs: ["/tmp:size=16m"]
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD", "node", "-e", "const t=+require('fs').readFileSync('/tmp/worker-heartbeat','utf8');process.exit(Date.now()-t<90000?0:1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    mem_limit: 384m
+    cpus: 0.5
 
   web:
     <<: *hardening
@@ -108,11 +137,8 @@ services:
       API_URL: http://api:4000
       TRUST_PROXY: "1"
       HOSTNAME: 0.0.0.0
-    networks:
-      internal: {}
-      edge:
-        # edge-caddy bu adla ulaşır: reverse_proxy proguzellik-web:3000
-        aliases: [proguzellik-web]
+    # Ortak vekil ağına (edge_proxy) yalnızca docker-compose.edge.yml ile bağlanır (Caddy adımında).
+    networks: [internal]
     read_only: true
     tmpfs: ["/tmp:size=64m", "/app/.next/cache:size=128m,uid=1000,gid=1000"]
     cap_drop: [ALL]
@@ -143,9 +169,6 @@ networks:
   internal:
     name: proguzellik_prod_internal
     internal: true
-  edge:
-    name: ${EDGE_NETWORK:-edge_proxy}
-    external: true
 
 volumes:
   pg_data:
