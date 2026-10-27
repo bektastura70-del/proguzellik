@@ -36,7 +36,7 @@ export async function createTenantWithUser(
     },
   });
   const user = await db.user.create({
-    data: { email: opts.email, passwordHash: hash, fullName: opts.name + " Yetkili", isPlatformAdmin: !!opts.platformAdmin },
+    data: { email: opts.email, passwordHash: hash, fullName: opts.name + " Yetkili", isPlatformAdmin: !!opts.platformAdmin, emailVerifiedAt: new Date() },
   });
   await db.membership.create({ data: { tenantId: tenant.id, userId: user.id, role: opts.role ?? "OWNER" } });
   return { tenant, user };
@@ -101,4 +101,38 @@ export function futureAt(daysAhead: number, hhmm: string) {
   const day = new Date(Date.now() + daysAhead * 86_400_000).toISOString().slice(0, 10);
   const [h, m] = hhmm.split(":").map(Number);
   return zonedTime(day, h * 60 + m, "Europe/Istanbul").toISOString();
+}
+
+import { currentStep, totp } from "../src/security/crypto";
+
+/**
+ * Testte geçerli TOTP kodu üretir. Sunucu aynı 30 sn'lik adımın tekrar kullanımını reddettiği için,
+ * zamanın ilerlemesini simüle etmek üzere kullanıcının son kullanılan adımı sıfırlanır (yalnızca test).
+ */
+export async function freshTotp(email: string, secret: string) {
+  const db = owner();
+  await db.user.update({ where: { email }, data: { mfaLastStep: null } });
+  await db.$disconnect();
+  return totp(secret, currentStep());
+}
+let lastStepUsed = 0;
+export const nextTotp = (secret: string) => totp(secret, currentStep());
+
+/** Kullanıcı için 2FA'yı açar ve 2FA ile yeni oturum token'ı döner. */
+export async function enableMfa(app: INestApplication, email: string, password = TEST_PASSWORD) {
+  const server = app.getHttpServer();
+  const t1 = (await request(server).post("/auth/login").send({ email, password }).expect(200)).body.accessToken as string;
+  const setup = await request(server).post("/auth/mfa/setup").set("Authorization", `Bearer ${t1}`).send({ password }).expect(200);
+  const secret = setup.body.secret as string;
+  const en = await request(server).post("/auth/mfa/enable").set("Authorization", `Bearer ${t1}`).send({ code: totp(secret, currentStep()) }).expect(200);
+  lastStepUsed = currentStep();
+  void lastStepUsed;
+  return { token: t1, secret, recoveryCodes: en.body.recoveryCodes as string[] };
+}
+
+export async function loginWithMfa(app: INestApplication, email: string, secret: string, password = TEST_PASSWORD) {
+  const server = app.getHttpServer();
+  const r = await request(server).post("/auth/login").send({ email, password }).expect(200);
+  const v = await request(server).post("/auth/mfa/verify").send({ mfaToken: r.body.mfaToken, code: await freshTotp(email, secret) }).expect(200);
+  return v.body.accessToken as string;
 }

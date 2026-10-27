@@ -34,6 +34,9 @@ model Tenant {
   planCode             PlanCode     @default(PROFESSIONAL)
   trialEndsAt          DateTime?
   onlineBookingEnabled Boolean      @default(true)
+  requireMfa           Boolean      @default(false)
+  pastDueSince         DateTime?
+  limitExceededAt      DateTime?
   phone                String?
   email                String?
   address              String?
@@ -52,21 +55,30 @@ model Tenant {
 }
 
 model User {
-  id                 String    @id @default(uuid()) @db.Uuid
-  email              String    @unique
-  passwordHash       String
-  fullName           String
-  phone              String?
-  isPlatformAdmin    Boolean   @default(false)
-  isActive           Boolean   @default(true)
-  mustChangePassword Boolean   @default(false)
-  failedLogins       Int       @default(0)
-  lockedUntil        DateTime?
-  lastLoginAt        DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                  String    @id @default(uuid()) @db.Uuid
+  email               String    @unique
+  passwordHash        String
+  fullName            String
+  phone               String?
+  isPlatformAdmin     Boolean   @default(false)
+  isActive            Boolean   @default(true)
+  mustChangePassword  Boolean   @default(false)
+  emailVerifiedAt     DateTime?
+  mfaSecretEnc        String?
+  mfaPendingSecretEnc String?
+  mfaEnabledAt        DateTime?
+  mfaLastStep         Int?
+  mfaFailedAttempts   Int       @default(0)
+  failedLogins        Int       @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  memberships Membership[]
+  memberships   Membership[]
+  sessions      Session[]
+  authTokens    AuthToken[]
+  recoveryCodes RecoveryCode[]
 }
 
 model Membership {
@@ -542,6 +554,7 @@ model SubscriptionPayment {
   provider       String
   providerRef    String?
   description    String?
+  idempotencyKey String?  @unique
   createdAt      DateTime @default(now())
 
   subscription Subscription @relation(fields: [tenantId, subscriptionId], references: [tenantId, id], onDelete: Cascade)
@@ -580,4 +593,100 @@ model Notification {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, appointmentId])
+}
+
+// ---------------------------------------------------------------------
+// Kimlik doğrulama: oturumlar, tek kullanımlık belirteçler, 2FA kurtarma kodları
+// (kiracıya ait değil; yalnızca platform rolü erişir)
+// ---------------------------------------------------------------------
+model Session {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  createdAt   DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  ip          String?
+  userAgent   String?
+  mfaVerified Boolean   @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+}
+
+enum AuthTokenType {
+  PASSWORD_RESET
+  EMAIL_VERIFY
+}
+
+model AuthToken {
+  id        String        @id @default(uuid()) @db.Uuid
+  userId    String        @db.Uuid
+  type      AuthTokenType
+  tokenHash String        @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime      @default(now())
+  ip        String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+model RecoveryCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Kayıtlı ödeme yöntemi: yalnızca sağlayıcı belirteci (kart verisi asla saklanmaz).
+model SavedPaymentMethod {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  provider  String
+  token     String
+  label     String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+/// Gönderilen e-postaların kaydı. Test modunda gövde saklanır; gerçek modda saklanmaz.
+model OutboundEmail {
+  id                String    @id @default(uuid()) @db.Uuid
+  to                String
+  template          String
+  subject           String
+  body              String?
+  status            String
+  provider          String
+  providerMessageId String?
+  dedupeKey         String?   @unique
+  error             String?
+  createdAt         DateTime  @default(now())
+  sentAt            DateTime?
+
+  @@index([to, createdAt])
+}
+
+/// Zamanlanmış görev çalıştırma kaydı (aynı gün ikinci kez çalışmayı önler).
+model JobRun {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String
+  runKey     String
+  status     String
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  result     Json?
+  error      String?
+
+  @@unique([name, runKey])
 }

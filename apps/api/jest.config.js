@@ -8,4 +8,6 @@ module.exports = {
   setupFiles: ["<rootDir>/test/setup-env.ts"],
   testTimeout: 30000,
   maxWorkers: 1,
+  forceExit: true,
+  detectOpenHandles: false,
 };

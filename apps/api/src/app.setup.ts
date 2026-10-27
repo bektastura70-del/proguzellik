@@ -7,7 +7,8 @@ import { loadEnv } from "./config/env";
 export function configureApp(app: INestApplication) {
   const env = loadEnv();
   const express = app as NestExpressApplication;
-  express.set("trust proxy", 1);
+  // Yalnızca güvenilir ters vekil arkasında (TRUST_PROXY=1) istemci IP'si X-Forwarded-For'dan alınır.
+  express.set("trust proxy", env.TRUST_PROXY === "1" ? 1 : false);
   express.disable("x-powered-by");
   app.enableCors({ origin: env.WEB_ORIGIN.split(","), credentials: false });
   app.use((_req: unknown, res: { setHeader(k: string, v: string): void }, next: () => void) => {

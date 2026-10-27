@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Patch } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Patch } from "@nestjs/common";
 import { z } from "zod";
-import { CurrentTenant, Roles, TenantInfo } from "../common/decorators";
+import { AuthUser, CurrentTenant, CurrentUser, Roles, TenantInfo } from "../common/decorators";
 import { phoneSchema } from "../common/schemas";
 import { ZodPipe } from "../common/zod.pipe";
 import { PrismaService } from "../prisma/prisma.service";
@@ -19,11 +19,12 @@ const settingsSchema = z.object({
     }
   }, "Geçersiz saat dilimi").optional(),
   onlineBookingEnabled: z.boolean().optional(),
+  requireMfa: z.boolean().optional(),
 });
 
 const PUBLIC_FIELDS = {
   id: true, name: true, slug: true, phone: true, email: true, address: true, timezone: true,
-  onlineBookingEnabled: true, status: true, planCode: true, trialEndsAt: true,
+  onlineBookingEnabled: true, requireMfa: true, status: true, planCode: true, trialEndsAt: true,
 } as const;
 
 @Controller("settings")
@@ -38,7 +39,18 @@ export class SettingsController {
 
   @Patch()
   @Roles("OWNER", "MANAGER")
-  update(@CurrentTenant() t: TenantInfo, @Body(new ZodPipe(settingsSchema)) b: z.infer<typeof settingsSchema>) {
-    return this.prisma.withTenant(t, (tx) => tx.tenant.update({ where: { id: t.tenantId }, data: b, select: PUBLIC_FIELDS }));
+  async update(@CurrentTenant() t: TenantInfo, @CurrentUser() u: AuthUser, @Body(new ZodPipe(settingsSchema)) b: z.infer<typeof settingsSchema>) {
+    if (b.requireMfa !== undefined) {
+      if (t.role !== "OWNER") throw new ForbiddenException("2FA zorunluluğunu yalnızca işletme sahibi değiştirebilir");
+      // Sahip kendini kilitlememesi için önce kendi 2FA'sını açmış olmalı.
+      if (b.requireMfa && !u.mfaVerified) throw new BadRequestException("Önce kendi hesabınızda iki adımlı doğrulamayı açın ve 2FA ile giriş yapın");
+    }
+    return this.prisma.withTenant(t, async (tx) => {
+      const r = await tx.tenant.update({ where: { id: t.tenantId }, data: b, select: PUBLIC_FIELDS });
+      if (b.requireMfa !== undefined) {
+        await tx.auditLog.create({ data: { tenantId: t.tenantId, actorId: t.userId, action: "tenant.require_mfa_changed", metadata: { requireMfa: b.requireMfa } } });
+      }
+      return r;
+    });
   }
 }

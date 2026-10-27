@@ -23,6 +23,9 @@ export const AllowInactive = () => SetMetadata(ALLOW_INACTIVE, true);
 export interface AuthUser {
   id: string;
   isPlatformAdmin: boolean;
+  sessionId: string;
+  mfaVerified: boolean;
+  mfaEnabled: boolean;
 }
 
 export interface TenantInfo {

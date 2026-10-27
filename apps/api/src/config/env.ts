@@ -23,6 +23,24 @@ const schema = z.object({
   // Yapay zekâ asistanı: varsayılan "mock" (kural tabanlı). "anthropic" Claude API kullanır.
   AI_MODE: z.enum(["mock", "anthropic"]).default("mock"),
   AI_MODEL: z.string().default("claude-opus-5-5"),
+  // Kimlik doğrulama / oturum
+  MFA_ENCRYPTION_KEY: z.string().regex(/^[0-9a-f]{64}$/i, "MFA_ENCRYPTION_KEY 64 karakter hex olmalı"),
+  MFA_ENFORCE_PLATFORM: z.enum(["0", "1"]).default("1"),
+  SESSION_TTL_HOURS: z.coerce.number().min(1).max(72).default(8),
+  SESSION_IDLE_MINUTES: z.coerce.number().min(5).max(1440).default(120),
+  // E-posta: "mock" gönderim yapmaz (kayıt + log); "smtp" SMTP_URL ile gönderir.
+  EMAIL_MODE: z.enum(["mock", "smtp"]).default("mock"),
+  SMTP_URL: z.string().optional(),
+  EMAIL_FROM: z.string().default("ProGüzellik <no-reply@proguzellik.local>"),
+  APP_URL: z.string().optional(),
+  // Ödeme: yalnızca test sağlayıcısı uygulanmıştır.
+  PAYMENT_MODE: z.enum(["mock"]).default("mock"),
+  // Zamanlanmış görevler
+  JOBS_ENABLED: z.enum(["0", "1"]).default("1"),
+  JOBS_CRON: z.string().default("0 3 * * *"),
+  BILLING_GRACE_DAYS: z.coerce.number().min(0).max(60).default(7),
+  TRIAL_REMINDER_DAYS: z.coerce.number().min(1).max(14).default(3),
+  TRUST_PROXY: z.enum(["0", "1"]).default("1"),
 });
 
 export type Env = z.infer<typeof schema>;
@@ -42,4 +60,35 @@ export function loadEnv(): Env {
   }
   cached = parsed.data;
   return cached;
+}
+
+export const appUrl = (env: Env) => (env.APP_URL ?? env.WEB_ORIGIN.split(",")[0]).replace(/\/$/, "");
+
+/**
+ * Canlı ortam kontrolleri. "error" olanlar uygulamanın açılmasını engeller.
+ */
+export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env) {
+  const issues: { level: "error" | "warn"; message: string }[] = [];
+  const err = (message: string) => issues.push({ level: "error", message });
+  const warn = (message: string) => issues.push({ level: "warn", message });
+  if (/^(e2e|test|dev|change)/i.test(env.JWT_SECRET) || new Set(env.JWT_SECRET).size < 12) err("JWT_SECRET zayıf görünüyor; `openssl rand -hex 32` ile üretin");
+  for (const k of ["APP_DATABASE_URL", "PLATFORM_DATABASE_URL"] as const) {
+    if (/_dev@|:postgres@|proguzellik_dev/.test(env[k])) err(`${k} geliştirme parolası içeriyor`);
+    if (/127\.0\.0\.1|localhost/.test(env[k])) warn(`${k} yerel bir veritabanını gösteriyor`);
+  }
+  if (raw.DATABASE_URL) warn("DATABASE_URL (migration sahibi) uygulama sürecinde tanımlı olmamalı; yalnızca migration adımında verin");
+  for (const o of env.WEB_ORIGIN.split(",")) if (!o.startsWith("https://")) err(`WEB_ORIGIN https olmalı: ${o}`);
+  if (env.APP_URL && !env.APP_URL.startsWith("https://")) err("APP_URL https olmalı");
+  if (env.MFA_ENFORCE_PLATFORM !== "1") err("MFA_ENFORCE_PLATFORM=1 olmalı (SaaS sahibi hesapları için 2FA zorunlu)");
+  if (env.EMAIL_MODE === "mock") warn("EMAIL_MODE=mock: parola sıfırlama ve doğrulama e-postaları gönderilmez");
+  if (env.EMAIL_MODE === "smtp" && !env.SMTP_URL) err("EMAIL_MODE=smtp için SMTP_URL gerekli");
+  if (env.WHATSAPP_MODE === "mock") warn("WHATSAPP_MODE=mock: WhatsApp mesajları gönderilmez");
+  if (env.WHATSAPP_MODE === "cloud") {
+    for (const k of ["WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN"] as const) if (!env[k]) err(`${k} gerekli`);
+  }
+  if (env.PAYMENT_MODE === "mock") warn("PAYMENT_MODE=mock: gerçek ödeme alınmaz; canlı satıştan önce ödeme sağlayıcısı entegre edilmeli");
+  if (env.AI_MODE === "anthropic" && !raw.ANTHROPIC_API_KEY) err("AI_MODE=anthropic için ANTHROPIC_API_KEY gerekli");
+  if (env.JOBS_ENABLED !== "1") warn("JOBS_ENABLED=0: günlük abonelik görevi bu süreçte çalışmaz (başka bir süreçte çalıştığından emin olun)");
+  if (raw.DISABLE_RATE_LIMIT === "1") err("DISABLE_RATE_LIMIT canlıda kullanılamaz");
+  return issues;
 }

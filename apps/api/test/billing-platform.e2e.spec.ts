@@ -2,7 +2,7 @@ import { INestApplication } from "@nestjs/common";
 import * as bcrypt from "bcryptjs";
 import request from "supertest";
 import { PrismaClient } from "@prisma/client";
-import { api, createApp, createTenantWithUser, login, owner, resetDb, TEST_PASSWORD } from "./helpers";
+import { api, createApp, createTenantWithUser, enableMfa, login, owner, resetDb, TEST_PASSWORD } from "./helpers";
 
 describe("Abonelik paketleri, deneme süresi ve SaaS sahibi paneli", () => {
   const su = owner();
@@ -24,7 +24,8 @@ describe("Abonelik paketleri, deneme süresi ve SaaS sahibi paneli", () => {
     app = await createApp();
     a = api(app, await login(app, "a@test.local"), A.tenant.id);
     b = api(app, await login(app, "b@test.local"), B.tenant.id);
-    admin = api(app, await login(app, "owner@proguzellik.test"));
+    // SaaS yöneticisi için 2FA zorunlu: test hesabında açılır.
+    admin = api(app, (await enableMfa(app, "owner@proguzellik.test")).token);
   });
   afterAll(async () => {
     await app.close();
@@ -139,11 +140,12 @@ describe("Abonelik paketleri, deneme süresi ve SaaS sahibi paneli", () => {
     expect(p.body.monthlyPrice).toBe("599");
   });
 
-  it("dönem sonu: iptal istenen abonelik sona erer, diğeri ödeme bekler", async () => {
+  it("dönem sonu: iptal istenen abonelik sona erer, diğeri ödemesi alınamayınca ödeme bekler", async () => {
     await a.post("/subscription/cancel").expect(200);
     await su.subscription.updateMany({ where: { status: "ACTIVE" }, data: { currentPeriodEnd: new Date(Date.now() - 1000) } });
-    const r = await admin.post("/platform/lifecycle/run").expect(201);
-    expect(r.body.processed).toBe(2);
+    await su.savedPaymentMethod.updateMany({ where: { tenantId: B.tenant.id }, data: { token: "tok_expired" } });
+    const r = await admin.post("/platform/lifecycle/run?force=true").expect(201);
+    expect(r.body.result).toMatchObject({ cancelledAtPeriodEnd: 1, renewalFailed: 1 });
     expect((await su.tenant.findUniqueOrThrow({ where: { id: A.tenant.id } })).status).toBe("CANCELLED");
     expect((await su.tenant.findUniqueOrThrow({ where: { id: B.tenant.id } })).status).toBe("PAST_DUE");
     await a.get("/customers").expect(402);

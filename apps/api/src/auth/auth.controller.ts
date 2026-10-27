@@ -1,15 +1,11 @@
-import { Body, Controller, Get, HttpCode, Post, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { z } from "zod";
 import { AuthUser, CurrentUser, Public } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
-import { AuthService } from "./auth.service";
+import { AuthService, ClientMeta } from "./auth.service";
 import { RateLimitService } from "./rate-limit.service";
-
-const loginSchema = z.object({
-  email: z.string().email().max(200),
-  password: z.string().min(1).max(200),
-});
+import { SessionService } from "./session.service";
 
 export const passwordSchema = z
   .string()
@@ -18,8 +14,8 @@ export const passwordSchema = z
   .regex(/[A-Za-zÇĞİÖŞÜçğıöşü]/, "Parola harf içermeli")
   .regex(/[0-9]/, "Parola rakam içermeli");
 
+const loginSchema = z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) });
 const changeSchema = z.object({ currentPassword: z.string().min(1).max(200), newPassword: passwordSchema });
-
 const registerSchema = z.object({
   businessName: z.string().trim().min(2).max(120),
   fullName: z.string().trim().min(2).max(120),
@@ -29,11 +25,24 @@ const registerSchema = z.object({
   planCode: z.enum(["STARTER", "PROFESSIONAL", "SMART"]).optional(),
   kvkkAccepted: z.literal(true, { errorMap: () => ({ message: "KVKK aydınlatma metni onaylanmalı" }) }),
 });
+const forgotSchema = z.object({ email: z.string().email().max(200) });
+const tokenSchema = z.string().min(20).max(200);
+const resetSchema = z.object({ token: tokenSchema, newPassword: passwordSchema });
+const verifySchema = z.object({ token: tokenSchema });
+const mfaVerifySchema = z
+  .object({ mfaToken: z.string().min(10).max(2000), code: z.string().regex(/^\d{6}$/).optional(), recoveryCode: z.string().min(8).max(20).optional() })
+  .refine((v) => !!v.code !== !!v.recoveryCode, "Doğrulama kodu veya kurtarma kodu girin");
+const passwordOnly = z.object({ password: z.string().min(1).max(200) });
+const codeOnly = z.object({ code: z.string().regex(/^\d{6}$/, "6 haneli kod girin") });
+const passwordAndCode = z.object({ password: z.string().min(1).max(200), code: z.string().regex(/^\d{6}$/, "6 haneli kod girin") });
+
+const meta = (req: Request): ClientMeta => ({ ip: req.ip, userAgent: req.headers["user-agent"] });
 
 @Controller("auth")
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
+    private readonly sessions: SessionService,
     private readonly rateLimit: RateLimitService,
   ) {}
 
@@ -41,17 +50,56 @@ export class AuthController {
   @Post("login")
   @HttpCode(200)
   login(@Body(new ZodPipe(loginSchema)) body: z.infer<typeof loginSchema>, @Req() req: Request) {
-    // IP başına genel sınır + IP/e-posta çifti başına daha sıkı sınır.
     this.rateLimit.hit(`login-ip:${req.ip}`, 100, 15 * 60_000);
     this.rateLimit.hit(`login:${req.ip}:${body.email.toLowerCase()}`, 10, 15 * 60_000);
-    return this.auth.login(body.email, body.password, req.ip);
+    return this.auth.login(body.email, body.password, meta(req));
+  }
+
+  @Public()
+  @Post("mfa/verify")
+  @HttpCode(200)
+  mfaVerify(@Body(new ZodPipe(mfaVerifySchema)) body: z.infer<typeof mfaVerifySchema>, @Req() req: Request) {
+    this.rateLimit.hit(`mfa:${req.ip}`, 20, 15 * 60_000);
+    return this.auth.verifyMfa(body.mfaToken, body, meta(req));
   }
 
   @Public()
   @Post("register")
   register(@Body(new ZodPipe(registerSchema)) body: z.infer<typeof registerSchema>, @Req() req: Request) {
     this.rateLimit.hit(`register:${req.ip}`, 10, 60 * 60_000);
-    return this.auth.registerBusiness(body);
+    return this.auth.registerBusiness(body, meta(req));
+  }
+
+  @Public()
+  @Post("forgot-password")
+  @HttpCode(200)
+  forgot(@Body(new ZodPipe(forgotSchema)) body: z.infer<typeof forgotSchema>, @Req() req: Request) {
+    this.rateLimit.hit(`forgot-ip:${req.ip}`, 10, 60 * 60_000);
+    this.rateLimit.hit(`forgot:${body.email.toLowerCase()}`, 3, 60 * 60_000);
+    return this.auth.forgotPassword(body.email, req.ip);
+  }
+
+  @Public()
+  @Post("reset-password")
+  @HttpCode(200)
+  reset(@Body(new ZodPipe(resetSchema)) body: z.infer<typeof resetSchema>, @Req() req: Request) {
+    this.rateLimit.hit(`reset:${req.ip}`, 20, 60 * 60_000);
+    return this.auth.resetPassword(body.token, body.newPassword, req.ip);
+  }
+
+  @Public()
+  @Post("verify-email")
+  @HttpCode(200)
+  verifyEmail(@Body(new ZodPipe(verifySchema)) body: z.infer<typeof verifySchema>, @Req() req: Request) {
+    this.rateLimit.hit(`verify:${req.ip}`, 30, 60 * 60_000);
+    return this.auth.verifyEmail(body.token);
+  }
+
+  @Post("resend-verification")
+  @HttpCode(200)
+  resend(@CurrentUser() u: AuthUser) {
+    this.rateLimit.hit(`resend:${u.id}`, 3, 60 * 60_000);
+    return this.auth.sendVerification(u.id);
   }
 
   @Get("me")
@@ -61,12 +109,61 @@ export class AuthController {
 
   @Post("change-password")
   @HttpCode(200)
-  changePassword(
-    @CurrentUser() user: AuthUser,
-    @Body(new ZodPipe(changeSchema)) body: z.infer<typeof changeSchema>,
-    @Req() req: Request,
-  ) {
-    this.rateLimit.hit(`pw:${user.id}`, 10, 15 * 60_000);
-    return this.auth.changePassword(user.id, body.currentPassword, body.newPassword, req.ip);
+  changePassword(@CurrentUser() u: AuthUser, @Body(new ZodPipe(changeSchema)) body: z.infer<typeof changeSchema>, @Req() req: Request) {
+    this.rateLimit.hit(`pw:${u.id}`, 10, 15 * 60_000);
+    return this.auth.changePassword(u.id, u.sessionId, body.currentPassword, body.newPassword, req.ip);
+  }
+
+  /* -------- Oturumlar -------- */
+  @Get("sessions")
+  async listSessions(@CurrentUser() u: AuthUser) {
+    const list = await this.sessions.list(u.id);
+    return list.map((s) => ({ ...s, current: s.id === u.sessionId }));
+  }
+
+  @Delete("sessions/:id")
+  revokeSession(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string) {
+    return this.sessions.revoke(u.id, id);
+  }
+
+  @Post("logout")
+  @HttpCode(200)
+  logout(@CurrentUser() u: AuthUser) {
+    return this.sessions.revoke(u.id, u.sessionId);
+  }
+
+  @Post("logout-others")
+  @HttpCode(200)
+  logoutOthers(@CurrentUser() u: AuthUser) {
+    return this.sessions.revokeAll(u.id, u.sessionId);
+  }
+
+  /* -------- İki adımlı doğrulama -------- */
+  @Post("mfa/setup")
+  @HttpCode(200)
+  mfaSetup(@CurrentUser() u: AuthUser, @Body(new ZodPipe(passwordOnly)) b: z.infer<typeof passwordOnly>) {
+    this.rateLimit.hit(`mfa-setup:${u.id}`, 10, 15 * 60_000);
+    return this.auth.mfaSetup(u.id, b.password);
+  }
+
+  @Post("mfa/enable")
+  @HttpCode(200)
+  mfaEnable(@CurrentUser() u: AuthUser, @Body(new ZodPipe(codeOnly)) b: z.infer<typeof codeOnly>) {
+    this.rateLimit.hit(`mfa-enable:${u.id}`, 10, 15 * 60_000);
+    return this.auth.mfaEnable(u.id, u.sessionId, b.code);
+  }
+
+  @Post("mfa/disable")
+  @HttpCode(200)
+  mfaDisable(@CurrentUser() u: AuthUser, @Body(new ZodPipe(passwordAndCode)) b: z.infer<typeof passwordAndCode>) {
+    this.rateLimit.hit(`mfa-disable:${u.id}`, 10, 15 * 60_000);
+    return this.auth.mfaDisable(u.id, b.password, b.code);
+  }
+
+  @Post("mfa/recovery-codes")
+  @HttpCode(200)
+  regenerate(@CurrentUser() u: AuthUser, @Body(new ZodPipe(passwordAndCode)) b: z.infer<typeof passwordAndCode>) {
+    this.rateLimit.hit(`mfa-rc:${u.id}`, 5, 15 * 60_000);
+    return this.auth.regenerateRecoveryCodes(u.id, b.password, b.code);
   }
 }

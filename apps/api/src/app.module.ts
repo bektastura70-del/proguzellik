@@ -18,8 +18,10 @@ import { SettingsModule } from "./settings/settings.module";
 import { PublicBookingModule } from "./public-booking/public-booking.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { AssistantModule } from "./assistant/assistant.module";
+import { EmailModule } from "./email/email.module";
+import { JobsModule } from "./jobs/jobs.module";
 
 @Module({
-  imports: [PrismaModule, AuditModule, AuthModule, HealthModule, UsersModule, CustomersModule, CatalogModule, StaffModule, AppointmentsModule, PackagesModule, FinanceModule, StockModule, ReportsModule, BillingModule, PlatformModule, SettingsModule, PublicBookingModule, NotificationsModule, AssistantModule],
+  imports: [PrismaModule, AuditModule, EmailModule, AuthModule, HealthModule, UsersModule, CustomersModule, CatalogModule, StaffModule, AppointmentsModule, PackagesModule, FinanceModule, StockModule, ReportsModule, BillingModule, PlatformModule, SettingsModule, PublicBookingModule, NotificationsModule, AssistantModule, JobsModule],
 })
 export class AppModule {}

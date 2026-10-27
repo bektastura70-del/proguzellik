@@ -6,6 +6,7 @@ import { AuthController } from "./auth.controller";
 import { AuthGuard } from "./auth.guard";
 import { AuthService } from "./auth.service";
 import { RateLimitService } from "./rate-limit.service";
+import { SessionService } from "./session.service";
 
 @Global()
 @Module({
@@ -15,14 +16,14 @@ import { RateLimitService } from "./rate-limit.service";
         const env = loadEnv();
         return {
           secret: env.JWT_SECRET,
-          signOptions: { expiresIn: env.JWT_EXPIRES_IN as `${number}h`, algorithm: "HS256" },
+          signOptions: { algorithm: "HS256" },
           verifyOptions: { algorithms: ["HS256"] },
         };
       },
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, RateLimitService, { provide: APP_GUARD, useClass: AuthGuard }],
-  exports: [AuthService, RateLimitService],
+  providers: [AuthService, RateLimitService, SessionService, { provide: APP_GUARD, useClass: AuthGuard }],
+  exports: [AuthService, RateLimitService, SessionService],
 })
 export class AuthModule {}

@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { AuditService } from "../audit/audit.service";
 import { SubscriptionsService } from "../billing/subscriptions.service";
+import { JobsService } from "../jobs/jobs.service";
 import { AuthUser, CurrentUser, PlatformAdmin } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
 import { PrismaService } from "../prisma/prisma.service";
@@ -31,6 +32,7 @@ export class PlatformController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly subs: SubscriptionsService,
+    private readonly jobs: JobsService,
     private readonly audit: AuditService,
   ) {}
 
@@ -117,9 +119,16 @@ export class PlatformController {
     return plan;
   }
 
+  /** Günlük abonelik görevini elle tetikler; aynı gün ikinci kez yalnızca force=true ile çalışır. */
   @Post("lifecycle/run")
-  runLifecycle() {
-    return this.subs.runLifecycle();
+  runLifecycle(@CurrentUser() u: AuthUser, @Query("force") force?: string) {
+    void this.audit.logPlatform({ actorId: u.id, action: "platform.lifecycle_triggered", metadata: { force: force === "true" } });
+    return this.jobs.runDaily({ force: force === "true" });
+  }
+
+  @Get("jobs")
+  jobRuns() {
+    return this.jobs.recentRuns();
   }
 
   @Get("audit")
