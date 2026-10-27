@@ -11,7 +11,7 @@ export const owner = () => new PrismaClient({ datasourceUrl: process.env.DATABAS
 
 export async function resetDb(db: PrismaClient) {
   const tables = await db.$queryRaw<{ tablename: string }[]>`
-    SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`;
+    SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename NOT IN ('_prisma_migrations', 'Plan')`;
   if (tables.length) {
     await db.$executeRawUnsafe(
       `TRUNCATE ${tables.map((t) => `"${t.tablename}"`).join(", ")} RESTART IDENTITY CASCADE`,

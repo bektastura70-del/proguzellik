@@ -12,8 +12,11 @@ import { PackagesModule } from "./packages/packages.module";
 import { FinanceModule } from "./finance/finance.module";
 import { StockModule } from "./stock/stock.module";
 import { ReportsModule } from "./reports/reports.module";
+import { BillingModule } from "./billing/billing.module";
+import { PlatformModule } from "./platform/platform.module";
+import { SettingsModule } from "./settings/settings.module";
 
 @Module({
-  imports: [PrismaModule, AuditModule, AuthModule, HealthModule, UsersModule, CustomersModule, CatalogModule, StaffModule, AppointmentsModule, PackagesModule, FinanceModule, StockModule, ReportsModule],
+  imports: [PrismaModule, AuditModule, AuthModule, HealthModule, UsersModule, CustomersModule, CatalogModule, StaffModule, AppointmentsModule, PackagesModule, FinanceModule, StockModule, ReportsModule, BillingModule, PlatformModule, SettingsModule],
 })
 export class AppModule {}

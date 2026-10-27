@@ -12,7 +12,7 @@ import { Reflector } from "@nestjs/core";
 import { JwtService } from "@nestjs/jwt";
 import type { Role } from "@prisma/client";
 import type { Request } from "express";
-import { IS_PUBLIC, PLATFORM_ADMIN, ROLES } from "../common/decorators";
+import { ALLOW_INACTIVE, FEATURE, IS_PUBLIC, PLATFORM_ADMIN, ROLES } from "../common/decorators";
 import { uuidParam } from "../common/zod.pipe";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -66,21 +66,37 @@ export class AuthGuard implements CanActivate {
     }
     const membership = await this.prisma.platform.membership.findUnique({
       where: { tenantId_userId: { tenantId, userId: user.id } },
-      select: { role: true, isActive: true, tenant: { select: { status: true, trialEndsAt: true } } },
+      select: {
+        role: true,
+        isActive: true,
+        tenant: { select: { status: true, trialEndsAt: true, planCode: true, plan: { select: { features: true, name: true } } } },
+      },
     });
     if (!membership || !membership.isActive) throw new ForbiddenException("Bu işletmeye erişiminiz yok");
 
     const t = membership.tenant;
-    if (t.status === "SUSPENDED" || t.status === "CANCELLED") {
-      throw new ForbiddenException("İşletme hesabı askıya alınmış");
+    const allowInactive = this.reflector.getAllAndOverride<boolean>(ALLOW_INACTIVE, targets);
+    if (t.status === "SUSPENDED") throw new ForbiddenException("İşletme hesabı askıya alınmış");
+    if (!allowInactive) {
+      if (t.status === "CANCELLED") {
+        throw new HttpException("Abonelik sona erdi. Lütfen bir paket seçin.", HttpStatus.PAYMENT_REQUIRED);
+      }
+      const trialOver = t.status === "TRIAL" && t.trialEndsAt && t.trialEndsAt < new Date();
+      if ((trialOver || t.status === "PAST_DUE") && req.method !== "GET") {
+        throw new HttpException(
+          trialOver ? "Deneme süresi doldu. Lütfen bir paket seçin." : "Abonelik ödemesi bekleniyor.",
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
     }
-    if (t.status === "TRIAL" && t.trialEndsAt && t.trialEndsAt < new Date() && req.method !== "GET") {
-      throw new HttpException("Deneme süresi doldu. Lütfen bir paket seçin.", HttpStatus.PAYMENT_REQUIRED);
+    const feature = this.reflector.getAllAndOverride<string | undefined>(FEATURE, targets);
+    if (feature && !t.plan.features.includes(feature)) {
+      throw new ForbiddenException(`Bu özellik ${t.plan.name} paketinizde yok. Paketinizi yükseltin.`);
     }
     if (roles.length > 0 && !roles.includes(membership.role)) {
       throw new ForbiddenException("Bu işlem için yetkiniz yok");
     }
-    req.tenant = { tenantId, userId: user.id, role: membership.role };
+    req.tenant = { tenantId, userId: user.id, role: membership.role, plan: t.planCode, features: t.plan.features };
     return true;
   }
 }

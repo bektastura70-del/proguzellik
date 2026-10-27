@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query } from "@nestjs/common";
 import { z } from "zod";
-import { CurrentTenant, Roles, TenantInfo } from "../common/decorators";
+import { CurrentTenant, RequiresFeature, Roles, TenantInfo } from "../common/decorators";
 import { moneySchema } from "../common/schemas";
 import { ZodPipe } from "../common/zod.pipe";
 import { methodSchema } from "../packages/packages.controller";
@@ -33,6 +33,7 @@ const saleSchema = z.object({
 const consumablesSchema = z.object({ items: z.array(z.object({ productId: z.string().uuid(), qty })).max(50) });
 const listSchema = z.object({ low: z.enum(["true", "false"]).optional(), kind: z.enum(["RETAIL", "CONSUMABLE"]).optional() });
 
+@RequiresFeature("STOCK")
 @Controller()
 export class StockController {
   constructor(private readonly stock: StockService) {}

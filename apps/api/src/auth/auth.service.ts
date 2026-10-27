@@ -81,7 +81,9 @@ export class AuthService {
           where: { isActive: true },
           select: {
             role: true,
-            tenant: { select: { id: true, name: true, slug: true, status: true, trialEndsAt: true } },
+            tenant: {
+              select: { id: true, name: true, slug: true, status: true, trialEndsAt: true, planCode: true, plan: { select: { name: true, features: true } } },
+            },
           },
         },
       },
@@ -96,6 +98,7 @@ export class AuthService {
     email: string;
     password: string;
     phone?: string;
+    planCode?: "STARTER" | "PROFESSIONAL" | "SMART";
   }) {
     const db = this.prisma.platform;
     const email = input.email.toLowerCase();
@@ -113,6 +116,7 @@ export class AuthService {
           name: input.businessName,
           slug,
           status: "TRIAL",
+          planCode: input.planCode ?? "PROFESSIONAL",
           trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 86_400_000),
           phone: input.phone,
           email,

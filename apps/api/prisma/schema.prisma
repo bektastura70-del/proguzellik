@@ -27,24 +27,28 @@ enum Role {
 }
 
 model Tenant {
-  id          String       @id @default(uuid()) @db.Uuid
-  name        String
-  slug        String       @unique
-  status      TenantStatus @default(TRIAL)
-  trialEndsAt DateTime?
-  phone       String?
-  email       String?
-  address     String?
-  timezone    String       @default("Europe/Istanbul")
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id                   String       @id @default(uuid()) @db.Uuid
+  name                 String
+  slug                 String       @unique
+  status               TenantStatus @default(TRIAL)
+  planCode             PlanCode     @default(PROFESSIONAL)
+  trialEndsAt          DateTime?
+  onlineBookingEnabled Boolean      @default(true)
+  phone                String?
+  email                String?
+  address              String?
+  timezone             String       @default("Europe/Istanbul")
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
 
-  memberships Membership[]
-  auditLogs   AuditLog[]
-  customers   Customer[]
-  categories  ServiceCategory[]
-  services    Service[]
-  staff       StaffMember[]
+  memberships   Membership[]
+  auditLogs     AuditLog[]
+  customers     Customer[]
+  categories    ServiceCategory[]
+  services      Service[]
+  staff         StaffMember[]
+  plan          Plan              @relation(fields: [planCode], references: [code])
+  subscriptions Subscription[]
 }
 
 model User {
@@ -469,4 +473,77 @@ model ServiceConsumable {
   product Product @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Cascade)
 
   @@id([serviceId, productId])
+}
+
+// ---------------------------------------------------------------------
+// SaaS abonelik paketleri
+// ---------------------------------------------------------------------
+enum PlanCode {
+  STARTER
+  PROFESSIONAL
+  SMART
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+/// Global paket tanımları (kiracıya ait değil, herkes okuyabilir).
+model Plan {
+  code         PlanCode @id
+  name         String
+  maxStaff     Int
+  monthlyPrice Decimal  @db.Decimal(12, 2)
+  yearlyPrice  Decimal  @db.Decimal(12, 2)
+  features     String[]
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(0)
+
+  tenants       Tenant[]
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                 String             @id @default(uuid()) @db.Uuid
+  tenantId           String             @db.Uuid
+  planCode           PlanCode
+  billingCycle       BillingCycle
+  status             SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean            @default(false)
+  provider           String
+  providerRef        String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  tenant   Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan     Plan                  @relation(fields: [planCode], references: [code])
+  payments SubscriptionPayment[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId])
+}
+
+model SubscriptionPayment {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  subscriptionId String   @db.Uuid
+  amount         Decimal  @db.Decimal(12, 2)
+  status         String
+  provider       String
+  providerRef    String?
+  description    String?
+  createdAt      DateTime @default(now())
+
+  subscription Subscription @relation(fields: [tenantId, subscriptionId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
 }

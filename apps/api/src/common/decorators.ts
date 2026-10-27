@@ -12,6 +12,14 @@ export const Roles = (...roles: Role[]) => SetMetadata(ROLES, roles);
 export const PLATFORM_ADMIN = "platformAdmin";
 export const PlatformAdmin = () => SetMetadata(PLATFORM_ADMIN, true);
 
+export const FEATURE = "feature";
+/** Uç nokta işletmenin paketinde bu özelliğin olmasını ister (örn. AI_ASSISTANT). */
+export const RequiresFeature = (feature: string) => SetMetadata(FEATURE, feature);
+
+export const ALLOW_INACTIVE = "allowInactive";
+/** Aboneliği bitmiş/iptal edilmiş işletmelerin de erişebileceği uç noktalar (ödeme ekranı). */
+export const AllowInactive = () => SetMetadata(ALLOW_INACTIVE, true);
+
 export interface AuthUser {
   id: string;
   isPlatformAdmin: boolean;
@@ -21,7 +29,8 @@ export interface TenantInfo {
   tenantId: string;
   userId: string;
   role: Role;
-  plan?: string | null;
+  plan: string;
+  features: string[];
 }
 
 declare module "express" {

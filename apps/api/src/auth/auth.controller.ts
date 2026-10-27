@@ -24,6 +24,7 @@ const registerSchema = z.object({
   email: z.string().email().max(200),
   password: passwordSchema,
   phone: z.string().trim().max(30).optional(),
+  planCode: z.enum(["STARTER", "PROFESSIONAL", "SMART"]).optional(),
   kvkkAccepted: z.literal(true, { errorMap: () => ({ message: "KVKK aydınlatma metni onaylanmalı" }) }),
 });
 
