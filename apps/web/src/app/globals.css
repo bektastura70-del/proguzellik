@@ -1,1 +1,47 @@
 @import "tailwindcss";
+
+/* ProGüzellik tasarım belirteçleri: sıcak nötrler + mürdüm/gül vurgu */
+@theme {
+  --color-brand-50: #fbf4f7;
+  --color-brand-100: #f6e7ee;
+  --color-brand-200: #eccbda;
+  --color-brand-300: #dea3bd;
+  --color-brand-400: #c97399;
+  --color-brand-500: #b0507b;
+  --color-brand-600: #933c63;
+  --color-brand-700: #78304f;
+  --color-brand-800: #5f2a41;
+  --color-brand-900: #4a2535;
+  --color-sand-50: #faf8f5;
+  --color-sand-100: #f3efe9;
+  --color-sand-200: #e6dfd5;
+  --color-sand-300: #d3c8b9;
+  --color-ink: #231a1f;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  --radius-xl: 1rem;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  background: var(--color-sand-50);
+  color: var(--color-ink);
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
