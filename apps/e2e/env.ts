@@ -1,0 +1,22 @@
+/** E2E ortamı: geliştirme verisine dokunmamak için ayrı veritabanı ve portlar. */
+export const E2E_DB = "proguzellik_e2e";
+export const API_PORT = 4200;
+export const WEB_PORT = 3200;
+export const BASE_URL = `http://localhost:${WEB_PORT}`;
+export const PASSWORD = "E2eDemo12345";
+
+const host = "127.0.0.1:5435";
+export const apiEnv: Record<string, string> = {
+  DATABASE_URL: `postgresql://proguzellik:proguzellik_dev@${host}/${E2E_DB}`,
+  APP_DATABASE_URL: `postgresql://app_tenant:app_tenant_dev@${host}/${E2E_DB}`,
+  PLATFORM_DATABASE_URL: `postgresql://app_platform:app_platform_dev@${host}/${E2E_DB}`,
+  REDIS_URL: "redis://127.0.0.1:6381",
+  QUEUE_PREFIX: "proguzellik-e2e",
+  JWT_SECRET: "e2e-only-secret-0123456789abcdef0123456789abcdef",
+  API_PORT: String(API_PORT),
+  WEB_ORIGIN: `http://localhost:${WEB_PORT}`,
+  WHATSAPP_MODE: "mock",
+  AI_MODE: "mock",
+  SKIP_ENV_FILE: "1",
+  SEED_PASSWORD: PASSWORD,
+};

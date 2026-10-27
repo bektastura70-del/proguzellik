@@ -32,12 +32,21 @@ export function Label({ className, ...p }: React.LabelHTMLAttributes<HTMLLabelEl
   return <label className={cn("mb-1.5 block text-sm font-medium text-neutral-700", className)} {...p} />;
 }
 
+/** Etiketi alt bileşene (input/select/textarea) erişilebilir şekilde bağlar. */
 export function Field({ label, hint, children, className }: { label: string; hint?: string; children: React.ReactNode; className?: string }) {
+  const auto = React.useId();
+  const hintId = `${auto}-hint`;
+  let id = auto;
+  let child = children;
+  if (React.isValidElement<{ id?: string; "aria-describedby"?: string }>(children)) {
+    id = children.props.id ?? auto;
+    child = React.cloneElement(children, { id, ...(hint ? { "aria-describedby": hintId } : {}) });
+  }
   return (
     <div className={className}>
-      <Label>{label}</Label>
-      {children}
-      {hint && <p className="mt-1 text-xs text-neutral-500">{hint}</p>}
+      <Label htmlFor={id}>{label}</Label>
+      {child}
+      {hint && <p id={hintId} className="mt-1 text-xs text-neutral-500">{hint}</p>}
     </div>
   );
 }

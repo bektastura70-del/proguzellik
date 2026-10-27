@@ -16,7 +16,8 @@
     "db:seed": "pnpm --filter @proguzellik/api db:seed",
     "db:dev-roles": "pnpm --filter @proguzellik/api db:dev-roles",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
-    "infra:down": "docker compose -f infra/docker-compose.yml stop"
+    "infra:down": "docker compose -f infra/docker-compose.yml stop",
+    "test:e2e": "pnpm --filter @proguzellik/api build && pnpm --filter @proguzellik/web build && pnpm --filter @proguzellik/e2e test:e2e"
   },
   "devDependencies": {
     "turbo": "2.5.8",
