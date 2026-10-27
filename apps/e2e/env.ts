@@ -19,4 +19,11 @@ export const apiEnv: Record<string, string> = {
   AI_MODE: "mock",
   SKIP_ENV_FILE: "1",
   SEED_PASSWORD: PASSWORD,
+  MFA_ENCRYPTION_KEY: "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+  APP_URL: `http://localhost:${WEB_PORT}`,
+  EMAIL_MODE: "mock",
+  TRUST_PROXY: "0",
 };
+
+/** E2E veritabanında SQL çalıştırır (yalnızca test doğrulamaları için). */
+export const E2E_PSQL = `docker exec -i proguzellik-postgres psql -U proguzellik -d ${E2E_DB} -tA`;

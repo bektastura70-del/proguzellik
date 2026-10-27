@@ -120,7 +120,7 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
         <div className="truncate font-medium">{me.fullName}</div>
         <div className="truncate text-xs text-brand-100/70">{me.email}</div>
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
-          <Link href="/parola-degistir" className="text-xs text-brand-100/80 hover:text-white">Parolamı değiştir</Link>
+          <Link href="/guvenlik" className="text-xs text-brand-100/80 hover:text-white">Hesap güvenliği</Link>
           <button onClick={logout} className="inline-flex items-center gap-2 text-xs text-brand-100/80 hover:text-white">
             <LogOut className="size-4" /> Çıkış yap
           </button>
@@ -146,6 +146,13 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
         <span className="w-8" />
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+        {me.emailVerified === false && (
+          <div className="mb-6">
+            <Alert tone="amber">
+              E-posta adresiniz henüz doğrulanmadı. <Link href="/guvenlik" className="font-medium underline">Doğrulama e-postasını tekrar gönder</Link>
+            </Alert>
+          </div>
+        )}
         {trialDays !== null && (
           <div className="mb-6">
             <Alert tone={trialDays <= 3 ? "amber" : "brand"}>

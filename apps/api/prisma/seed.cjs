@@ -40,7 +40,7 @@ async function main() {
   await db.user.upsert({
     where: { email: "owner@proguzellik.local" },
     update: {},
-    create: { email: "owner@proguzellik.local", fullName: "Platform Yöneticisi", passwordHash: hash, isPlatformAdmin: true },
+    create: { email: "owner@proguzellik.local", fullName: "Platform Yöneticisi", passwordHash: hash, isPlatformAdmin: true, emailVerifiedAt: new Date() },
   });
 
   const tenant = await db.tenant.create({
@@ -50,9 +50,9 @@ async function main() {
     },
   });
   const T = tenant.id;
-  const owner = await db.user.create({ data: { email: "demo@proguzellik.local", fullName: "Deniz Demo", passwordHash: hash } });
-  const reception = await db.user.create({ data: { email: "resepsiyon@proguzellik.local", fullName: "Rana Resepsiyon", passwordHash: hash } });
-  const elifUser = await db.user.create({ data: { email: "elif@proguzellik.local", fullName: "Elif Uzman", passwordHash: hash } });
+  const owner = await db.user.create({ data: { email: "demo@proguzellik.local", fullName: "Deniz Demo", passwordHash: hash, emailVerifiedAt: new Date() } });
+  const reception = await db.user.create({ data: { email: "resepsiyon@proguzellik.local", fullName: "Rana Resepsiyon", passwordHash: hash, emailVerifiedAt: new Date() } });
+  const elifUser = await db.user.create({ data: { email: "elif@proguzellik.local", fullName: "Elif Uzman", passwordHash: hash, emailVerifiedAt: new Date() } });
   await db.membership.createMany({
     data: [
       { tenantId: T, userId: owner.id, role: "OWNER" },
@@ -177,7 +177,7 @@ async function main() {
 
   // İkinci örnek işletme (izolasyonu panelde görmek için)
   const other = await db.tenant.create({ data: { name: "Örnek Kuaför", slug: "ornek-kuafor", status: "ACTIVE", planCode: "STARTER", trialEndsAt: new Date(Date.now() - DAY) } });
-  const otherOwner = await db.user.create({ data: { email: "kuafor@proguzellik.local", fullName: "Kuaför Sahibi", passwordHash: hash } });
+  const otherOwner = await db.user.create({ data: { email: "kuafor@proguzellik.local", fullName: "Kuaför Sahibi", passwordHash: hash, emailVerifiedAt: new Date() } });
   await db.membership.create({ data: { tenantId: other.id, userId: otherOwner.id, role: "OWNER" } });
   await db.customer.create({ data: { tenantId: other.id, firstName: "Başka", lastName: "Müşteri", phone: "05559990000" } });
 

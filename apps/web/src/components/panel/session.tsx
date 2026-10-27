@@ -12,6 +12,8 @@ export interface Me {
   email: string;
   fullName: string;
   isPlatformAdmin: boolean;
+  emailVerified?: boolean;
+  mfaEnabled?: boolean;
   memberships: Membership[];
 }
 

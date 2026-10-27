@@ -1,12 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useSession } from "@/components/panel/session";
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Dialog, Field, Input, PageHeader, Select, Spinner, Table, Td, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { ROLE_TR } from "@/lib/format";
 
-type Settings = { name: string; slug: string; phone: string | null; email: string | null; address: string | null; timezone: string; onlineBookingEnabled: boolean };
+type Settings = { name: string; slug: string; phone: string | null; email: string | null; address: string | null; timezone: string; onlineBookingEnabled: boolean; requireMfa: boolean };
 type Member = { id: string; role: string; isActive: boolean; user: { id: string; fullName: string; email: string } };
 
 export default function SettingsPage() {
@@ -46,6 +47,28 @@ export default function SettingsPage() {
             </form>
           </CardBody>
         </Card>
+        {can("OWNER") && (
+          <Card>
+            <CardHeader title="Güvenlik politikası" description="İşletme sahibi ve yöneticiler için iki adımlı doğrulamayı zorunlu kılın." />
+            <CardBody className="space-y-3 text-sm">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={s.requireMfa} className="accent-brand-600" onChange={async (e) => {
+                  const next = e.target.checked;
+                  settings.setData({ ...s, requireMfa: next });
+                  try {
+                    await api("/settings", { method: "PATCH", body: { requireMfa: next } });
+                    toast(next ? "2FA zorunluluğu açıldı" : "2FA zorunluluğu kapatıldı");
+                  } catch (err) {
+                    settings.setData({ ...s, requireMfa: !next });
+                    toast((err as Error).message, "red");
+                  }
+                }} />
+                Sahip ve yöneticiler için 2FA zorunlu
+              </label>
+              <p className="text-xs text-neutral-500">Açmadan önce kendi hesabınızda 2FA'yı etkinleştirip 2FA ile giriş yapmış olmalısınız. <Link className="text-brand-700" href="/guvenlik">Hesap güvenliği</Link></p>
+            </CardBody>
+          </Card>
+        )}
         <Card>
           <CardHeader title="Ekip ve yetkiler" action={<Button size="sm" onClick={() => setInviting(true)}>Kullanıcı ekle</Button>} />
           {team.loading ? <div className="p-6"><Spinner /></div> : (

@@ -9,6 +9,7 @@ import { dateTr, STATUS_TR, tl } from "@/lib/format";
 type Plan = { code: string; name: string; maxStaff: number; monthlyPrice: string; yearlyPrice: string; features: string[] };
 type Sub = {
   status: string; trialDaysLeft: number | null; plan: Plan; usage: { activeStaff: number; maxStaff: number };
+  graceEndsAt: string | null; limitExceeded: boolean; savedMethod: { label: string | null } | null;
   subscription: { billingCycle: string; currentPeriodEnd: string; cancelAtPeriodEnd: boolean; status: string } | null;
   payments: { id: string; amount: string; status: string; description: string; createdAt: string; provider: string }[];
 };
@@ -33,7 +34,10 @@ export default function SubscriptionPage() {
             <div className="text-2xl font-semibold">{s.plan.name}</div>
             <Badge tone={statusTone(s.status)}>{STATUS_TR[s.status]}</Badge>
             {s.trialDaysLeft !== null && <p>Deneme süresinden <b>{s.trialDaysLeft} gün</b> kaldı.</p>}
-            {s.subscription && <p>Dönem sonu: {dateTr(s.subscription.currentPeriodEnd)} {s.subscription.cancelAtPeriodEnd && "(iptal edilecek)"}</p>}
+            {s.subscription && <p>Dönem sonu: {dateTr(s.subscription.currentPeriodEnd)} {s.subscription.cancelAtPeriodEnd ? "(iptal edilecek)" : "(otomatik yenilenir)"}</p>}
+            {s.savedMethod && <p className="text-xs text-neutral-500">Kayıtlı ödeme yöntemi: {s.savedMethod.label}</p>}
+            {s.status === "PAST_DUE" && s.graceEndsAt && <Alert tone="amber">Ödeme bekleniyor. {dateTr(s.graceEndsAt)} tarihine kadar ödeme yapılmazsa abonelik sona erer; bu sürede panel salt okunur.</Alert>}
+            {s.limitExceeded && <Alert tone="amber">Aktif personel sayınız paket sınırını aşıyor. Yeni personel eklenemez; paketi yükseltin veya personel pasife alın.</Alert>}
             <div className="pt-2">
               <div className="mb-1 flex justify-between"><span>Aktif personel</span><span>{s.usage.activeStaff}/{s.usage.maxStaff}</span></div>
               <div className="h-2 rounded-full bg-sand-100"><div className="h-2 rounded-full bg-brand-500" style={{ width: `${Math.min(100, (s.usage.activeStaff / s.usage.maxStaff) * 100)}%` }} /></div>

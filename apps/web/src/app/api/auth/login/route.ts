@@ -7,11 +7,13 @@ export async function POST(req: NextRequest) {
   const body = await req.text();
   const res = await fetch(`${API_URL}/auth/${req.nextUrl.pathname.endsWith("register") ? "register" : "login"}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...clientIpHeaders(req) },
+    headers: { "Content-Type": "application/json", "User-Agent": req.headers.get("user-agent") ?? "", ...clientIpHeaders(req) },
     body,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return NextResponse.json(data, { status: res.status });
+  // 2FA açık hesaplarda ilk adımda oturum açılmaz; ara belirteç istemciye döner.
+  if (data.mfaRequired) return NextResponse.json({ mfaRequired: true, mfaToken: data.mfaToken });
   const out = NextResponse.json({ user: data.user });
   out.cookies.set(TOKEN_COOKIE, data.accessToken, cookieOptions);
   const first = data.user?.memberships?.[0]?.tenant?.id;

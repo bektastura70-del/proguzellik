@@ -20,6 +20,7 @@ export default function PlatformPage() {
   const plans = useApi<Plan[]>("/platform/plans");
   const [edit, setEdit] = useState<TenantRow | null>(null);
   const [planEdit, setPlanEdit] = useState<Plan | null>(null);
+  const jobs = useApi<{ id: string; runKey: string; status: string; startedAt: string; finishedAt: string | null; result: Record<string, unknown> | null; error: string | null }[]>("/platform/jobs");
 
   if (stats.error?.status === 403) {
     return <div className="mx-auto max-w-md p-10"><Alert>Bu sayfa yalnızca platform yöneticilerine açıktır.</Alert></div>;
@@ -29,6 +30,7 @@ export default function PlatformPage() {
       <header className="mb-8 flex items-center justify-between">
         <div className="flex items-center gap-3"><Logo /><Badge tone="brand">SaaS yönetimi</Badge></div>
         <div className="flex gap-2">
+          <Link href="/guvenlik" className="text-sm text-brand-700">Hesap güvenliği</Link>
           <Link href="/panel" className="text-sm text-brand-700">Salon paneli</Link>
           <button className="text-sm text-neutral-500" onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); location.href = "/giris"; }}>Çıkış</button>
         </div>
@@ -75,6 +77,29 @@ export default function PlatformPage() {
         <Table head={["Paket", "Personel sınırı", "Aylık", "Yıllık", ""]}>
           {plans.data?.map((p) => (
             <tr key={p.code}><Td className="font-medium">{p.name}</Td><Td>{p.maxStaff}</Td><Td>{tl(p.monthlyPrice)}</Td><Td>{tl(p.yearlyPrice)}</Td><Td><Button size="sm" variant="ghost" onClick={() => setPlanEdit(p)}>Düzenle</Button></Td></tr>
+          ))}
+        </Table>
+      </Card>
+      <Card className="mt-6">
+        <CardHeader
+          title="Günlük abonelik görevi"
+          description="Her gün 03:00'te deneme bitişi, yenileme, ödeme gecikmesi ve paket sınırlarını kontrol eder. Aynı gün ikinci kez çalışmaz."
+          action={<Button size="sm" variant="outline" onClick={async () => {
+            try {
+              const r = await api<{ skipped: boolean; reason?: string }>("/platform/lifecycle/run", { method: "POST" });
+              toast(r.skipped ? `Atlandı: ${r.reason}` : "Görev çalıştırıldı");
+              jobs.reload(); tenants.reload(); stats.reload();
+            } catch (err) { toast((err as Error).message, "red"); }
+          }}>Şimdi çalıştır</Button>}
+        />
+        <Table head={["Gün", "Durum", "Başlangıç", "Sonuç"]} empty="Henüz çalışmadı">
+          {jobs.data?.map((j) => (
+            <tr key={j.id}>
+              <Td>{j.runKey}</Td>
+              <Td><Badge tone={j.status === "SUCCESS" ? "green" : j.status === "RUNNING" ? "blue" : "amber"}>{j.status}</Badge></Td>
+              <Td>{dateTr(j.startedAt, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</Td>
+              <Td className="max-w-md truncate text-xs text-neutral-500">{j.error ?? (j.result ? Object.entries(j.result).filter(([k, v]) => k !== "errors" && v).map(([k, v]) => `${k}: ${v}`).join(", ") || "Değişiklik yok" : "—")}</Td>
+            </tr>
           ))}
         </Table>
       </Card>
