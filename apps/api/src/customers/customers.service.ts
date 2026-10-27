@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from "@nestjs/common
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { TenantInfo } from "../common/decorators";
+import { FinanceService } from "../finance/finance.service";
 import { PrismaService, Tx } from "../prisma/prisma.service";
 
 export interface CustomerInput {
@@ -126,9 +127,21 @@ export class CustomersService {
     });
   }
 
-  /** Sonraki modüller (randevu, paket, kasa) bu kancayı genişletir. */
-  protected async historyExtras(_tx: Tx, _id: string): Promise<Record<string, unknown>> {
-    return {};
+  private async historyExtras(tx: Tx, id: string) {
+    const [appointments, packages, transactions] = await Promise.all([
+      tx.appointment.findMany({
+        where: { customerId: id },
+        orderBy: { startsAt: "desc" },
+        include: {
+          service: { select: { id: true, name: true } },
+          staff: { select: { id: true, displayName: true } },
+        },
+      }),
+      tx.customerPackage.findMany({ where: { customerId: id }, orderBy: { purchasedAt: "desc" } }),
+      tx.financeTransaction.findMany({ where: { customerId: id }, orderBy: { occurredAt: "desc" } }),
+    ]);
+    const balance = await FinanceService.balanceInTx(tx, id);
+    return { appointments, packages, transactions, balance };
   }
 
   /** KVKK m.11: kişisel verilerin bir kopyası (JSON). */

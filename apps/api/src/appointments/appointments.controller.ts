@@ -13,6 +13,7 @@ const createSchema = z.object({
   notes: z.string().max(1000).optional(),
   price: moneySchema.optional(),
   ignoreSchedule: z.boolean().optional(),
+  customerPackageId: z.string().uuid().optional(),
 });
 const updateSchema = z.object({
   startsAt: z.string().datetime({ offset: true }).optional(),

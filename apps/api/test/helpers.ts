@@ -70,3 +70,26 @@ export function api(app: INestApplication, token: string, tenantId?: string) {
     delete: (url: string) => wrap(request(server).delete(url)),
   };
 }
+
+export const ALL_WEEK = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, startMin: 540, endMin: 1080 }));
+
+/** Bir hizmet, iki personel (çalışma saatli) ve bir müşteri oluşturur. */
+export async function setupSalon(a: ReturnType<typeof api>, opts: { price?: number; duration?: number } = {}) {
+  const service = (await a.post("/services").send({ name: "Lazer Epilasyon", durationMin: opts.duration ?? 30, price: opts.price ?? 1000 }).expect(201)).body;
+  const staff = (await a.post("/staff").send({ displayName: "Elif", commissionRate: 10 }).expect(201)).body;
+  const staff2 = (await a.post("/staff").send({ displayName: "Merve", commissionRate: 20 }).expect(201)).body;
+  for (const s of [staff, staff2]) {
+    await a.put(`/staff/${s.id}/services`).send({ serviceIds: [service.id] }).expect(200);
+    await a.put(`/staff/${s.id}/working-hours`).send({ hours: ALL_WEEK }).expect(200);
+  }
+  const customer = (await a.post("/customers").send({ firstName: "Ayşe", lastName: "Test", phone: "05550000001" }).expect(201)).body;
+  return { service, staff, staff2, customer };
+}
+
+/** Bugünden n gün sonrası, İstanbul saatiyle hh:mm */
+export function futureAt(daysAhead: number, hhmm: string) {
+  const { zonedTime } = require("../src/common/time") as typeof import("../src/common/time");
+  const day = new Date(Date.now() + daysAhead * 86_400_000).toISOString().slice(0, 10);
+  const [h, m] = hhmm.split(":").map(Number);
+  return zonedTime(day, h * 60 + m, "Europe/Istanbul").toISOString();
+}

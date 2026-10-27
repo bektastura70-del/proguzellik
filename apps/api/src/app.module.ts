@@ -8,8 +8,10 @@ import { CustomersModule } from "./customers/customers.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { StaffModule } from "./staff/staff.module";
 import { AppointmentsModule } from "./appointments/appointments.module";
+import { PackagesModule } from "./packages/packages.module";
+import { FinanceModule } from "./finance/finance.module";
 
 @Module({
-  imports: [PrismaModule, AuditModule, AuthModule, HealthModule, UsersModule, CustomersModule, CatalogModule, StaffModule, AppointmentsModule],
+  imports: [PrismaModule, AuditModule, AuthModule, HealthModule, UsersModule, CustomersModule, CatalogModule, StaffModule, AppointmentsModule, PackagesModule, FinanceModule],
 })
 export class AppModule {}

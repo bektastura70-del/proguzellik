@@ -4,6 +4,7 @@ import { AuditService } from "../audit/audit.service";
 import { TenantInfo } from "../common/decorators";
 import { addMinutes } from "../common/time";
 import { PrismaService, Tx } from "../prisma/prisma.service";
+import { PackagesService } from "../packages/packages.service";
 import { AvailabilityService } from "./availability.service";
 
 export interface AppointmentInput {
@@ -14,6 +15,7 @@ export interface AppointmentInput {
   notes?: string;
   price?: number;
   ignoreSchedule?: boolean;
+  customerPackageId?: string;
 }
 
 const TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> = {
@@ -84,6 +86,9 @@ export class AppointmentsService {
       where: { staffId_serviceId: { staffId: staff.id, serviceId: service.id } },
     });
     if (!can) throw new BadRequestException("Personel bu hizmeti vermiyor");
+    if (input.customerPackageId) {
+      await PackagesService.assertBookable(tx, input.customerPackageId, customer.id, service.id);
+    }
 
     const startsAt = new Date(input.startsAt);
     const endsAt = addMinutes(startsAt, service.durationMin);
@@ -97,7 +102,8 @@ export class AppointmentsService {
         serviceId: service.id,
         startsAt,
         endsAt,
-        price: input.price ?? service.price,
+        price: input.customerPackageId ? 0 : (input.price ?? service.price),
+        customerPackageId: input.customerPackageId,
         notes: input.notes,
         source: input.source ?? "PANEL",
         createdById: input.createdById,
@@ -158,6 +164,7 @@ export class AppointmentsService {
         where: { id },
         data: { status, ...(status === "CANCELLED" ? { cancelReason: reason } : {}) },
       });
+      if (status === "COMPLETED") await PackagesService.consumeSession(tx, updated);
       await this.hooks.onStatusChanged(tx, updated, t.userId);
       await this.audit.log(tx, {
         tenantId: t.tenantId,
