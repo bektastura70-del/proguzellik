@@ -1,0 +1,93 @@
+// ProGüzellik veri modeli.
+// Kiracıya (işletmeye) ait her tablo "tenantId" taşır ve PostgreSQL RLS ile korunur.
+// RLS politikaları migration SQL'lerinde tanımlıdır (bkz. prisma/migrations/*_rls*).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+enum Role {
+  OWNER
+  MANAGER
+  RECEPTION
+  STAFF
+}
+
+model Tenant {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String       @unique
+  status      TenantStatus @default(TRIAL)
+  trialEndsAt DateTime?
+  phone       String?
+  email       String?
+  address     String?
+  timezone    String       @default("Europe/Istanbul")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  memberships Membership[]
+  auditLogs   AuditLog[]
+}
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique
+  passwordHash    String
+  fullName        String
+  phone           String?
+  isPlatformAdmin Boolean   @default(false)
+  isActive        Boolean   @default(true)
+  failedLogins    Int       @default(0)
+  lockedUntil     DateTime?
+  lastLoginAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  memberships Membership[]
+}
+
+model Membership {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  userId    String   @db.Uuid
+  role      Role
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+}
+
+// Yalnızca ekleme yapılabilir (UPDATE/DELETE yetkisi verilmez).
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String?  @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String
+  entity     String?
+  entityId   String?
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+}
