@@ -21,7 +21,7 @@ const registerSchema = z.object({
   password: passwordSchema,
   phone: z.string().trim().max(30).optional(),
   planCode: z.enum(["STARTER", "PROFESSIONAL", "SMART"]).optional(),
-  kvkkAccepted: z.literal(true, { errorMap: () => ({ message: "KVKK aydınlatma metni onaylanmalı" }) }),
+  kvkkAccepted: z.literal(true, { error: "KVKK aydınlatma metni onaylanmalı" }),
 });
 const forgotSchema = z.object({ email: z.string().email().max(200) });
 const tokenSchema = z.string().min(20).max(200);

@@ -18,7 +18,7 @@ const bookingSchema = z.object({
   phone: phoneSchema,
   email: z.string().email().max(200).optional(),
   notes: z.string().max(500).optional(),
-  kvkkConsent: z.literal(true, { errorMap: () => ({ message: "KVKK aydınlatma metni onaylanmalı" }) }),
+  kvkkConsent: z.literal(true, { error: "KVKK aydınlatma metni onaylanmalı" }),
   marketingConsent: z.boolean().optional(),
 });
 const cancelSchema = z.object({ token: z.string().min(10).max(100) });
