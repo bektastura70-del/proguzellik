@@ -16,7 +16,7 @@ export default function ServicesPage() {
   const cats = useApi<Category[]>("/service-categories");
   const [edit, setEdit] = useState<Service | "new" | null>(null);
   const [consumables, setConsumables] = useState<Service | null>(null);
-  const toast = useToast();
+  const [catOpen, setCatOpen] = useState(false);
 
   return (
     <>
@@ -25,11 +25,7 @@ export default function ServicesPage() {
         description="Süre, fiyat ve online randevu ayarları"
         action={
           <>
-            <Button variant="outline" onClick={async () => {
-              const name = prompt("Kategori adı");
-              if (!name) return;
-              try { await api("/service-categories", { method: "POST", body: { name } }); cats.reload(); toast("Kategori eklendi"); } catch (e) { toast((e as Error).message, "red"); }
-            }}>Kategori ekle</Button>
+            <Button variant="outline" onClick={() => setCatOpen(true)}>Kategoriler</Button>
             <Button onClick={() => setEdit("new")}><Plus /> Hizmet</Button>
           </>
         }
@@ -58,6 +54,7 @@ export default function ServicesPage() {
       </Card>
       {edit && <ServiceForm initial={edit === "new" ? undefined : edit} cats={cats.data ?? []} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); services.reload(); }} />}
       {consumables && <ConsumablesDialog service={consumables} onClose={() => setConsumables(null)} />}
+      {catOpen && <CategoriesDialog cats={cats.data ?? []} onClose={() => setCatOpen(false)} onChange={() => { cats.reload(); services.reload(); }} />}
     </>
   );
 }
@@ -133,6 +130,37 @@ function ConsumablesDialog({ service, onClose }: { service: Service; onClose: ()
           onClose();
         } catch (e) { toast((e as Error).message, "red"); }
       }}>Kaydet</Button>
+    </Dialog>
+  );
+}
+
+function CategoriesDialog({ cats, onClose, onChange }: { cats: Category[]; onClose: () => void; onChange: () => void }) {
+  const toast = useToast();
+  const [name, setName] = useState("");
+  const run = async (fn: () => Promise<unknown>, ok: string) => {
+    try {
+      await fn();
+      toast(ok);
+      onChange();
+    } catch (e) {
+      toast((e as Error).message, "red");
+    }
+  };
+  return (
+    <Dialog open onClose={onClose} title="Hizmet kategorileri">
+      <form className="mb-4 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (name.trim()) run(() => api("/service-categories", { method: "POST", body: { name: name.trim() } }), "Kategori eklendi").then(() => setName("")); }}>
+        <Input aria-label="Yeni kategori adı" placeholder="Yeni kategori" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} />
+        <Button>Ekle</Button>
+      </form>
+      <ul className="divide-y divide-sand-100">
+        {cats.map((c) => (
+          <li key={c.id} className="flex items-center gap-2 py-2">
+            <Input aria-label={`${c.name} adı`} defaultValue={c.name} className="h-9" onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== c.name) run(() => api(`/service-categories/${c.id}`, { method: "PATCH", body: { name: v } }), "Kategori güncellendi"); }} />
+            <Button size="sm" variant="ghost" className="text-red-600" onClick={() => run(() => api(`/service-categories/${c.id}`, { method: "DELETE" }), "Kategori silindi")}>Sil</Button>
+          </li>
+        ))}
+        {cats.length === 0 && <li className="py-4 text-sm text-neutral-500">Henüz kategori yok.</li>}
+      </ul>
     </Dialog>
   );
 }

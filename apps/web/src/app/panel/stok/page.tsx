@@ -7,24 +7,34 @@ import { useSession } from "@/components/panel/session";
 import type { Customer, Product } from "@/components/panel/types";
 import { Alert, Badge, Button, Card, Dialog, Field, Input, PageHeader, Select, Spinner, Table, Td, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
-import { METHOD_TR, tl } from "@/lib/format";
+import { dateTimeTr, METHOD_TR, tl } from "@/lib/format";
 
 export default function StockPage() {
   const { can } = useSession();
   const toast = useToast();
-  const products = useApi<Product[]>("/products");
+  const [kind, setKind] = useState("");
+  const products = useApi<Product[]>(`/products?${new URLSearchParams({ ...(kind ? { kind } : {}) })}`);
   const [creating, setCreating] = useState(false);
   const [moving, setMoving] = useState<Product | null>(null);
   const [selling, setSelling] = useState<Product | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [history, setHistory] = useState<Product | null>(null);
+  const [lowOnly, setLowOnly] = useState(false);
 
   return (
     <>
       <PageHeader title="Stok" description="Satış ürünleri ve sarf malzemeleri" action={can("OWNER", "MANAGER") && <Button onClick={() => setCreating(true)}><Plus /> Ürün</Button>} />
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+        {[["", "Tümü"], ["CONSUMABLE", "Sarf"], ["RETAIL", "Satış"]].map(([k, l]) => (
+          <button key={l} onClick={() => setKind(k)} className={`rounded-full border px-3 py-1 ${kind === k ? "border-brand-600 bg-brand-600 text-white" : "border-sand-300 bg-white"}`}>{l}</button>
+        ))}
+        <label className="ml-2 flex items-center gap-2"><input type="checkbox" checked={lowOnly} onChange={(e) => setLowOnly(e.target.checked)} className="accent-brand-600" /> Yalnızca kritik stok</label>
+      </div>
       <Card>
-        {products.loading ? <div className="p-6"><Spinner /></div> : (
+        {products.loading && !products.data ? <div className="p-6"><Spinner /></div> : (
           <Table head={["Ürün", "Tür", "Stok", "Kritik", "Alış / Satış", ""]} empty="Henüz ürün yok">
-            {products.data?.map((p) => {
+            {products.data?.filter((p) => !lowOnly || Number(p.stockQty) <= Number(p.minQty)).map((p) => {
               const low = Number(p.stockQty) <= Number(p.minQty);
               return (
                 <tr key={p.id}>
@@ -36,6 +46,8 @@ export default function StockPage() {
                   <Td className="whitespace-nowrap text-right">
                     {p.kind === "RETAIL" && can("OWNER", "MANAGER", "RECEPTION") && <Button size="sm" variant="ghost" onClick={() => setSelling(p)}>Sat</Button>}
                     {can("OWNER", "MANAGER") && <Button size="sm" variant="ghost" onClick={() => setMoving(p)}>Hareket</Button>}
+                    {can("OWNER", "MANAGER") && <Button size="sm" variant="ghost" onClick={() => setHistory(p)}>Geçmiş</Button>}
+                    {can("OWNER", "MANAGER") && <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>Düzenle</Button>}
                   </Td>
                 </tr>
               );
@@ -71,6 +83,31 @@ export default function StockPage() {
           </form>
         </Dialog>
       )}
+      {editing && (
+        <Dialog open onClose={() => setEditing(null)} title="Ürünü düzenle">
+          <form className="space-y-4" onSubmit={async (e) => {
+            e.preventDefault();
+            const f = new FormData(e.currentTarget);
+            const n = (k: string) => (f.get(k) !== "" ? Number(f.get(k)) : undefined);
+            try {
+              await api(`/products/${editing.id}`, { method: "PATCH", body: { name: f.get("name"), sku: (f.get("sku") as string) || undefined, minQty: n("minQty"), costPrice: n("costPrice"), salePrice: n("salePrice"), isActive: f.get("isActive") === "on" } });
+              toast("Ürün güncellendi"); setEditing(null); products.reload();
+            } catch (err) { toast((err as Error).message, "red"); }
+          }}>
+            <Field label="Ürün adı"><Input name="name" required defaultValue={editing.name} /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Stok kodu"><Input name="sku" defaultValue={editing.sku ?? ""} /></Field>
+              <Field label="Kritik seviye"><Input name="minQty" type="number" min={0} step="0.001" defaultValue={Number(editing.minQty)} /></Field>
+              <Field label="Alış fiyatı (₺)"><Input name="costPrice" type="number" min={0} step="0.01" defaultValue={editing.costPrice ? Number(editing.costPrice) : ""} /></Field>
+              <Field label="Satış fiyatı (₺)"><Input name="salePrice" type="number" min={0} step="0.01" defaultValue={editing.salePrice ? Number(editing.salePrice) : ""} /></Field>
+            </div>
+            <p className="text-xs text-neutral-500">Stok miktarı yalnızca hareket kaydıyla değişir (denetlenebilirlik için).</p>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="isActive" defaultChecked className="accent-brand-600" /> Aktif</label>
+            <Button className="w-full">Kaydet</Button>
+          </form>
+        </Dialog>
+      )}
+      {history && <MovementsDialog product={history} onClose={() => setHistory(null)} />}
       {moving && (
         <Dialog open onClose={() => setMoving(null)} title={`Stok hareketi: ${moving.name}`}>
           <form className="space-y-4" onSubmit={async (e) => {
@@ -112,5 +149,27 @@ export default function StockPage() {
         </Dialog>
       )}
     </>
+  );
+}
+
+const MOVE_TR: Record<string, string> = { IN: "Giriş", OUT: "Çıkış", ADJUST: "Sayım düzeltmesi", CONSUME: "Hizmet sarfı", SALE: "Satış" };
+
+function MovementsDialog({ product, onClose }: { product: Product; onClose: () => void }) {
+  const list = useApi<{ id: string; type: string; qty: string; note: string | null; createdAt: string }[]>(`/products/${product.id}/movements`);
+  return (
+    <Dialog open onClose={onClose} title={`${product.name} · hareketler`} wide>
+      {list.loading ? <Spinner /> : (
+        <Table head={["Tarih", "Hareket", "Miktar", "Not"]} empty="Hareket yok">
+          {list.data?.map((m) => (
+            <tr key={m.id}>
+              <Td className="whitespace-nowrap">{dateTimeTr(m.createdAt)}</Td>
+              <Td>{MOVE_TR[m.type] ?? m.type}</Td>
+              <Td className={Number(m.qty) < 0 ? "text-red-600" : "text-emerald-700"}>{Number(m.qty) > 0 ? "+" : ""}{Number(m.qty)} {product.unit}</Td>
+              <Td className="text-neutral-500">{m.note ?? "—"}</Td>
+            </tr>
+          ))}
+        </Table>
+      )}
+    </Dialog>
   );
 }

@@ -27,8 +27,9 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
     const msg = Array.isArray(data?.errors) && data.errors.length
       ? data.errors.map((e: { message: string }) => e.message).join(", ")
       : Array.isArray(data?.message) ? data.message.join(", ") : (data?.message ?? "Beklenmeyen bir hata oluştu");
-    if (res.status === 401 && typeof window !== "undefined" && !path.startsWith("/auth/login")) {
-      window.location.href = "/giris?sure=doldu";
+    if (typeof window !== "undefined") {
+      if (res.status === 401 && !path.startsWith("/auth/")) window.location.href = "/giris?sure=doldu";
+      if (res.status === 403 && data?.code === "PASSWORD_CHANGE_REQUIRED") window.location.href = "/parola-degistir";
     }
     throw new ApiError(res.status, msg, data);
   }

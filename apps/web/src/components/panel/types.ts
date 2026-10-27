@@ -16,5 +16,6 @@ export type Appointment = {
 export type Txn = {
   id: string; type: "INCOME" | "EXPENSE" | "REFUND"; category: string; amount: string; method: string; description: string | null; occurredAt: string; refundOfId: string | null;
   customer: { id: string; firstName: string; lastName: string } | null; staff: { id: string; displayName: string } | null;
+  refundedAmount?: string; refundable?: string;
 };
 export type Product = { id: string; name: string; sku: string | null; unit: string; kind: "RETAIL" | "CONSUMABLE"; stockQty: string; minQty: string; costPrice: string | null; salePrice: string | null };

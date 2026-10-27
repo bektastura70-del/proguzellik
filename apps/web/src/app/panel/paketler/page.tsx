@@ -16,6 +16,8 @@ export default function PackagesPage() {
   const tpls = useApi<Template[]>("/package-templates");
   const [creating, setCreating] = useState(false);
   const [selling, setSelling] = useState<Template | null>(null);
+  const [editing, setEditing] = useState<Template | null>(null);
+  const toast = useToast();
 
   return (
     <>
@@ -30,7 +32,10 @@ export default function PackagesPage() {
                 <Td>{t.sessionCount}</Td>
                 <Td>{tl(t.price)} <span className="text-xs text-neutral-500">({tl(Number(t.price) / t.sessionCount)}/seans)</span></Td>
                 <Td>{t.validityDays ? `${t.validityDays} gün` : "Süresiz"}</Td>
-                <Td className="text-right">{t.isActive && can("OWNER", "MANAGER", "RECEPTION") && <Button size="sm" onClick={() => setSelling(t)}>Sat</Button>}</Td>
+                <Td className="whitespace-nowrap text-right">
+                  {can("OWNER", "MANAGER") && <Button size="sm" variant="ghost" onClick={() => setEditing(t)}>Düzenle</Button>}
+                  {t.isActive && can("OWNER", "MANAGER", "RECEPTION") && <Button size="sm" onClick={() => setSelling(t)}>Sat</Button>}
+                </Td>
               </tr>
             ))}
           </Table>
@@ -38,6 +43,27 @@ export default function PackagesPage() {
       </Card>
       {creating && <TemplateForm onClose={() => setCreating(false)} onSaved={() => { setCreating(false); tpls.reload(); }} />}
       {selling && <SellDialog tpl={selling} onClose={() => setSelling(null)} />}
+      {editing && (
+        <Dialog open onClose={() => setEditing(null)} title="Paket şablonunu düzenle">
+          <form className="space-y-4" onSubmit={async (e) => {
+            e.preventDefault();
+            const f = new FormData(e.currentTarget);
+            try {
+              await api(`/package-templates/${editing.id}`, { method: "PATCH", body: { name: f.get("name"), price: Number(f.get("price")), validityDays: f.get("validityDays") ? Number(f.get("validityDays")) : null, isActive: f.get("isActive") === "on" } });
+              toast("Paket şablonu güncellendi"); setEditing(null); tpls.reload();
+            } catch (err) { toast((err as Error).message, "red"); }
+          }}>
+            <Field label="Paket adı"><Input name="name" required defaultValue={editing.name} /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Fiyat (₺)"><Input name="price" type="number" min={0} step="0.01" required defaultValue={Number(editing.price)} /></Field>
+              <Field label="Geçerlilik (gün)"><Input name="validityDays" type="number" min={1} defaultValue={editing.validityDays ?? ""} placeholder="Süresiz" /></Field>
+            </div>
+            <p className="text-xs text-neutral-500">Seans sayısı ve hizmet, satılmış paketleri etkilememesi için değiştirilemez; gerekirse yeni şablon oluşturun.</p>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="isActive" defaultChecked={editing.isActive} className="accent-brand-600" /> Satışa açık</label>
+            <Button className="w-full">Kaydet</Button>
+          </form>
+        </Dialog>
+      )}
     </>
   );
 }

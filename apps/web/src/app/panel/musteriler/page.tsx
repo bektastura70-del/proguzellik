@@ -14,9 +14,10 @@ export default function CustomersPage() {
   const { can } = useSession();
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
+  const [tag, setTag] = useState("");
   const [page, setPage] = useState(1);
   const [adding, setAdding] = useState(false);
-  const list = useApi<{ items: Customer[]; total: number; pageSize: number }>(`/customers?page=${page}&pageSize=25${q ? `&search=${encodeURIComponent(q)}` : ""}`);
+  const list = useApi<{ items: Customer[]; total: number; pageSize: number }>(`/customers?page=${page}&pageSize=25${q ? `&search=${encodeURIComponent(q)}` : ""}${tag ? `&tag=${encodeURIComponent(tag)}` : ""}`);
 
   return (
     <>
@@ -28,6 +29,13 @@ export default function CustomersPage() {
         </div>
         <Button variant="outline">Ara</Button>
       </form>
+      <div className="-mt-2 mb-4 flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-neutral-500">Etiket:</span>
+        {["", "VIP", "Hassas cilt"].map((t) => (
+          <button key={t || "all"} onClick={() => { setTag(t); setPage(1); }} className={`rounded-full border px-3 py-1 ${tag === t ? "border-brand-600 bg-brand-600 text-white" : "border-sand-300 bg-white"}`}>{t || "Tümü"}</button>
+        ))}
+        <Input aria-label="Diğer etiket" placeholder="Başka etiket…" className="h-8 w-36" onKeyDown={(e) => { if (e.key === "Enter") { setTag((e.target as HTMLInputElement).value.trim()); setPage(1); } }} />
+      </div>
       <Card>
         {list.loading && !list.data ? <div className="p-6"><Spinner /></div> : (
           <Table head={["Müşteri", "Telefon", "Etiketler", "Kayıt"]} empty="Müşteri bulunamadı">

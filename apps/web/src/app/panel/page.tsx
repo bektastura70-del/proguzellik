@@ -6,6 +6,7 @@ import { useSession } from "@/components/panel/session";
 import type { Appointment } from "@/components/panel/types";
 import { Badge, Card, CardBody, CardHeader, Empty, PageHeader, Spinner, Stat, statusTone } from "@/components/ui";
 import { buttonVariants } from "@/components/ui";
+import { useEffect, useState } from "react";
 import { useApi } from "@/lib/api";
 import { addDays, dateTr, isoDay, istanbulToIso, STATUS_TR, timeTr, tl } from "@/lib/format";
 
@@ -27,6 +28,8 @@ export default function Overview() {
   const monthFrom = istanbulToIso(addDays(today, -29), "00:00");
   const dash = useApi<Dashboard>(can("OWNER", "MANAGER") && has("REPORTS") ? `/reports/dashboard?from=${encodeURIComponent(monthFrom)}&to=${encodeURIComponent(to)}` : null);
 
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
   const active = appts.data?.filter((a) => !["CANCELLED"].includes(a.status)) ?? [];
   return (
     <>
@@ -95,7 +98,7 @@ export default function Overview() {
             <Card>
               <CardHeader title="Online randevu bağlantınız" />
               <CardBody>
-                <code className="block break-all rounded-lg bg-sand-100 px-3 py-2 text-xs">{typeof window !== "undefined" ? window.location.origin : ""}/r/{current.tenant.slug}</code>
+                <code className="block break-all rounded-lg bg-sand-100 px-3 py-2 text-xs">{origin}/r/{current.tenant.slug}</code>
                 <p className="mt-2 text-xs text-neutral-500">Instagram profilinize ve WhatsApp durumunuza ekleyin.</p>
               </CardBody>
             </Card>

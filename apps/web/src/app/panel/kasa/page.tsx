@@ -31,6 +31,11 @@ export default function CashPage() {
         description="Tahsilat, gelir-gider, iade ve personel primleri"
         action={
           <>
+            <div className="inline-flex rounded-xl border border-sand-300 bg-white p-1 text-sm">
+              {[["Bugün", 0], ["7 gün", 6], ["30 gün", 29]].map(([l, n]) => (
+                <button key={l} onClick={() => { setFromDay(addDays(isoDay(), -Number(n))); setToDay(isoDay()); }} className="rounded-lg px-2.5 py-1 hover:bg-sand-100">{l}</button>
+              ))}
+            </div>
             <Input type="date" value={fromDay} onChange={(e) => setFromDay(e.target.value)} className="w-40" aria-label="Başlangıç" />
             <Input type="date" value={toDay} onChange={(e) => setToDay(e.target.value)} className="w-40" aria-label="Bitiş" />
             {can("OWNER", "MANAGER") && <Button variant="outline" onClick={() => setRecord("EXPENSE")}>Gider ekle</Button>}
@@ -46,7 +51,7 @@ export default function CashPage() {
       </div>
 
       <Card className="mt-6">
-        <CardHeader title="Hareketler" />
+        <CardHeader title="Hareketler" action={txns.data && txns.data.length > 0 ? <Button size="sm" variant="outline" onClick={() => exportCsv(txns.data!, fromDay, toDay)}>CSV indir</Button> : undefined} />
         <Table head={["Tarih", "Tür", "Kategori", "Müşteri/Personel", "Yöntem", "Tutar", ""]} empty="Bu aralıkta hareket yok">
           {txns.data?.map((t) => (
             <tr key={t.id}>
@@ -56,7 +61,10 @@ export default function CashPage() {
               <Td>{t.customer ? `${t.customer.firstName} ${t.customer.lastName}` : t.staff?.displayName ?? "—"}</Td>
               <Td>{METHOD_TR[t.method]}</Td>
               <Td className={`whitespace-nowrap font-medium ${t.type === "INCOME" ? "" : "text-red-600"}`}>{t.type === "INCOME" ? "" : "−"}{tl(t.amount)}</Td>
-              <Td className="text-right">{t.type === "INCOME" && can("OWNER", "MANAGER") && <Button size="sm" variant="ghost" onClick={() => setRefund(t)}>İade</Button>}</Td>
+              <Td className="whitespace-nowrap text-right">
+                {t.type === "INCOME" && Number(t.refundedAmount ?? 0) > 0 && <span className="mr-2 text-xs text-amber-700">{tl(t.refundedAmount!)} iade</span>}
+                {t.type === "INCOME" && can("OWNER", "MANAGER") && Number(t.refundable ?? t.amount) > 0 && <Button size="sm" variant="ghost" onClick={() => setRefund(t)}>İade</Button>}
+              </Td>
             </tr>
           ))}
         </Table>
@@ -109,7 +117,7 @@ export default function CashPage() {
             } catch (err) { toast((err as Error).message, "red"); }
           }}>
             <Alert tone="amber">Mali kayıtlar silinemez; iade ayrı bir hareket olarak kaydedilir.</Alert>
-            <Field label="İade tutarı (₺)" hint={`Orijinal: ${tl(refund.amount)}`}><Input name="amount" type="number" step="0.01" min="0.01" max={Number(refund.amount)} required defaultValue={Number(refund.amount)} /></Field>
+            <Field label="İade tutarı (₺)" hint={`Orijinal: ${tl(refund.amount)} · İade edilebilir: ${tl(refund.refundable ?? refund.amount)}`}><Input name="amount" type="number" step="0.01" min="0.01" max={Number(refund.refundable ?? refund.amount)} required defaultValue={Number(refund.refundable ?? refund.amount)} /></Field>
             <Field label="Sebep"><Input name="reason" required minLength={3} /></Field>
             <Button variant="danger" className="w-full">İade et</Button>
           </form>
@@ -135,4 +143,20 @@ export default function CashPage() {
       )}
     </>
   );
+}
+
+function exportCsv(rows: Txn[], from: string, to: string) {
+  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines = [
+    ["Tarih", "Tür", "Kategori", "Müşteri", "Personel", "Yöntem", "Tutar", "Açıklama"].map(esc).join(";"),
+    ...rows.map((t) =>
+      [dateTimeTr(t.occurredAt), TYPE_TR[t.type], t.category, t.customer ? `${t.customer.firstName} ${t.customer.lastName}` : "", t.staff?.displayName ?? "", METHOD_TR[t.method], (t.type === "INCOME" ? "" : "-") + Number(t.amount).toFixed(2).replace(".", ","), t.description ?? ""].map(esc).join(";"),
+    ),
+  ];
+  const blob = new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `kasa-${from}_${to}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }

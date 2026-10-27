@@ -34,8 +34,24 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
   if (!h.data) return <Spinner />;
   const { customer: c } = h.data;
 
+  async function cancelPackage(pkgId: string) {
+    if (!confirm("Paket iptal edilsin mi? Kullanılan seanslar korunur.")) return;
+    try {
+      await api(`/customer-packages/${pkgId}/cancel`, { method: "POST" });
+      toast("Paket iptal edildi");
+      h.reload();
+    } catch (e) {
+      toast((e as Error).message, "red");
+    }
+  }
+
   async function exportData() {
-    const data = await api(`/customers/${id}/kvkk-export`);
+    let data: unknown;
+    try {
+      data = await api(`/customers/${id}/kvkk-export`);
+    } catch (e) {
+      return toast((e as Error).message, "red");
+    }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -84,7 +100,7 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
           </Card>
           <Card>
             <CardHeader title="Paketler" />
-            <Table head={["Paket", "Seans", "Durum", "Tutar", "Son kullanım"]} empty="Paket yok">
+            <Table head={["Paket", "Seans", "Durum", "Tutar", "Son kullanım", ""]} empty="Paket yok">
               {h.data.packages.map((p) => (
                 <tr key={p.id}>
                   <Td className="font-medium">{p.name}</Td>
@@ -97,6 +113,7 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
                   <Td><Badge tone={statusTone(p.status)}>{STATUS_TR[p.status] ?? p.status}</Badge></Td>
                   <Td>{tl(p.price)}</Td>
                   <Td>{p.expiresAt ? dateTr(p.expiresAt, { day: "numeric", month: "short", year: "numeric" }) : "—"}</Td>
+                  <Td className="text-right">{p.status === "ACTIVE" && can("OWNER", "MANAGER") && <Button size="sm" variant="ghost" onClick={() => cancelPackage(p.id)}>İptal</Button>}</Td>
                 </tr>
               ))}
             </Table>
@@ -122,9 +139,14 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
                 onSubmit={async (e) => {
                   e.preventDefault();
                   if (!note.trim()) return;
-                  await api(`/customers/${id}/notes`, { method: "POST", body: { body: note } });
-                  setNote("");
-                  h.reload();
+                  try {
+                    await api(`/customers/${id}/notes`, { method: "POST", body: { body: note } });
+                    setNote("");
+                    toast("Not eklendi");
+                    h.reload();
+                  } catch (err) {
+                    toast((err as Error).message, "red");
+                  }
                 }}
               >
                 <Textarea placeholder="Alerji, tercih, cilt tipi…" value={note} onChange={(e) => setNote(e.target.value)} />
@@ -158,10 +180,14 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
             onSubmit={async (e) => {
               e.preventDefault();
               const f = new FormData(e.currentTarget);
-              await api("/finance/payments", { method: "POST", body: { customerId: id, amount: Number(f.get("amount")), method: f.get("method"), description: f.get("description") || undefined } });
-              toast("Tahsilat kaydedildi");
-              setPaying(false);
-              h.reload();
+              try {
+                await api("/finance/payments", { method: "POST", body: { customerId: id, amount: Number(f.get("amount")), method: f.get("method"), description: f.get("description") || undefined } });
+                toast("Tahsilat kaydedildi");
+                setPaying(false);
+                h.reload();
+              } catch (err) {
+                toast((err as Error).message, "red");
+              }
             }}
           >
             <div className="grid grid-cols-2 gap-3">
@@ -175,9 +201,17 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
       )}
       {anon && (
         <Dialog open onClose={() => setAnon(false)} title="Müşteriyi anonimleştir">
-          <p className="text-sm text-neutral-600">Ad, telefon, e-posta, notlar ve etiketler <b>kalıcı olarak silinir</b>. Mali kayıtlar yasal zorunluluk nedeniyle anonim olarak saklanır. Bu işlem geri alınamaz.</p>
+          <p className="text-sm text-neutral-600">Ad, telefon, e-posta, notlar ve etiketler <b>kalıcı olarak silinir</b>. Bekleyen randevuları iptal edilir. Mali kayıtlar yasal zorunluluk nedeniyle anonim olarak saklanır. Bu işlem geri alınamaz.</p>
           <div className="mt-4 flex gap-2">
-            <Button variant="danger" onClick={async () => { await api(`/customers/${id}/anonymize`, { method: "POST" }); toast("Müşteri anonimleştirildi"); router.push("/panel/musteriler"); }}>Anonimleştir</Button>
+            <Button variant="danger" onClick={async () => {
+              try {
+                await api(`/customers/${id}/anonymize`, { method: "POST" });
+                toast("Müşteri anonimleştirildi");
+                router.push("/panel/musteriler");
+              } catch (err) {
+                toast((err as Error).message, "red");
+              }
+            }}>Anonimleştir</Button>
             <Button variant="outline" onClick={() => setAnon(false)}>Vazgeç</Button>
           </div>
         </Dialog>

@@ -21,7 +21,7 @@ export default function ReportsPage() {
   const range = `from=${encodeURIComponent(istanbulToIso(fromDay, "00:00"))}&to=${encodeURIComponent(istanbulToIso(addDays(toDay, 1), "00:00"))}`;
   const dash = useApi<Dash>(`/reports/dashboard?${range}`);
   const daily = useApi<Daily[]>(`/reports/daily-revenue?${range}`);
-  const max = Math.max(1, ...(daily.data ?? []).map((d) => Number(d.income)));
+  const max = Math.max(1, ...(daily.data ?? []).flatMap((d) => [Number(d.income), Number(d.outflow)]));
 
   return (
     <>
@@ -35,14 +35,16 @@ export default function ReportsPage() {
             <Stat label="Yeni müşteri" value={dash.data.customers.new} hint={`Toplam ${dash.data.customers.total}`} />
           </div>
           <Card className="mt-6">
-            <CardHeader title="Günlük gelir" description="Gelir (koyu) ve gider+iade (açık)" />
+            <CardHeader title="Günlük kasa" description="Her gün için gelir ve gider+iade" action={<div className="flex gap-3 text-xs"><span className="flex items-center gap-1"><span className="size-2.5 rounded-sm bg-brand-500" />Gelir</span><span className="flex items-center gap-1"><span className="size-2.5 rounded-sm bg-sand-300" />Gider + iade</span></div>} />
             <CardBody>
               {daily.data?.length ? (
                 <div className="flex h-56 items-end gap-1 overflow-x-auto" role="img" aria-label="Günlük gelir grafiği">
                   {daily.data.map((d) => (
-                    <div key={d.day} className="group flex min-w-6 flex-1 flex-col items-center justify-end gap-0.5" title={`${d.day}: gelir ${tl(d.income)}, çıkış ${tl(d.outflow)}`}>
-                      <div className="w-full rounded-t bg-brand-500" style={{ height: `${(Number(d.income) / max) * 180}px` }} />
-                      <div className="w-full rounded-b bg-brand-200" style={{ height: `${(Number(d.outflow) / max) * 180}px` }} />
+                    <div key={d.day} className="group flex min-w-7 flex-1 flex-col items-center justify-end" title={`${d.day}: gelir ${tl(d.income)}, gider+iade ${tl(d.outflow)}, net ${tl(d.net)}`}>
+                      <div className="flex w-full items-end justify-center gap-0.5">
+                        <div className="w-1/2 max-w-4 rounded-t bg-brand-500" style={{ height: `${Math.max(1, (Number(d.income) / max) * 180)}px` }} />
+                        <div className="w-1/2 max-w-4 rounded-t bg-sand-300" style={{ height: `${Math.max(Number(d.outflow) ? 1 : 0, (Number(d.outflow) / max) * 180)}px` }} />
+                      </div>
                       <span className="mt-1 text-[10px] text-neutral-500">{dateTr(`${d.day}T12:00:00+03:00`, { day: "numeric", month: "numeric" })}</span>
                     </div>
                   ))}

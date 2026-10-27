@@ -119,9 +119,12 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
       <div className="border-t border-white/10 px-5 py-4 text-sm">
         <div className="truncate font-medium">{me.fullName}</div>
         <div className="truncate text-xs text-brand-100/70">{me.email}</div>
-        <button onClick={logout} className="mt-3 inline-flex items-center gap-2 text-xs text-brand-100/80 hover:text-white">
-          <LogOut className="size-4" /> Çıkış yap
-        </button>
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+          <Link href="/parola-degistir" className="text-xs text-brand-100/80 hover:text-white">Parolamı değiştir</Link>
+          <button onClick={logout} className="inline-flex items-center gap-2 text-xs text-brand-100/80 hover:text-white">
+            <LogOut className="size-4" /> Çıkış yap
+          </button>
+        </div>
       </div>
     </div>
   );

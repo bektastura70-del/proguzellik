@@ -39,7 +39,10 @@ export default function SubscriptionPage() {
               <div className="h-2 rounded-full bg-sand-100"><div className="h-2 rounded-full bg-brand-500" style={{ width: `${Math.min(100, (s.usage.activeStaff / s.usage.maxStaff) * 100)}%` }} /></div>
             </div>
             {s.subscription?.status === "ACTIVE" && !s.subscription.cancelAtPeriodEnd && can("OWNER") && (
-              <Button variant="ghost" size="sm" className="mt-2 px-0 text-red-600" onClick={async () => { await api("/subscription/cancel", { method: "POST" }); toast("Abonelik dönem sonunda sona erecek"); sub.reload(); }}>Aboneliği iptal et</Button>
+              <Button variant="ghost" size="sm" className="mt-2 px-0 text-red-600" onClick={async () => {
+                if (!confirm("Abonelik dönem sonunda sona erecek. Onaylıyor musunuz?")) return;
+                try { await api("/subscription/cancel", { method: "POST" }); toast("Abonelik dönem sonunda sona erecek"); sub.reload(); } catch (e) { toast((e as Error).message, "red"); }
+              }}>Aboneliği iptal et</Button>
             )}
           </CardBody>
         </Card>

@@ -52,3 +52,16 @@ export const STATUS_TR: Record<string, string> = {
 export const ROLE_TR: Record<string, string> = { OWNER: "İşletme sahibi", MANAGER: "Yönetici", RECEPTION: "Resepsiyon", STAFF: "Personel" };
 export const METHOD_TR: Record<string, string> = { CASH: "Nakit", CARD: "Kart", TRANSFER: "Havale/EFT", OTHER: "Diğer" };
 export const TYPE_TR: Record<string, string> = { INCOME: "Gelir", EXPENSE: "Gider", REFUND: "İade" };
+
+/** Pazartesi başlangıçlı hafta: verilen günün haftasının pazartesisi */
+export const weekStart = (day: string) => {
+  const wd = new Date(`${day}T12:00:00+03:00`).getUTCDay();
+  return addDays(day, -((wd + 6) % 7));
+};
+export const monthGridStart = (day: string) => weekStart(`${day.slice(0, 8)}01`);
+export const weekdayOfDay = (day: string) => new Date(`${day}T12:00:00+03:00`).getUTCDay();
+/** ISO anı → İstanbul gün içi dakika */
+export const minutesOfDay = (iso: string) => {
+  const [h, m] = timeTr(iso).split(":").map(Number);
+  return h * 60 + m;
+};

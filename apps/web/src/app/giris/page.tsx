@@ -25,6 +25,7 @@ function LoginForm() {
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) return setError(data.message ?? "Giriş yapılamadı");
+    if (data.user?.mustChangePassword) return router.push("/parola-degistir");
     const back = params.get("donus");
     const dest = back?.startsWith("/") && !back.startsWith("//") ? back : data.user?.memberships?.length ? "/panel" : data.user?.isPlatformAdmin ? "/yonetim" : "/panel";
     router.push(dest);
