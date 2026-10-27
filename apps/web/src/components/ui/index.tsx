@@ -53,7 +53,7 @@ export function Field({ label, hint, children, className }: { label: string; hin
 
 /* ----------------------------- Card ------------------------------- */
 export function Card({ className, ...p }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("rounded-2xl border border-sand-200 bg-white shadow-[0_1px_2px_rgba(35,26,31,0.04)]", className)} {...p} />;
+  return <div className={cn("min-w-0 rounded-2xl border border-sand-200 bg-white shadow-[0_1px_2px_rgba(35,26,31,0.04)]", className)} {...p} />;
 }
 export function CardHeader({ title, description, action }: { title: string; description?: string; action?: React.ReactNode }) {
   return (

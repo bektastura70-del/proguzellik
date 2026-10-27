@@ -26,6 +26,9 @@ export async function expectToast(page: Page, text: string | RegExp) {
 
 /** Sayfada yatay taşma olmadığını doğrular. */
 export async function expectNoHorizontalOverflow(page: Page) {
+  // Veriler yüklenip tablo/grafikler çizilene kadar bekle.
+  await expect(page.getByLabel("Yükleniyor")).toHaveCount(0, { timeout: 10_000 });
+  await page.waitForTimeout(300);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow, "yatay taşma (px)").toBeLessThanOrEqual(1);
 }

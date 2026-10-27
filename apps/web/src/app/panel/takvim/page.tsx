@@ -144,8 +144,8 @@ function CalendarInner() {
       ) : (
         <>
           <Card className="hidden overflow-x-auto md:block" data-testid="calendar-grid">
-            <div className="flex min-w-max">
-              <div className="w-14 shrink-0 border-r border-sand-100 pt-12">
+            <div className="flex w-full">
+              <div className="sticky left-0 z-20 w-14 shrink-0 border-r border-sand-100 bg-white pt-12">
                 {HOURS.map((h) => (
                   <div key={h} className="pr-2 text-right text-xs text-neutral-400" style={{ height: 60 * PX_PER_MIN }}>{String(h).padStart(2, "0")}:00</div>
                 ))}
@@ -210,7 +210,7 @@ function TimeColumn(props: {
   };
 
   return (
-    <div className={cn("shrink-0 border-r border-sand-100 last:border-r-0", props.wide ? "w-60" : "w-40")} data-testid={`col-${staff?.displayName ?? date}`}>
+    <div className={cn("flex-1 shrink-0 border-r border-sand-100 last:border-r-0", props.wide ? "min-w-56" : "min-w-36")} data-testid={`col-${staff?.displayName ?? date}`}>
       <div className={cn("sticky top-0 z-10 flex h-12 flex-col justify-center border-b border-sand-100 bg-white px-3 text-sm", today && !staff && "bg-brand-50")}>
         {staff ? (
           <span className="flex items-center gap-2 font-medium"><span className="size-2.5 rounded-full" style={{ background: staff.color ?? "#c97399" }} />{staff.displayName}</span>
@@ -284,12 +284,12 @@ function TimeColumn(props: {
               onClick={() => props.onOpen(a)}
               data-testid="appt"
               data-appt-id={a.id}
-              className={cn("absolute overflow-hidden rounded-lg border-l-4 px-2 py-1 text-left text-xs shadow-sm transition hover:shadow-md", STATUS_STYLE[a.status], canMove && "cursor-grab active:cursor-grabbing", props.dragging?.id === a.id && "opacity-40")}
+              className={cn("absolute overflow-hidden rounded-lg border-l-4 px-1.5 py-1 text-left text-xs leading-tight shadow-sm transition hover:z-10 hover:shadow-md", STATUS_STYLE[a.status], canMove && "cursor-grab active:cursor-grabbing", props.dragging?.id === a.id && "opacity-40")}
               style={{ top, height: h, left: `calc(${(lane / lanes) * 100}% + 4px)`, width: `calc(${100 / lanes}% - 8px)` }}
               title={`${timeTr(a.startsAt)}–${timeTr(a.endsAt)} ${a.customer.firstName} ${a.customer.lastName} · ${a.service.name} · ${a.staff.displayName}`}
             >
-              <div className="truncate font-semibold">{timeTr(a.startsAt)} {a.customer.firstName} {a.customer.lastName}</div>
-              <div className="truncate opacity-80">{a.service.name}{!staff && ` · ${a.staff.displayName}`}{a.customerPackageId ? " · paket" : ""}</div>
+              <div className="truncate font-semibold">{timeTr(a.startsAt)} {lanes > 1 && !staff ? a.customer.firstName : `${a.customer.firstName} ${a.customer.lastName}`}</div>
+              <div className="truncate opacity-80">{lanes > 1 && !staff ? a.staff.displayName : `${a.service.name}${!staff ? ` · ${a.staff.displayName}` : ""}${a.customerPackageId ? " · paket" : ""}`}</div>
             </button>
           );
         })}

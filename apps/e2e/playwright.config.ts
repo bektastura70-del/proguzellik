@@ -25,17 +25,17 @@ export default defineConfig({
   },
   projects: [
     { name: "setup", testMatch: /auth\.setup\.ts/ },
-    { name: "desktop", dependencies: ["setup"], use: { ...devices["Desktop Chrome"], channel: "chrome", viewport: { width: 1440, height: 900 } } },
+    { name: "desktop", dependencies: ["setup"], testIgnore: /auth\.setup\.ts/, use: { ...devices["Desktop Chrome"], channel: "chrome", viewport: { width: 1440, height: 900 } } },
     {
       name: "tablet",
       dependencies: ["setup"],
-      testMatch: /responsive\.spec\.ts/,
+      testMatch: /responsive\.spec\.ts|zz-shots\.spec\.ts/,
       use: { viewport: { width: 820, height: 1180 }, hasTouch: true, channel: "chrome" },
     },
     {
       name: "mobile",
       dependencies: ["setup"],
-      testMatch: /responsive\.spec\.ts|booking\.spec\.ts/,
+      testMatch: /responsive\.spec\.ts|booking\.spec\.ts|zz-shots\.spec\.ts/,
       use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, channel: "chrome" },
     },
   ],

@@ -1,10 +1,10 @@
 "use client";
 
-import { AlertTriangle, CalendarDays, Coins, Users } from "lucide-react";
+import { AlertTriangle, CalendarDays, CalendarPlus, Coins, Copy, PackagePlus, UserPlus, Users, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useSession } from "@/components/panel/session";
 import type { Appointment } from "@/components/panel/types";
-import { Badge, Card, CardBody, CardHeader, Empty, PageHeader, Spinner, Stat, statusTone } from "@/components/ui";
+import { Badge, Button, Card, CardBody, CardHeader, Empty, PageHeader, Spinner, Stat, statusTone, useToast } from "@/components/ui";
 import { buttonVariants } from "@/components/ui";
 import { useEffect, useState } from "react";
 import { useApi } from "@/lib/api";
@@ -28,6 +28,7 @@ export default function Overview() {
   const monthFrom = istanbulToIso(addDays(today, -29), "00:00");
   const dash = useApi<Dashboard>(can("OWNER", "MANAGER") && has("REPORTS") ? `/reports/dashboard?from=${encodeURIComponent(monthFrom)}&to=${encodeURIComponent(to)}` : null);
 
+  const toast = useToast();
   const [origin, setOrigin] = useState("");
   useEffect(() => setOrigin(window.location.origin), []);
   const active = appts.data?.filter((a) => !["CANCELLED"].includes(a.status)) ?? [];
@@ -38,6 +39,21 @@ export default function Overview() {
         description={dateTr(new Date(), { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
         action={<Link href="/panel/takvim" className={buttonVariants()}>Randevu ekle</Link>}
       />
+      {can("OWNER", "MANAGER", "RECEPTION") && (
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { href: "/panel/takvim", label: "Randevu oluştur", icon: CalendarPlus },
+            { href: "/panel/musteriler", label: "Müşteri ekle", icon: UserPlus },
+            { href: "/panel/paketler", label: "Paket sat", icon: PackagePlus },
+            { href: "/panel/kasa", label: "Kasayı aç", icon: Wallet },
+          ].map((q) => (
+            <Link key={q.href} href={q.href} className="group flex items-center gap-3 rounded-2xl border border-sand-200 bg-gradient-to-br from-white to-brand-50/60 px-4 py-3 text-sm font-medium transition hover:border-brand-300 hover:shadow-sm">
+              <span className="grid size-9 place-items-center rounded-xl bg-brand-100 text-brand-700 transition group-hover:bg-brand-600 group-hover:text-white"><q.icon className="size-[18px]" /></span>
+              {q.label}
+            </Link>
+          ))}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Bugünkü randevular" value={appts.data ? active.length : "—"} icon={<CalendarDays className="size-5" />} />
         <Stat label="30 gün net kasa" value={dash.data ? tl(dash.data.finance.net) : "—"} icon={<Coins className="size-5" />} />
@@ -99,6 +115,14 @@ export default function Overview() {
               <CardHeader title="Online randevu bağlantınız" />
               <CardBody>
                 <code className="block break-all rounded-lg bg-sand-100 px-3 py-2 text-xs">{origin}/r/{current.tenant.slug}</code>
+                <Button size="sm" variant="outline" className="mt-3" onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(`${origin}/r/${current.tenant.slug}`);
+                    toast("Bağlantı kopyalandı");
+                  } catch {
+                    toast("Kopyalanamadı; bağlantıyı elle seçin", "red");
+                  }
+                }}><Copy /> Kopyala</Button>
                 <p className="mt-2 text-xs text-neutral-500">Instagram profilinize ve WhatsApp durumunuza ekleyin.</p>
               </CardBody>
             </Card>
