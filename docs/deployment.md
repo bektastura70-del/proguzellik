@@ -129,7 +129,24 @@ Dosyalar: `infra/production/` (compose, `.env.example`, betikler, Caddy bloğu).
 
 **Pasif entegrasyonlar:** compose `EMAIL_MODE`, `WHATSAPP_MODE`, `PAYMENT_MODE`, `AI_MODE` değerlerini `mock` olarak sabitler; API'nin internet çıkışı da yoktur. Kayıt `REGISTRATION_ENABLED=0` ile kapalıdır (Caddy bloğu ayrıca kayıt yolunu 403 ile engeller).
 
-### İlk kurulum (her adım onayla; sırası önemli)
+### İlk kurulum — tek betik (önerilen)
+Mac'te (proje kökü, imajlar `linux/amd64` olarak derlenmiş olmalı; `<V>` = imaj etiketi):
+```bash
+ssh <vps> 'test ! -e /opt/proguzellik && install -d -m 700 /opt/proguzellik /opt/proguzellik/backups /opt/proguzellik/images && install -d -m 755 /opt/proguzellik/infra'
+tar -C infra -czf - production scripts | ssh <vps> 'tar -C /opt/proguzellik/infra -xzf -'
+docker save proguzellik-api:<V> proguzellik-web:<V> | gzip -1 | ssh <vps> 'gunzip | docker load'
+ssh <vps> /opt/proguzellik/infra/production/first-install.sh <V>
+```
+`first-install.sh` sırları sunucuda üretir (ekrana yazmaz), ön kontrolü çalıştırır, postgres/redis → migration → rol parolaları → api/worker/web sırasıyla kurar, 20+ doğrulama yapar (sağlık, kayıt kapalı, demo veri yok, entegrasyonlar pasif, port/ağ yalıtımı), ilk yedeği alıp geri yükleme tatbikatı yapar ve imajı geri dönüş için arşivler. Ortak ağa, Caddy'ye ve DNS'e dokunmaz.
+
+### İlk platform sahibi (kurulumdan sonra, sahibin kendisi yapar)
+E-posta ve parola betiklere yazılmaz; sahip kendi terminalinde girer:
+```bash
+ssh -t <vps> 'cd /opt/proguzellik/infra/production && docker compose run --rm -it api node dist/cli/create-owner.js --email <sahibin-e-postası> --name "<Ad Soyad>"'
+```
+Parola gizli olarak iki kez sorulur (en az 10 karakter, harf + rakam). Tekrar çalıştırmak hesabı çoğaltmaz. İlk girişte 2FA kurulumu zorunludur; kurtarma kodları güvenli yerde saklanmalıdır.
+
+### İlk kurulum (adım adım; sırası önemli)
 1. Mac'te imajları **sunucu mimarisi için** derleyin (VPS x86_64) ve taşıyın; sunucuda derleme yapılmaz (disk):
    ```bash
    V=$(git rev-parse --short HEAD)
