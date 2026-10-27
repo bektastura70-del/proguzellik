@@ -1,0 +1,28 @@
+# Bağımlılıklar
+node_modules/
+.pnpm-store/
+
+# Derleme çıktıları
+dist/
+build/
+.next/
+out/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# Ortam değişkenleri
+.env
+.env.*
+!.env.example
+
+# Loglar
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Sistem / editör
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
