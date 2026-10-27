@@ -50,8 +50,8 @@ Online randevu sayfası: `http://localhost:3000/r/isilti-guzellik`
 ## Testler
 
 ```bash
-pnpm test        # API: 116 test, gerçek PostgreSQL + Redis (ayrı proguzellik_test veritabanı)
-pnpm test:e2e    # Tarayıcı: 118 Playwright testi (masaüstü/tablet/mobil), sistem Chrome'u ile
+pnpm test        # API: 143 test, gerçek PostgreSQL + Redis (ayrı proguzellik_test veritabanı)
+pnpm test:e2e    # Tarayıcı: 126 Playwright testi (masaüstü/tablet/mobil), sistem Chrome'u ile
 pnpm turbo run typecheck build
 ```
 
@@ -84,4 +84,15 @@ pnpm turbo run typecheck build
 - `AI_MODE=mock` → kural tabanlı yerel asistan. `anthropic` için `ANTHROPIC_API_KEY` gerekir; yalnızca toplu metrikler gönderilir.
 - Ödeme: `MockPaymentProvider` (gerçek tahsilat yok). Üretimde iyzico/PayTR gibi bir sağlayıcı `PaymentProvider` arayüzüyle eklenmeli.
 
-Ayrıntılar: [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md)
+Ayrıntılar: [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md), [docs/deployment.md](docs/deployment.md) (canlıya hazırlık, yedekleme/geri yükleme)
+
+## İşletim komutları
+
+```bash
+pnpm --filter @proguzellik/api env:check     # ortam değişkenlerini denetler (NODE_ENV=production ile canlı kuralları)
+pnpm --filter @proguzellik/api job:daily     # günlük abonelik görevini elle çalıştırır (aynı gün ikinci kez atlar)
+infra/scripts/backup.sh                       # veritabanı yedeği (backups/)
+infra/scripts/verify-backup.sh <dosya>        # yedeği geçici veritabanında doğrular
+```
+
+Yerelde SaaS yöneticisi (`owner@proguzellik.local`) ilk girişte iki adımlı doğrulamayı kurmaya yönlendirilir. Test modunda e-postalar gönderilmez; `OutboundEmail` tablosunda ve API günlüğünde görünür.
