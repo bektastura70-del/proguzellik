@@ -1,18 +1,46 @@
-# Yalnızca yerel geliştirme ve test içindir. Üretimde kullanmayın.
+# ProGüzellik — yalnızca yerel geliştirme ve test içindir. Üretimde kullanmayın.
+# Proje adı sabit: başka compose projeleriyle (salon-saas, social-platform vb.) karışmaz.
+# Portlar yalnızca 127.0.0.1'e açılır ve bu Mac'teki diğer servislerle çakışmaz:
+#   PostgreSQL 16 -> 127.0.0.1:5435   (5432/5433/5434 başka projelerde kullanılıyor)
+#   Redis 7       -> 127.0.0.1:6381   (6379/6380 başka projelerde kullanılıyor)
+name: proguzellik
+
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: proguzellik-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: proguzellik
+      POSTGRES_PASSWORD: proguzellik_dev
       POSTGRES_DB: proguzellik
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5435:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - proguzellik_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proguzellik -d proguzellik"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
+    container_name: proguzellik-redis
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6381:6379"
+    volumes:
+      - proguzellik_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
 volumes:
-  pgdata:
+  proguzellik_pg_data:
+    name: proguzellik_pg_data
+  proguzellik_redis_data:
+    name: proguzellik_redis_data
