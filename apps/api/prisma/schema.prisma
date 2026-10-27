@@ -172,12 +172,13 @@ model Service {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  category         ServiceCategory?  @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
+  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category         ServiceCategory?    @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
   staff            StaffService[]
   appointments     Appointment[]
   packageTemplates PackageTemplate[]
   customerPackages CustomerPackage[]
+  consumables      ServiceConsumable[]
 
   @@unique([tenantId, id])
 }
@@ -401,4 +402,71 @@ model FinanceTransaction {
   @@unique([tenantId, id])
   @@index([tenantId, occurredAt])
   @@index([tenantId, customerId])
+}
+
+// ---------------------------------------------------------------------
+// Stok ve sarf malzemeleri
+// ---------------------------------------------------------------------
+enum ProductKind {
+  RETAIL
+  CONSUMABLE
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUST
+  CONSUME
+  SALE
+}
+
+model Product {
+  id        String      @id @default(uuid()) @db.Uuid
+  tenantId  String      @db.Uuid
+  name      String
+  sku       String?
+  unit      String      @default("adet")
+  kind      ProductKind @default(CONSUMABLE)
+  stockQty  Decimal     @default(0) @db.Decimal(12, 3)
+  minQty    Decimal     @default(0) @db.Decimal(12, 3)
+  costPrice Decimal?    @db.Decimal(12, 2)
+  salePrice Decimal?    @db.Decimal(12, 2)
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  movements   StockMovement[]
+  consumables ServiceConsumable[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, sku])
+}
+
+// Yalnızca ekleme yapılabilir; stok düzeltmeleri ADJUST hareketiyle yapılır.
+model StockMovement {
+  id            String            @id @default(uuid()) @db.Uuid
+  tenantId      String            @db.Uuid
+  productId     String            @db.Uuid
+  type          StockMovementType
+  qty           Decimal           @db.Decimal(12, 3)
+  note          String?
+  appointmentId String?           @db.Uuid
+  createdById   String?           @db.Uuid
+  createdAt     DateTime          @default(now())
+
+  product Product @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, productId, createdAt])
+}
+
+model ServiceConsumable {
+  tenantId  String  @db.Uuid
+  serviceId String  @db.Uuid
+  productId String  @db.Uuid
+  qty       Decimal @db.Decimal(12, 3)
+
+  service Service @relation(fields: [tenantId, serviceId], references: [tenantId, id], onDelete: Cascade)
+  product Product @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([serviceId, productId])
 }

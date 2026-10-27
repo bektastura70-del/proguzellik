@@ -5,6 +5,7 @@ import { TenantInfo } from "../common/decorators";
 import { addMinutes } from "../common/time";
 import { PrismaService, Tx } from "../prisma/prisma.service";
 import { PackagesService } from "../packages/packages.service";
+import { StockService } from "../stock/stock.service";
 import { AvailabilityService } from "./availability.service";
 
 export interface AppointmentInput {
@@ -164,7 +165,10 @@ export class AppointmentsService {
         where: { id },
         data: { status, ...(status === "CANCELLED" ? { cancelReason: reason } : {}) },
       });
-      if (status === "COMPLETED") await PackagesService.consumeSession(tx, updated);
+      if (status === "COMPLETED") {
+        await PackagesService.consumeSession(tx, updated);
+        await StockService.consumeForAppointment(tx, updated, t.userId);
+      }
       await this.hooks.onStatusChanged(tx, updated, t.userId);
       await this.audit.log(tx, {
         tenantId: t.tenantId,
