@@ -3,6 +3,7 @@
 # Kullanım: rollback.sh <önceki-sürüm>
 # Not: Yeni sürüm geri alınamaz bir migration içeriyorsa önce docs/deployment.md "Veritabanı geri dönüşü" bölümü.
 source "$(dirname "$0")/_lib.sh"
+cd "$PROD_DIR"   # .env'deki COMPOSE_FILE göreli yoldur
 require_env_file
 v="${1:?Kullanım: rollback.sh <önceki-sürüm>}"
 [[ "$v" =~ ^[A-Za-z0-9._-]+$ ]] || die "Geçersiz sürüm adı"
