@@ -52,17 +52,23 @@ class B2:
     def __init__(self):
         self.env = load_env()
         tok = base64.b64encode(f"{self.env['B2_KEY_ID']}:{self.env['B2_APP_KEY']}".encode()).decode()
-        _, body, _ = req("https://api.backblazeb2.com/b2api/v3/b2_authorize_account", headers={"Authorization": "Basic " + tok})
+        _, body, _ = req("https://api.backblazeb2.com/b2api/v2/b2_authorize_account", headers={"Authorization": "Basic " + tok})
         a = json.loads(body)
-        s = a["apiInfo"]["storageApi"]
+        # v2 yanıtı: apiUrl/downloadUrl/s3ApiUrl üst düzeyde; allowed = {bucketId, bucketName, capabilities, namePrefix}
         self.account_id, self.token = a["accountId"], a["authorizationToken"]
-        self.api, self.download_url, self.s3 = s["apiUrl"], s["downloadUrl"], s.get("s3ApiUrl", "")
-        self.allowed = s.get("allowed") or a.get("allowed") or {}
+        self.api, self.download_url, self.s3 = a["apiUrl"], a["downloadUrl"], a.get("s3ApiUrl", "")
+        al = a.get("allowed") or {}
+        self.allowed = {
+            "capabilities": al.get("capabilities") or [],
+            "buckets": [{"id": al.get("bucketId"), "name": al.get("bucketName")}] if al.get("bucketName") else [],
+            "namePrefix": al.get("namePrefix"),
+        }
+        self.auth_shape = {"top": sorted(a.keys()), "allowed": sorted(al.keys())}  # yalnız alan adları, değer yok
         self.master = self.env["B2_KEY_ID"] == self.account_id
         self.bucket = self._bucket()
 
     def call(self, name, payload):
-        _, body, _ = req(f"{self.api}/b2api/v3/{name}", data=json.dumps(payload).encode(),
+        _, body, _ = req(f"{self.api}/b2api/v2/{name}", data=json.dumps(payload).encode(),
                          headers={"Authorization": self.token, "Content-Type": "application/json"})
         return json.loads(body)
 
@@ -99,6 +105,7 @@ class B2:
             "server_side_encryption_default": sse.get("mode"),
         }
         rep["is_master_key"] = self.master
+        rep["auth_response_fields"] = self.auth_shape
         problems = []
         if self.master:
             problems.append("ana (master) anahtar girildi; yalnız bu bucket'a kısıtlı yeni bir Application Key kullanın")
