@@ -14,6 +14,10 @@ die() { log "HATA: $*" >&2; exit 1; }
 [[ -t 0 ]] || die "etkileşimli terminal gerekli (ssh -t)"
 command -v age >/dev/null && command -v age-keygen >/dev/null || die "age kurulu değil"
 install -d -m 700 "$OFF" "$OFF/rclone"
+# Tek temizlik kancası: Google token çıktısı ($W) ve age özel anahtarı ($K) her çıkışta güvenle silinir
+W=""; K=""
+cleanup() { [[ -n "$W" && -d "$W" ]] && { find "$W" -type f -exec shred -u {} + 2>/dev/null; rm -rf "$W"; }; [[ -n "$K" && -e "$K" ]] && shred -u "$K" 2>/dev/null; return 0; }
+trap cleanup EXIT
 
 log "1/4 rclone imajı: $RCLONE_IMAGE"
 docker image inspect "$RCLONE_IMAGE" >/dev/null 2>&1 || docker pull -q "$RCLONE_IMAGE" >/dev/null
@@ -23,7 +27,6 @@ if [[ -s "$OFF/rclone/rclone.conf" ]]; then
 else
   log "2/4 Google girişi"
   W=$(mktemp -d -p /dev/shm gd.XXXXXX); chmod 700 "$W"
-  trap 'find "$W" -type f -exec shred -u {} + 2>/dev/null; rm -rf "$W"' EXIT
   echo
   echo "Aşağıda http://127.0.0.1:53682/auth?state=... biçiminde bir bağlantı görünecek."
   echo "  - Bağlantıyı Mac tarayıcınızda açın (tünel sayesinde sunucudaki rclone a gider, oradan Google girişine yönlenir)"
@@ -91,6 +94,7 @@ os.replace(tmp, sys.argv[2])
 print("token kaydedildi (gösterilmedi)")
 PY
   chmod 600 "$OFF/rclone/rclone.conf"
+  find "$W" -type f -exec shred -u {} + 2>/dev/null; rm -rf "$W"; W=""
 fi
 
 log "3/4 Drive klasörü ve kota"
@@ -110,7 +114,6 @@ if [[ -s "$OFF/age-recipient.txt" ]]; then
   log "Açık anahtar zaten var; yeni anahtar üretilmedi"
 else
   K=$(mktemp -u -p /dev/shm age.XXXXXX)
-  trap 'shred -u "$K" 2>/dev/null || true' EXIT
   ( umask 077; age-keygen -o "$K" 2>/dev/null )
   age-keygen -y "$K" > "$OFF/age-recipient.txt"; chmod 644 "$OFF/age-recipient.txt"
   echo
@@ -121,7 +124,7 @@ else
   echo "Bu anahtar olmadan Drive'daki yedekler AÇILAMAZ. Sohbete yapıştırmayın."
   read -r -p "Kaydettiyseniz 'kaydettim' yazın: " ok
   [[ "$ok" == "kaydettim" ]] || { rm -f "$OFF/age-recipient.txt"; die "Onay yok; açık anahtar silindi, yeniden çalıştırın"; }
-  shred -u "$K"; trap - EXIT
+  shred -u "$K"; K=""
   clear 2>/dev/null || true
   log "Özel anahtar sunucudan silindi"
 fi

@@ -43,8 +43,9 @@ log "Çözüldü ($(du -h "$W/dump" | cut -f1)); anahtar silindi"
 log "Geçici, ağsız PostgreSQL başlatılıyor: $C"
 docker run -d --rm --name "$C" --network none -e POSTGRES_PASSWORD="$(openssl rand -hex 16)" -e POSTGRES_USER=restoretest \
   --memory 384m postgres:16-alpine >/dev/null
-for i in $(seq 1 30); do docker exec "$C" pg_isready -U restoretest >/dev/null 2>&1 && break; sleep 1; done
-docker exec "$C" pg_isready -U restoretest >/dev/null
+for i in $(seq 1 30); do docker exec "$C" pg_isready -h 127.0.0.1 -U restoretest >/dev/null 2>&1 && break; sleep 1; done
+# -h 127.0.0.1: imajın ilk kurulumdaki geçici sunucusu yalnız soket dinler; TCP yanıtı = asıl sunucu hazır
+docker exec "$C" pg_isready -h 127.0.0.1 -U restoretest >/dev/null || die "geçici PostgreSQL başlamadı"
 for r in proguzellik_owner app_tenant app_platform; do docker exec "$C" psql -q -U restoretest -d postgres -c "CREATE ROLE $r NOLOGIN" >/dev/null; done
 docker exec "$C" psql -q -U restoretest -d postgres -c "CREATE DATABASE rt OWNER proguzellik_owner" >/dev/null
 docker exec -i "$C" pg_restore -U restoretest -d rt --exit-on-error < "$W/dump"
