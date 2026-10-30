@@ -57,7 +57,8 @@ class B2:
         s = a["apiInfo"]["storageApi"]
         self.account_id, self.token = a["accountId"], a["authorizationToken"]
         self.api, self.download_url, self.s3 = s["apiUrl"], s["downloadUrl"], s.get("s3ApiUrl", "")
-        self.allowed = s.get("allowed", {})
+        self.allowed = s.get("allowed") or a.get("allowed") or {}
+        self.master = self.env["B2_KEY_ID"] == self.account_id
         self.bucket = self._bucket()
 
     def call(self, name, payload):
@@ -97,7 +98,10 @@ class B2:
             "can_write_retention": "writeFileRetentions" in caps,
             "server_side_encryption_default": sse.get("mode"),
         }
+        rep["is_master_key"] = self.master
         problems = []
+        if self.master:
+            problems.append("ana (master) anahtar girildi; yalnız bu bucket'a kısıtlı yeni bir Application Key kullanın")
         if rep["bucket_type"] != "allPrivate":
             problems.append("bucket private değil")
         if abuckets != [self.env["B2_BUCKET"]]:
