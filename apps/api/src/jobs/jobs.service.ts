@@ -4,6 +4,7 @@ import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { SubscriptionsService } from "../billing/subscriptions.service";
 import { loadEnv } from "../config/env";
+import { PaymentReminderService } from "../platform/finance/payment-reminder.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 export const DAILY_JOB = "subscription-lifecycle";
@@ -29,6 +30,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly subs: SubscriptionsService,
+    private readonly reminders: PaymentReminderService,
   ) {}
 
   async onModuleInit() {
@@ -74,7 +76,9 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       run = prev;
     }
     try {
-      const result = await this.subs.runLifecycle(now);
+      const lifecycle = await this.subs.runLifecycle(now);
+      const pay = await this.reminders.sendOverdue(now);
+      const result = { ...lifecycle, paymentReminders: pay.paymentReminders, errors: [...lifecycle.errors, ...pay.paymentReminderErrors] };
       await db.jobRun.update({
         where: { id: run.id },
         data: { status: result.errors.length ? "PARTIAL" : "SUCCESS", finishedAt: new Date(), result: result as unknown as Prisma.InputJsonValue },

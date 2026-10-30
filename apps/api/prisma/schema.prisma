@@ -719,10 +719,27 @@ model OutboundEmail {
   providerMessageId String?
   dedupeKey         String?   @unique
   error             String?
+  /// Yeniden denemek için şablon değişkenleri. Bağlantı/belirteç içeren şablonlarda tutulmaz.
+  payload           Json?
+  attempts          Int       @default(1)
+  lastAttemptAt     DateTime?
+  tenantId          String?   @db.Uuid
+  /// Owner'ın gönderdiği bilgilendirmelerde gönderen
+  actorId           String?   @db.Uuid
   createdAt         DateTime  @default(now())
   sentAt            DateTime?
 
   @@index([to, createdAt])
+  @@index([status, createdAt])
+}
+
+/// SaaS sahibinin düzenlediği e-posta şablonu metni (konu + paragraflar). Bağlantı butonu sistemce eklenir.
+model EmailTemplateOverride {
+  name        String   @id
+  subject     String
+  body        String
+  updatedAt   DateTime @updatedAt
+  updatedById String?  @db.Uuid
 }
 
 /// Zamanlanmış görev çalıştırma kaydı (aynı gün ikinci kez çalışmayı önler).

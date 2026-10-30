@@ -9,6 +9,8 @@ import { PrismaService, Tx } from "../prisma/prisma.service";
 import { StaffLimitPolicy } from "../staff/staff.service";
 import { PaymentProvider } from "./payment-provider";
 
+/** Deneme bitişine kaç gün kala hatırlatma gönderilir (büyükten küçüğe). */
+export const TRIAL_REMINDER_THRESHOLDS = [7, 3, 1] as const;
 const DAY = 86_400_000;
 
 export const addPeriod = (d: Date, cycle: BillingCycle) => {
@@ -150,7 +152,7 @@ export class SubscriptionsService {
 
   private async mail(tenantId: string, tpl: Parameters<EmailService["send"]>[1], dedupeKey: string) {
     const to = await this.ownerEmail(tenantId);
-    if (to) await this.email.send(to, tpl, { dedupeKey });
+    if (to) await this.email.send(to, tpl, { dedupeKey, tenantId });
   }
 
   /**
@@ -172,14 +174,15 @@ export class SubscriptionsService {
       }
     };
 
-    // 1) Deneme bitişi yaklaşanlara hatırlatma (her işletmeye bir kez)
-    const soon = await db.tenant.findMany({ where: { status: "TRIAL", trialEndsAt: { gt: now, lte: new Date(now.getTime() + env.TRIAL_REMINDER_DAYS * DAY) } } });
+    // 1) Deneme bitişine 7, 3 ve 1 gün kala hatırlatma (her eşik için bir kez; iş bir gün kaçırılırsa sıradaki eşikte gönderilir)
+    const soon = await db.tenant.findMany({ where: { status: "TRIAL", trialEndsAt: { gt: now, lte: new Date(now.getTime() + TRIAL_REMINDER_THRESHOLDS[0] * DAY) } } });
     for (const t of soon) {
       await guard(`trial-reminder ${t.id}`, async () => {
         const days = Math.max(1, Math.ceil((t.trialEndsAt!.getTime() - now.getTime()) / DAY));
+        const threshold = [...TRIAL_REMINDER_THRESHOLDS].reverse().find((d) => days <= d)!;
         const to = await this.ownerEmail(t.id);
         if (!to) return;
-        const res = await this.email.send(to, { name: "trial_ending", vars: { salon: t.name, days, link } }, { dedupeKey: `trial-reminder:${t.id}:${t.trialEndsAt!.toISOString()}` });
+        const res = await this.email.send(to, { name: "trial_ending", vars: { salon: t.name, days, link } }, { dedupeKey: `trial-reminder:${t.id}:${t.trialEndsAt!.toISOString()}:${threshold}`, tenantId: t.id });
         if (!("skipped" in res)) r.trialReminders++;
       });
     }

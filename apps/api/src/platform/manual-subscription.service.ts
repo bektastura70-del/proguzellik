@@ -1,6 +1,8 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { BillingCycle, Prisma, Subscription, SubscriptionGrantAction, Tenant, TenantStatus } from "@prisma/client";
 import { addPeriod } from "../billing/subscriptions.service";
+import { appUrl, loadEnv } from "../config/env";
+import { EmailService } from "../email/email.service";
 import { PrismaService, Tx } from "../prisma/prisma.service";
 import { TenantAdminService } from "./tenant-admin.service";
 
@@ -54,7 +56,27 @@ export class ManualSubscriptionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantAdmin: TenantAdminService,
+    private readonly email: EmailService,
   ) {}
+
+  /** Yeni/yenilenen dönem için işletme sahibine bilgi verir. Gönderilemezse işlem geri alınmaz; geçmişte FAILED/NOT_CONFIGURED görünür. */
+  private async notifyStarted(r: ManualResult, actorId: string) {
+    if (r.replayed) return r;
+    const s = r.subscription;
+    const [tenant, owner, plan] = await Promise.all([
+      this.db.tenant.findUnique({ where: { id: s.tenantId }, select: { name: true } }),
+      this.db.membership.findFirst({ where: { tenantId: s.tenantId, role: "OWNER", isActive: true }, select: { user: { select: { email: true } } } }),
+      this.db.plan.findUnique({ where: { code: s.planCode }, select: { name: true } }),
+    ]);
+    if (!tenant || !owner) return r;
+    const until = s.currentPeriodEnd.toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" });
+    await this.email.send(
+      owner.user.email,
+      { name: "subscription_started", vars: { salon: tenant.name, plan: plan?.name ?? s.planCode, until, complimentary: s.isComplimentary, link: `${appUrl(loadEnv())}/panel/abonelik` } },
+      { dedupeKey: `subscription-started:${r.grant.id}`, tenantId: s.tenantId, actorId },
+    );
+    return r;
+  }
 
   private get db() {
     return this.prisma.platform;
@@ -132,7 +154,7 @@ export class ManualSubscriptionService {
     const exists = await this.db.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
     if (!exists) throw new NotFoundException("İşletme bulunamadı");
     await this.tenantAdmin.assertPlanFits(tenantId, i.planCode);
-    return this.run(i.requestId, { tenantId, action: "CREATED" }, tenantId, async (tx) => {
+    const res = await this.run(i.requestId, { tenantId, action: "CREATED" }, tenantId, async (tx) => {
       const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId } });
       const open = await tx.subscription.findFirst({ where: { tenantId, status: { in: ["ACTIVE", "PAST_DUE"] } } });
       if (open) {
@@ -164,6 +186,7 @@ export class ManualSubscriptionService {
       await this.log(tx, actorId, ip, "platform.subscription_manual_created", sub, { plan: plan.code, cycle: i.billingCycle, until: end.toISOString(), complimentary: i.complimentary, agreedAmount: grant.agreedAmount.toFixed(2), note: i.note });
       return { subscription: sub, grant };
     });
+    return this.notifyStarted(res, actorId);
   }
 
   /** Süre uzatma: bitiş tarihine (geçmişse bugüne) gün ekler. */
@@ -186,7 +209,7 @@ export class ManualSubscriptionService {
   /** Yenileme: yeni dönem; süre bitmediyse dönem sonundan, bittiyse bugünden başlar. */
   async renew(subscriptionId: string, actorId: string, i: ManualRenewInput, ip?: string) {
     const tenantId = await this.tenantIdOf(subscriptionId);
-    return this.run(i.requestId, { subscriptionId, action: "RENEWED" }, tenantId, async (tx) => {
+    const res = await this.run(i.requestId, { subscriptionId, action: "RENEWED" }, tenantId, async (tx) => {
       const { sub, tenant } = await this.loadManual(tx, subscriptionId, ["ACTIVE", "PAST_DUE"]);
       const now = new Date();
       const start = sub.status === "ACTIVE" && sub.currentPeriodEnd > now ? sub.currentPeriodEnd : now;
@@ -202,6 +225,7 @@ export class ManualSubscriptionService {
       await this.log(tx, actorId, ip, "platform.subscription_manual_renewed", sub, { from: start.toISOString(), until: end.toISOString(), complimentary: i.complimentary, agreedAmount: grant.agreedAmount.toFixed(2), note: i.note });
       return { subscription: updated, grant };
     });
+    return this.notifyStarted(res, actorId);
   }
 
   /** Paket atama: manuel aboneliğin ve işletmenin paketini değiştirir (personel sınırı kontrolüyle). */

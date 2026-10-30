@@ -189,6 +189,7 @@ export function LedgerDialog({ tenantId, onClose }: { tenantId: string; onClose:
                     <>
                       <Button size="sm" variant="ghost" onClick={() => setAction({ kind: "PAYMENT", accrual: e })}>Tahsilat</Button>
                       <Button size="sm" variant="ghost" onClick={() => setAction({ kind: "ACCRUAL_CANCEL", accrual: e })}>İptal</Button>
+                      <Button size="sm" variant="ghost" onClick={() => api<{ to: string }>(`/platform/finance/entries/${e.id}/remind`, { method: "POST" }).then((r) => toast(`Ödeme hatırlatması gönderildi: ${r.to}`), (err) => toast((err as Error).message, "red"))}>Hatırlat</Button>
                     </>
                   )}
                   {e.type === "ACCRUAL" && (!e.invoice || e.invoice.status === "CANCELLED") && <Button size="sm" variant="ghost" onClick={() => draftFrom(e.id)}>Fatura taslağı</Button>}

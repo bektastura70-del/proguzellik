@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Logo } from "@/components/logo";
 import { InviteBadge, NewTenantDialog, TenantDetailDialog } from "@/components/platform/tenant-admin";
+import { EmailCenter } from "@/components/platform/email-admin";
 import { CompanySettingsCard, FinanceOverview } from "@/components/platform/finance-admin";
 import { PlansCard, SubscriptionsCard } from "@/components/platform/plan-admin";
 import { UsersCard } from "@/components/platform/user-admin";
@@ -22,7 +23,7 @@ export default function PlatformPage() {
   const tenants = useApi<TenantRow[]>(`/platform/tenants?${new URLSearchParams({ ...(status ? { status } : {}), ...(search ? { search } : {}) })}`);
   const allTenants = useApi<TenantRow[]>("/platform/tenants");
   const [detail, setDetail] = useState<string | null>(null);
-  const [tab, setTab] = useState<"tenants" | "subscriptions" | "users" | "finance" | "company">("tenants");
+  const [tab, setTab] = useState<"tenants" | "subscriptions" | "users" | "finance" | "emails" | "company">("tenants");
   const [creating, setCreating] = useState(false);
   const jobs = useApi<{ id: string; runKey: string; status: string; startedAt: string; finishedAt: string | null; result: Record<string, unknown> | null; error: string | null }[]>("/platform/jobs");
 
@@ -49,13 +50,14 @@ export default function PlatformPage() {
         </div>
       )}
       <div role="tablist" aria-label="Yönetim bölümleri" className="mt-6 inline-flex flex-wrap rounded-xl border border-sand-200 bg-white p-1 text-sm">
-        {([["tenants", "İşletmeler ve paketler"], ["subscriptions", "Abonelikler"], ["users", "Kullanıcılar"], ["finance", "Finans"], ["company", "Şirket ayarları"]] as const).map(([k, label]) => (
+        {([["tenants", "İşletmeler ve paketler"], ["subscriptions", "Abonelikler"], ["users", "Kullanıcılar"], ["finance", "Finans"], ["emails", "E-postalar"], ["company", "Şirket ayarları"]] as const).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} className={`rounded-lg px-4 py-1.5 ${tab === k ? "bg-brand-600 text-white" : "text-neutral-600 hover:bg-sand-100"}`} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
       {tab === "users" && <UsersCard tenants={allTenants.data ?? []} />}
       {tab === "subscriptions" && <SubscriptionsCard onOpenTenant={setDetail} />}
       {tab === "finance" && <div className="mt-6"><FinanceOverview tenants={allTenants.data ?? []} /></div>}
+      {tab === "emails" && <EmailCenter tenants={allTenants.data ?? []} />}
       {tab === "company" && <CompanySettingsCard />}
       {tab === "tenants" && (<>
       <Card className="mt-6">

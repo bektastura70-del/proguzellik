@@ -41,7 +41,6 @@ const schema = z.object({
   JOBS_ENABLED: z.enum(["0", "1"]).default("1"),
   JOBS_CRON: z.string().default("0 3 * * *"),
   BILLING_GRACE_DAYS: z.coerce.number().min(0).max(60).default(7),
-  TRIAL_REMINDER_DAYS: z.coerce.number().min(1).max(14).default(3),
   TRUST_PROXY: z.enum(["0", "1"]).default("1"),
   // Yeni işletme kaydı. Tanımsızsa: canlıda (NODE_ENV=production) kapalı, diğer ortamlarda açık.
   REGISTRATION_ENABLED: z.enum(["0", "1"]).optional(),

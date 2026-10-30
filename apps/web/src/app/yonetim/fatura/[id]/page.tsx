@@ -51,6 +51,7 @@ export default function InvoicePage({ params }: { params: Promise<{ id: string }
         {draft && <Button size="sm" variant="outline" onClick={() => setMode("edit")}>Kalemleri düzenle</Button>}
         {draft && <Button size="sm" onClick={() => act(() => api(`/platform/invoices/${i.id}/issue`, { method: "POST" }), "Fatura düzenlendi")}>e-Fatura/e-Arşiv olarak düzenle</Button>}
         {draft && <Button size="sm" variant="outline" onClick={() => setMode("record")}>Harici faturayı kaydet</Button>}
+        {(i.status === "RECORDED" || i.status === "ISSUED") && <Button size="sm" variant="outline" onClick={() => act(() => api(`/platform/invoices/${i.id}/notify`, { method: "POST" }), "Fatura bildirimi gönderildi")}>İşletmeye e-posta ile bildir</Button>}
         {(draft || i.status === "RECORDED") && <Button size="sm" variant="ghost" className="text-red-600" onClick={() => setMode("cancel")}>İptal et</Button>}
       </div>
       {err && <div className="mb-4 print:hidden"><Alert>{err}</Alert></div>}

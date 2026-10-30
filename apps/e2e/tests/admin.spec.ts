@@ -295,6 +295,53 @@ test.describe("SaaS sahibi paneli", () => {
     void tenantId;
   });
 
+  test("e-postalar: şablon düzenleme/önizleme, tek işletmeye bilgilendirme ve gönderim geçmişi", async ({ page }) => {
+    const name = uniq("Eposta Salon");
+    const email = `${uniq("eposta").replace(" ", "-")}@ornek.test`;
+    const created = await page.request.post("/api/p/platform/tenants", { data: { name, ownerName: "Eposta Sahip", ownerEmail: email, planCode: "STARTER", trialDays: 14 } });
+    expect(created.status()).toBe(201);
+
+    await page.goto("/yonetim");
+    await page.getByRole("tab", { name: "E-postalar" }).click();
+    const tpl = page.getByRole("row").filter({ hasText: "Ödeme hatırlatması" });
+    await tpl.getByRole("button", { name: "Düzenle" }).click();
+    const dlg = page.getByRole("dialog");
+    await dlg.getByLabel("Konu").fill("Hatırlatma: {salon} {yok}");
+    await dlg.getByRole("button", { name: "Kaydet" }).click();
+    await expect(dlg.getByText(/Bilinmeyen değişken: \{yok\}/)).toBeVisible();
+    await dlg.getByLabel("Konu").fill("Hatırlatma: {salon}");
+    await dlg.getByRole("button", { name: "Önizle" }).click();
+    await expect(dlg.getByText("Hatırlatma: Örnek Güzellik").first()).toBeVisible();
+    await dlg.getByRole("button", { name: "Kaydet" }).click();
+    await expectToast(page, "Şablon kaydedildi");
+    await expect(tpl).toContainText("Özelleştirildi");
+    await tpl.getByRole("button", { name: "Düzenle" }).click();
+    await dlg.getByRole("button", { name: "Varsayılana dön" }).click();
+    await expectToast(page, "Varsayılan metne dönüldü");
+    await expect(tpl).toContainText("Varsayılan");
+    await expect(page.getByRole("row").filter({ hasText: "Parola sıfırlama" })).toContainText("Sabit");
+
+    await page.getByRole("button", { name: "Bilgilendirme gönder" }).click();
+    await expect(dlg.getByText(/İYS onayı/)).toBeVisible();
+    // Sahibi daveti henüz kabul etmemiş işletmeye gönderilemez
+    await dlg.getByLabel("İşletme").selectOption({ label: name });
+    await dlg.getByLabel("Konu").fill("Planlı bakım");
+    await dlg.getByLabel("Mesaj").fill("Pazar 02:00-03:00 arasında kısa bir bakım yapılacaktır.");
+    await dlg.getByLabel(/ticari ileti değildir/).check();
+    await dlg.getByRole("button", { name: "Gönder" }).click();
+    await expect(dlg.getByText("Seçime uyan aktif işletme sahibi yok")).toBeVisible();
+    await dlg.getByLabel(/ticari ileti değildir/).uncheck();
+    const subject = uniq("Planlı bakım");
+    await dlg.getByLabel("İşletme").selectOption({ label: "Örnek Kuaför" });
+    await dlg.getByLabel("Konu").fill(subject);
+    await dlg.getByLabel("Mesaj").fill("Pazar 02:00-03:00 arasında kısa bir bakım yapılacaktır.");
+    await expect(dlg.getByRole("button", { name: "Gönder" })).toBeDisabled();
+    await dlg.getByLabel(/ticari ileti değildir/).check();
+    await dlg.getByRole("button", { name: "Gönder" }).click();
+    await expectToast(page, "1 gönderildi");
+    await expect(page.getByRole("row").filter({ hasText: subject })).toContainText("Gönderildi");
+  });
+
   test("manuel abonelik: ücretsiz oluşturma, süre uzatma ve dönem sonu iptali; tahsilattan ayrı listelenir", async ({ page }) => {
     const name = uniq("Manuel Salon");
     const created = await page.request.post("/api/p/platform/tenants", {

@@ -1,11 +1,14 @@
-import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, ServiceUnavailableException } from "@nestjs/common";
 import type { Request } from "express";
 import { z } from "zod";
 import { AuthUser, CurrentUser, PlatformAdmin } from "../../common/decorators";
 import { ZodPipe } from "../../common/zod.pipe";
-import { inviteDeliveryEnabled, loadEnv } from "../../config/env";
+import { loadEnv } from "../../config/env";
+import { EmailService, SendResult } from "../../email/email.service";
+import { PrismaService } from "../../prisma/prisma.service";
 import { PlatformFinanceService, toCsv } from "./finance.service";
 import { PlatformInvoiceService } from "./invoice.service";
+import { PaymentReminderService } from "./payment-reminder.service";
 
 const opt = (max: number) => z.string().trim().max(max).transform((v) => (v === "" ? null : v)).nullable().optional();
 const companySchema = z.object({
@@ -65,7 +68,17 @@ export class PlatformFinanceController {
   constructor(
     private readonly finance: PlatformFinanceService,
     private readonly invoices: PlatformInvoiceService,
+    private readonly mailer: PaymentReminderService,
+    private readonly email: EmailService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  /** Gönderim sonucu: başarısızsa (SMTP yok ya da sağlayıcı hatası) 503, gönderilmiş gibi gösterilmez. */
+  private async mailed(u: AuthUser, req: Request, action: string, entity: string, entityId: string, r: SendResult & { to?: string }) {
+    await this.prisma.platform.auditLog.create({ data: { actorId: u.id, ip: req.ip, action, entity, entityId, metadata: { result: "sent" in r ? "sent" : "failed" in r ? r.code : "skipped" } } });
+    if ("failed" in r) throw new ServiceUnavailableException({ message: r.code === "EMAIL_NOT_CONFIGURED" ? "E-posta (SMTP) yapılandırılmadı; e-posta GÖNDERİLMEDİ." : "E-posta gönderilemedi; gönderim geçmişinden tekrar deneyin.", code: r.code });
+    return { sent: "sent" in r, to: r.to };
+  }
 
   @Get("company")
   async company() {
@@ -74,7 +87,7 @@ export class PlatformFinanceController {
     return {
       company: await this.finance.company(),
       // SMTP kimlik bilgileri veritabanında tutulmaz ve dışarı verilmez; yalnızca durum gösterilir.
-      email: { mode: env.EMAIL_MODE, smtpConfigured, from: env.EMAIL_FROM, deliveryEnabled: inviteDeliveryEnabled(env) },
+      email: { mode: env.EMAIL_MODE, smtpConfigured, from: env.EMAIL_FROM, deliveryEnabled: this.email.deliveryConfigured },
       einvoice: this.invoices.einvoiceStatus,
     };
   }
@@ -163,6 +176,18 @@ export class PlatformFinanceController {
   @HttpCode(200)
   recordInvoice(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(recordSchema)) b: z.infer<typeof recordSchema>, @Req() req: Request) {
     return this.invoices.record(id, u.id, b, req.ip);
+  }
+
+  @Post("finance/entries/:id/remind")
+  @HttpCode(200)
+  async remind(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Req() req: Request) {
+    return this.mailed(u, req, "platform.payment_reminder_sent", "PlatformLedgerEntry", id, await this.mailer.remind(id, { actorId: u.id }));
+  }
+
+  @Post("invoices/:id/notify")
+  @HttpCode(200)
+  async notifyInvoice(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Req() req: Request) {
+    return this.mailed(u, req, "platform.invoice_notified", "PlatformInvoice", id, await this.mailer.notifyInvoice(id, u.id));
   }
 
   @Post("invoices/:id/issue")

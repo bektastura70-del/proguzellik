@@ -61,7 +61,7 @@ describe("Günlük abonelik görevi (deneme, yenileme, gecikme, iptal, paket sı
     expect(runs[0].status).toBe("SUCCESS");
   });
 
-  it("deneme bitişine 3 gün kala tek hatırlatma; bitince salt okunur (PAST_DUE)", async () => {
+  it("deneme bitişine 3 gün kala tek hatırlatma (aynı eşikte ikinci kez gönderilmez); bitince salt okunur (PAST_DUE)", async () => {
     const t = await createTenantWithUser(su, { name: "Deneme Salon", email: "deneme@test.local", status: "TRIAL" });
     await su.tenant.update({ where: { id: t.tenant.id }, data: { trialEndsAt: new Date(now.getTime() + 2 * DAY) } });
     await run({ at: now });
@@ -73,6 +73,22 @@ describe("Günlük abonelik görevi (deneme, yenileme, gecikme, iptal, paket sı
     expect(after.status).toBe("PAST_DUE");
     expect(after.pastDueSince?.getTime()).toBe(now.getTime() + 2 * DAY);
     expect(mail.outbox.filter((m) => m.to === "deneme@test.local" && m.subject === "Deneme süreniz sona erdi")).toHaveLength(1);
+  });
+
+  it("deneme hatırlatmaları 7, 3 ve 1 gün kala birer kez gönderilir", async () => {
+    const t = await createTenantWithUser(su, { name: "Yedi Gün", email: "yedigun@test.local", status: "TRIAL" });
+    const base = new Date(now.getTime() + 1000 * DAY);
+    await su.tenant.update({ where: { id: t.tenant.id }, data: { trialEndsAt: new Date(base.getTime() + 7 * DAY) } });
+    const sent = () => mail.outbox.filter((m) => m.to === "yedigun@test.local" && m.subject.startsWith("Deneme sürenizin bitmesine"));
+    await run({ at: base });
+    await run({ at: new Date(base.getTime() + 1 * DAY) }); // 6 gün: 7 eşiği zaten gönderildi
+    expect(sent()).toHaveLength(1);
+    await run({ at: new Date(base.getTime() + 4 * DAY) }); // 3 gün
+    await run({ at: new Date(base.getTime() + 4 * DAY + 3_600_000), force: true });
+    expect(sent()).toHaveLength(2);
+    await run({ at: new Date(base.getTime() + 6 * DAY) }); // 1 gün
+    expect(sent()).toHaveLength(3);
+    expect(sent().map((m) => m.subject)).toEqual([expect.stringContaining("7"), expect.stringContaining("3"), expect.stringContaining("1")]);
   });
 
   it("ödeme süresi (7 gün) dolunca abonelik iptal olur", async () => {
