@@ -46,14 +46,42 @@ for line in sys.stdin:
 ' "$W/out"
   [[ ${PIPESTATUS[0]} -eq 0 ]] || die "Google yetkilendirmesi tamamlanmadı"
   python3 -I - "$W/out" "$OFF/rclone/rclone.conf" <<'PY'
-import json, os, re, sys
+import base64, json, os, re, sys
+# rclone, işaretler arasına ya düz JSON token ya da (base64 seçenekle çağrıldığında) base64 kodlu
+# {"token": "<json>"} yazar. İkisi de desteklenir; hata durumunda yalnız alan ADLARI yazılır, değerler asla.
 txt = open(sys.argv[1]).read()
-m = re.search(r"--->\s*(\{.*?\})\s*<---", txt, re.S)
+m = re.search(r"--->(.*?)<---", txt, re.S)
 if not m:
-    sys.exit("HATA: token çıktıda bulunamadı")
-tok = json.loads(m.group(1))
-if "access_token" not in tok or "refresh_token" not in tok:
-    sys.exit("HATA: token eksik (refresh_token yok)")
+    sys.exit("HATA: token işaretleri çıktıda bulunamadı")
+blob = "".join(m.group(1).split())
+def parse(s):
+    if s.startswith("{"):
+        return json.loads(s)
+    return json.loads(base64.urlsafe_b64decode(s + "=" * (-len(s) % 4)).decode())
+def find_token(d, depth=0):
+    if isinstance(d, str):
+        try:
+            d = json.loads(d)
+        except ValueError:
+            return None
+    if not isinstance(d, dict) or depth > 3:
+        return None
+    if "access_token" in d:
+        return d
+    for v in d.values():
+        t = find_token(v, depth + 1)
+        if t:
+            return t
+    return None
+try:
+    data = parse(blob)
+except Exception:
+    sys.exit("HATA: token çözülemedi (biçim: %d karakter, ilk karakter türü %s)" % (len(blob), "json" if blob[:1] == "{" else "base64?"))
+tok = find_token(data)
+if not tok:
+    sys.exit("HATA: access_token bulunamadı; gelen alanlar: %s" % (sorted(data) if isinstance(data, dict) else type(data).__name__))
+if "refresh_token" not in tok:
+    sys.exit("HATA: refresh_token yok; alanlar: %s" % sorted(tok))
 conf = "[gdrive]\ntype = drive\nscope = drive.file\ntoken = " + json.dumps(tok, separators=(",", ":")) + "\n"
 tmp = sys.argv[2] + ".tmp"
 fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
