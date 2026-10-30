@@ -28,6 +28,21 @@ export function renderTemplate(template: TemplateName, p: string[]): string {
   }
 }
 
+/** WhatsApp bağlı değil: mesaj gönderilmez ve "gönderildi" sayılmaz. */
+export class WhatsAppNotConfiguredError extends Error {
+  constructor() {
+    super("WhatsApp Business hesabı bağlı değil: mesaj gönderilmedi");
+  }
+}
+
+/** Canlıda WHATSAPP_MODE=cloud değilse kullanılır: hiçbir şey göndermez, numara/metin loglamaz. */
+export class DisabledWhatsAppProvider extends WhatsAppProvider {
+  readonly name = "disabled";
+  async sendTemplate(): Promise<{ messageId: string }> {
+    throw new WhatsAppNotConfiguredError();
+  }
+}
+
 /** Yerel/test sağlayıcısı: HİÇBİR MESAJ GÖNDERMEZ, yalnızca bellekte tutar ve loglar. */
 @Injectable()
 export class MockWhatsAppProvider extends WhatsAppProvider {

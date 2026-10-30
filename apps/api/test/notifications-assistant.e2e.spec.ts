@@ -3,7 +3,8 @@ import { createHmac } from "node:crypto";
 import request from "supertest";
 import { AnthropicAiProvider, MockAiProvider } from "../src/assistant/ai.provider";
 import { NotificationQueue } from "../src/notifications/notification-queue";
-import { CloudWhatsAppProvider, MockWhatsAppProvider } from "../src/notifications/whatsapp.provider";
+import { PrismaService } from "../src/prisma/prisma.service";
+import { CloudWhatsAppProvider, DisabledWhatsAppProvider, MockWhatsAppProvider } from "../src/notifications/whatsapp.provider";
 import { api, createApp, createTenantWithUser, futureAt, login, owner, resetDb, setupSalon } from "./helpers";
 
 async function waitFor<T>(fn: () => Promise<T>, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
@@ -87,6 +88,19 @@ describe("WhatsApp bildirim altyapısı (BullMQ + test sağlayıcısı) ve yapay
     await expect(q.process({ data: { notificationId: n.id }, attemptsMade: 4 } as never)).rejects.toThrow();
     const after = await su.notification.findUniqueOrThrow({ where: { id: n.id } });
     expect(after).toMatchObject({ status: "FAILED", attempts: 2 });
+  });
+
+  it("canlıda WhatsApp bağlı değilse mesaj 'gönderildi' sayılmaz; atlandı olarak işaretlenir", async () => {
+    const q = new NotificationQueue(app.get(PrismaService), new DisabledWhatsAppProvider());
+    const n = await su.notification.create({
+      data: { tenantId: A.tenant.id, recipient: "05550000002", template: "randevu_onay", payload: { params: ["a", "b", "c", "d", "e"] } },
+    });
+    const before = outbox.length;
+    expect(await q.process({ data: { notificationId: n.id }, attemptsMade: 0 } as never)).toBe("not_configured");
+    const after = await su.notification.findUniqueOrThrow({ where: { id: n.id } });
+    expect(after).toMatchObject({ status: "SKIPPED", providerMessageId: null, sentAt: null });
+    expect(after.error).toMatch(/bağlı değil/);
+    expect(outbox.length).toBe(before);
   });
 
   it("Başlangıç paketinde (WhatsApp yok) bildirim oluşmaz", async () => {

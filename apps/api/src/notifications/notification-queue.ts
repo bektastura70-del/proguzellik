@@ -3,7 +3,7 @@ import { Job, Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { loadEnv } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
-import { WhatsAppProvider } from "./whatsapp.provider";
+import { WhatsAppNotConfiguredError, WhatsAppProvider } from "./whatsapp.provider";
 
 export const QUEUE_NAME = "notifications";
 const MAX_ATTEMPTS = 5;
@@ -80,6 +80,10 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
       });
       return "sent";
     } catch (e) {
+      if (e instanceof WhatsAppNotConfiguredError) {
+        await db.notification.update({ where: { id: n.id }, data: { status: "SKIPPED", attempts: { increment: 1 }, error: e.message } });
+        return "not_configured";
+      }
       const last = job.attemptsMade + 1 >= MAX_ATTEMPTS;
       await db.notification.update({
         where: { id: n.id },

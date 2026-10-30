@@ -3,7 +3,7 @@ import { loadEnv } from "../config/env";
 import { NotificationQueue } from "./notification-queue";
 import { NotificationHooks } from "./notification.hooks";
 import { NotificationsController } from "./notifications.controller";
-import { CloudWhatsAppProvider, MockWhatsAppProvider, WhatsAppProvider } from "./whatsapp.provider";
+import { CloudWhatsAppProvider, DisabledWhatsAppProvider, MockWhatsAppProvider, WhatsAppProvider } from "./whatsapp.provider";
 
 @Global()
 @Module({
@@ -12,7 +12,12 @@ import { CloudWhatsAppProvider, MockWhatsAppProvider, WhatsAppProvider } from ".
     MockWhatsAppProvider,
     {
       provide: WhatsAppProvider,
-      useFactory: (mock: MockWhatsAppProvider) => (loadEnv().WHATSAPP_MODE === "cloud" ? new CloudWhatsAppProvider() : mock),
+      useFactory: (mock: MockWhatsAppProvider) => {
+        const env = loadEnv();
+        if (env.WHATSAPP_MODE === "cloud") return new CloudWhatsAppProvider();
+        // Canlıda test sağlayıcısı kullanılmaz: sahte "gönderildi" kaydı ve kişisel veri logu olmaz.
+        return env.NODE_ENV === "production" ? new DisabledWhatsAppProvider() : mock;
+      },
       inject: [MockWhatsAppProvider],
     },
     NotificationQueue,
