@@ -183,22 +183,30 @@ export class AuthService {
   async forgotPassword(email: string, ip?: string) {
     const user = await this.db.user.findUnique({ where: { email: email.toLowerCase() } });
     if (user && user.isActive) {
-      const token = randomToken();
-      await this.db.$transaction([
-        this.db.authToken.updateMany({ where: { userId: user.id, type: "PASSWORD_RESET", usedAt: null }, data: { usedAt: new Date() } }),
-        this.db.authToken.create({
-          data: { userId: user.id, type: "PASSWORD_RESET", tokenHash: sha256(token), expiresAt: new Date(Date.now() + RESET_MINUTES * 60_000), ip },
-        }),
-      ]);
-      await this.email.send(user.email, {
-        name: "password_reset",
-        vars: { fullName: user.fullName, link: `${appUrl(loadEnv())}/parola-sifirla?token=${token}`, minutes: RESET_MINUTES },
-      });
+      await this.issuePasswordReset(user, ip);
       await this.audit.logPlatform({ action: "auth.password_reset_requested", actorId: user.id, ip });
     } else {
       await bcrypt.compare("x", DUMMY_HASH);
     }
     return { ok: true, message: "Bu e-posta ile bir hesap varsa sıfırlama bağlantısı gönderildi." };
+  }
+
+  /**
+   * Tek kullanımlık sıfırlama bağlantısı üretip e-postayla gönderir; önceki açık bağlantılar geçersiz olur.
+   * Belirteç yalnızca e-postada bulunur (yanıt, log ve denetim kaydına yazılmaz).
+   */
+  async issuePasswordReset(user: { id: string; email: string; fullName: string }, ip?: string) {
+    const token = randomToken();
+    await this.db.$transaction([
+      this.db.authToken.updateMany({ where: { userId: user.id, type: "PASSWORD_RESET", usedAt: null }, data: { usedAt: new Date() } }),
+      this.db.authToken.create({
+        data: { userId: user.id, type: "PASSWORD_RESET", tokenHash: sha256(token), expiresAt: new Date(Date.now() + RESET_MINUTES * 60_000), ip },
+      }),
+    ]);
+    return this.email.send(user.email, {
+      name: "password_reset",
+      vars: { fullName: user.fullName, link: `${appUrl(loadEnv())}/parola-sifirla?token=${token}`, minutes: RESET_MINUTES },
+    });
   }
 
   private async consumeToken(token: string, type: "PASSWORD_RESET" | "EMAIL_VERIFY") {
@@ -314,6 +322,23 @@ export class AuthService {
     return { disabled: true };
   }
 
+  /**
+   * Hassas yönetici işlemleri için yeniden kimlik doğrulama: parola + güncel 2FA kodu.
+   * Kod tekrar kullanılamaz (son adım kaydedilir).
+   */
+  async reauthenticate(userId: string, password: string, code: string, ip?: string) {
+    const user = await this.db.user.findUniqueOrThrow({ where: { id: userId } });
+    const okPw = await bcrypt.compare(password, user.passwordHash);
+    const step = user.mfaSecretEnc && user.mfaEnabledAt ? verifyTotp(decrypt(user.mfaSecretEnc, loadEnv().MFA_ENCRYPTION_KEY), code) : null;
+    const fresh = step !== null && (user.mfaLastStep === null || step > user.mfaLastStep);
+    if (!okPw || !fresh) {
+      await this.audit.logPlatform({ action: "auth.reauth_failed", actorId: userId, ip });
+      throw new UnauthorizedException("Parola veya doğrulama kodu hatalı");
+    }
+    const r = await this.db.user.updateMany({ where: { id: userId, OR: [{ mfaLastStep: null }, { mfaLastStep: { lt: step } }] }, data: { mfaLastStep: step } });
+    if (r.count !== 1) throw new UnauthorizedException("Doğrulama kodu zaten kullanıldı");
+  }
+
   async regenerateRecoveryCodes(userId: string, password: string, code: string) {
     await this.assertPassword(userId, password);
     await this.assertTotp(userId, code);
@@ -369,7 +394,7 @@ export class AuthService {
   async previewInvite(token: string) {
     const invite = await this.findOpenInvite(token);
     const existing = await this.db.user.findUnique({ where: { email: invite.email }, select: { id: true } });
-    return { salon: invite.tenant.name, email: invite.email, fullName: invite.fullName, existingAccount: !!existing };
+    return { salon: invite.tenant.name, email: invite.email, fullName: invite.fullName, role: invite.role, existingAccount: !!existing };
   }
 
   /**

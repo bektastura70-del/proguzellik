@@ -109,7 +109,7 @@ describe("SaaS sahibi: işletme oluşturma, davet ve yönetim", () => {
     it("davet önizlemesi yalnızca geçerli belirteçle çalışır", async () => {
       const token = lastInviteToken("gul@ornek.test");
       const p = await http().post("/auth/invite/preview").send({ token }).expect(200);
-      expect(p.body).toEqual({ salon: "Gül Güzellik Merkezi", email: "gul@ornek.test", fullName: "Gül Yılmaz", existingAccount: false });
+      expect(p.body).toEqual({ salon: "Gül Güzellik Merkezi", email: "gul@ornek.test", fullName: "Gül Yılmaz", role: "OWNER", existingAccount: false });
       await http().post("/auth/invite/preview").send({ token: "x".repeat(43) }).expect(400);
     });
 

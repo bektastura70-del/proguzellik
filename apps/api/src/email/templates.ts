@@ -5,7 +5,8 @@ export type EmailTemplate =
   | { name: "password_changed"; vars: { fullName: string } }
   | { name: "email_verify"; vars: { fullName: string; link: string } }
   | { name: "mfa_enabled"; vars: { fullName: string } }
-  | { name: "tenant_invite"; vars: { fullName: string; salon: string; link: string; days: number } }
+  | { name: "mfa_reset"; vars: { fullName: string } }
+  | { name: "tenant_invite"; vars: { fullName: string; salon: string; link: string; days: number; role?: string } }
   | { name: "trial_ending"; vars: { salon: string; days: number; link: string } }
   | { name: "trial_ended"; vars: { salon: string; link: string } }
   | { name: "payment_failed"; vars: { salon: string; graceDays: number; link: string } }
@@ -44,12 +45,16 @@ export function render(t: EmailTemplate): { subject: string; html: string; text:
       break;
     case "tenant_invite":
       subject = `${t.vars.salon} – ProGüzellik davetiniz`;
-      paras = [`Merhaba ${esc(t.vars.fullName)},`, `${esc(t.vars.salon)} işletmesinin yöneticisi olarak ProGüzellik'e davet edildiniz.`, `Hesabınızı oluşturmak için aşağıdaki bağlantıyı ${t.vars.days} gün içinde kullanın. Bağlantı yalnızca bir kez çalışır.`, "Bu daveti beklemiyorsanız e-postayı yok sayabilirsiniz."];
+      paras = [`Merhaba ${esc(t.vars.fullName)},`, t.vars.role ? `${esc(t.vars.salon)} işletmesine ${esc(t.vars.role)} olarak ProGüzellik'e davet edildiniz.` : `${esc(t.vars.salon)} işletmesinin yöneticisi olarak ProGüzellik'e davet edildiniz.`, `Hesabınızı oluşturmak için aşağıdaki bağlantıyı ${t.vars.days} gün içinde kullanın. Bağlantı yalnızca bir kez çalışır.`, "Bu daveti beklemiyorsanız e-postayı yok sayabilirsiniz."];
       cta = { label: "Daveti kabul et", link: t.vars.link };
       break;
     case "mfa_enabled":
       subject = "İki adımlı doğrulama açıldı";
       paras = [`Merhaba ${esc(t.vars.fullName)},`, "Hesabınızda iki adımlı doğrulama etkinleştirildi. Kurtarma kodlarınızı güvenli bir yerde saklayın."];
+      break;
+    case "mfa_reset":
+      subject = "İki adımlı doğrulamanız sıfırlandı";
+      paras = [`Merhaba ${esc(t.vars.fullName)},`, "ProGüzellik destek ekibi talebiniz üzerine hesabınızdaki iki adımlı doğrulamayı sıfırladı ve açık oturumlarınızı kapattı.", "Bir sonraki girişinizde iki adımlı doğrulamayı yeniden kurmanızı öneririz. Bu işlemi siz talep etmediyseniz hemen bizimle iletişime geçin."];
       break;
     case "trial_ending":
       subject = `Deneme sürenizin bitmesine ${t.vars.days} gün kaldı`;

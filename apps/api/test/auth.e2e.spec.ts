@@ -1,6 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { api, createApp, createTenantWithUser, login, owner, resetDb, TEST_PASSWORD } from "./helpers";
+import { api, createApp, createTenantWithUser, login, owner, resetDb, TEST_PASSWORD, addMember } from "./helpers";
 
 describe("Giriş, kayıt, roller ve işletme erişimi (API)", () => {
   const su = owner();
@@ -113,12 +113,10 @@ describe("Giriş, kayıt, roller ve işletme erişimi (API)", () => {
 
   it("OWNER personel ekler; STAFF ekip yönetemez", async () => {
     const ownerToken = await login(app, "a@test.local");
-    const res = await api(app, ownerToken, A.tenant.id)
-      .post("/team")
-      .send({ email: "personel@test.local", fullName: "Personel Bir", role: "STAFF" })
-      .expect(201);
-    expect(res.body.temporaryPassword).toBeTruthy();
-    const staffToken = await login(app, "personel@test.local", res.body.temporaryPassword);
+    const res = await addMember(app, api(app, ownerToken, A.tenant.id), { email: "personel@test.local", fullName: "Personel Bir", role: "STAFF" });
+    expect(res.body).toMatchObject({ status: "SENT", delivered: true, role: "STAFF" });
+    expect(res.body).not.toHaveProperty("temporaryPassword");
+    const staffToken = await login(app, "personel@test.local", TEST_PASSWORD);
     await api(app, staffToken, A.tenant.id).get("/team").expect(403);
     await api(app, staffToken, A.tenant.id)
       .post("/team")
@@ -128,11 +126,8 @@ describe("Giriş, kayıt, roller ve işletme erişimi (API)", () => {
 
   it("MANAGER, OWNER rolü veremez", async () => {
     const ownerToken = await login(app, "a@test.local");
-    const res = await api(app, ownerToken, A.tenant.id)
-      .post("/team")
-      .send({ email: "mudur@test.local", fullName: "Müdür", role: "MANAGER" })
-      .expect(201);
-    const mgr = await login(app, "mudur@test.local", res.body.temporaryPassword);
+    await addMember(app, api(app, ownerToken, A.tenant.id), { email: "mudur@test.local", fullName: "Müdür", role: "MANAGER" });
+    const mgr = await login(app, "mudur@test.local", TEST_PASSWORD);
     await api(app, mgr, A.tenant.id)
       .post("/team")
       .send({ email: "sahip2@test.local", fullName: "Sahip İki", role: "OWNER" })
@@ -169,7 +164,7 @@ describe("Giriş, kayıt, roller ve işletme erişimi (API)", () => {
   });
 
   it("işlemler denetim kaydına yazılır", async () => {
-    const logs = await su.auditLog.findMany({ where: { tenantId: A.tenant.id, action: "member.invited" } });
+    const logs = await su.auditLog.findMany({ where: { tenantId: A.tenant.id, action: "tenant.member_invited" } });
     expect(logs.length).toBeGreaterThanOrEqual(2);
   });
 });

@@ -3,7 +3,7 @@ import { JwtService } from "@nestjs/jwt";
 import request from "supertest";
 import { MockEmailProvider } from "../src/email/email.provider";
 import { currentStep, totp } from "../src/security/crypto";
-import { api, createApp, createTenantWithUser, enableMfa, freshTotp, login, loginWithMfa, owner, resetDb, TEST_PASSWORD } from "./helpers";
+import { api, createApp, createTenantWithUser, enableMfa, freshTotp, login, loginWithMfa, owner, resetDb, TEST_PASSWORD, addMember } from "./helpers";
 
 const linkToken = (text: string) => /token=([A-Za-z0-9_-]+)/.exec(text)?.[1] ?? "";
 
@@ -207,10 +207,10 @@ describe("Kimlik güvenliği: oturumlar, parola sıfırlama, e-posta doğrulama,
     it("işletme 2FA zorunluluğu: sahip 2FA'sız açamaz; açılınca 2FA'sız yönetici engellenir, resepsiyon etkilenmez", async () => {
       const ownerT = await loginWithMfa(app, "a@test.local", secret);
       const o = api(app, ownerT, A.tenant.id);
-      const inv1 = await o.post("/team").send({ email: "mgr@test.local", fullName: "Müdür", role: "MANAGER" }).expect(201);
-      const inv2 = await o.post("/team").send({ email: "rec@test.local", fullName: "Resepsiyon", role: "RECEPTION" }).expect(201);
-      const mgr = api(app, await login(app, "mgr@test.local", inv1.body.temporaryPassword), A.tenant.id);
-      const rec = api(app, await login(app, "rec@test.local", inv2.body.temporaryPassword), A.tenant.id);
+      const inv1 = await addMember(app, o, { email: "mgr@test.local", fullName: "Müdür", role: "MANAGER" });
+      const inv2 = await addMember(app, o, { email: "rec@test.local", fullName: "Resepsiyon", role: "RECEPTION" });
+      const mgr = api(app, await login(app, "mgr@test.local", TEST_PASSWORD), A.tenant.id);
+      const rec = api(app, await login(app, "rec@test.local", TEST_PASSWORD), A.tenant.id);
       await mgr.patch("/settings").send({ requireMfa: true }).expect(403);
       await o.patch("/settings").send({ requireMfa: true }).expect(200);
       const blocked = await mgr.get("/customers").expect(403);

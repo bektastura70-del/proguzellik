@@ -1,5 +1,5 @@
 import { INestApplication } from "@nestjs/common";
-import { api, createApp, createTenantWithUser, login, owner, resetDb } from "./helpers";
+import { api, createApp, createTenantWithUser, login, owner, resetDb, addMember, TEST_PASSWORD } from "./helpers";
 
 describe("Müşteri CRM (API + gerçek veritabanı)", () => {
   const su = owner();
@@ -84,8 +84,8 @@ describe("Müşteri CRM (API + gerçek veritabanı)", () => {
     expect(owner.body.customer.firstName).toBe("Ayşe");
     expect(owner.body.notes).toHaveLength(1);
 
-    const inv = await a.post("/team").send({ email: "resepsiyon@test.local", fullName: "Resepsiyon", role: "RECEPTION" }).expect(201);
-    const r = api(app, await login(app, "resepsiyon@test.local", inv.body.temporaryPassword), A.tenant.id);
+    const inv = await addMember(app, a, { email: "resepsiyon@test.local", fullName: "Resepsiyon", role: "RECEPTION" });
+    const r = api(app, await login(app, "resepsiyon@test.local", TEST_PASSWORD), A.tenant.id);
     await r.get(`/customers/${ayseId}/kvkk-export`).expect(403);
     await r.post(`/customers/${ayseId}/anonymize`).expect(403);
     await r.get(`/customers/${ayseId}`).expect(200);

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { PASSWORD } from "../env";
 import { apiGet, authFile, expectToast, login, uniq } from "./helpers";
-import { lastEmail } from "./totp";
+import { lastEmail, sql } from "./totp";
 
 test.describe("İşletme sahibi modülleri", () => {
   test.use({ storageState: authFile("owner") });
@@ -56,37 +56,39 @@ test.describe("İşletme sahibi modülleri", () => {
     await expect(page.getByLabel("Adres")).toHaveValue("Test Cad. No:5, Kadıköy");
   });
 
-  test("ekibe kullanıcı eklenir; ilk girişte parola değiştirmek zorunludur", async ({ page, browser }) => {
+  test("ekibe davet: geçici parola gösterilmez, davetli parolasını bağlantıdan belirler", async ({ page, browser }) => {
     const email = `${uniq("yeni").replace(" ", "-")}@proguzellik.local`;
     await page.goto("/panel/ayarlar");
-    await page.getByRole("button", { name: "Kullanıcı ekle" }).click();
+    await page.getByRole("button", { name: "Kullanıcı davet et" }).click();
     const dlg = page.getByRole("dialog");
     await dlg.getByLabel("Ad soyad").fill("Yeni Resepsiyon");
     await dlg.getByLabel("E-posta").fill(email);
     await dlg.getByLabel("Rol").selectOption("RECEPTION");
-    await dlg.getByRole("button", { name: "Ekle" }).click();
-    const temp = (await dlg.locator("code").textContent())!.trim();
-    expect(temp.length).toBeGreaterThan(8);
+    await expect(dlg.getByLabel("Rol").locator("option[value=OWNER]")).toHaveCount(0);
+    await dlg.getByRole("button", { name: "Davet gönder" }).click();
+    await expectToast(page, "Davet e-postası gönderildi");
+    await expect(page.locator("code")).toHaveCount(0);
+    const row = page.getByRole("row").filter({ hasText: email });
+    await expect(row).toContainText("Gönderildi");
 
+    const body = sql(`SELECT body FROM "OutboundEmail" WHERE "to" = '${email}' ORDER BY "createdAt" DESC LIMIT 1`);
+    expect(body).toMatch(/resepsiyon görevlisi olarak/);
+    const link = new URL(/https?:\/\/\S+\/davet\?token=[A-Za-z0-9_-]+/.exec(body)![0]);
     const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
     const p2 = await ctx.newPage();
-    await p2.goto("/giris");
-    await p2.getByLabel("E-posta").fill(email);
-    await p2.getByLabel("Parola").fill(temp);
-    await p2.getByRole("button", { name: "Giriş yap" }).click();
-    await expect(p2).toHaveURL(/parola-degistir/);
-    await p2.goto("/panel/musteriler");
-    await expect(p2).toHaveURL(/parola-degistir/);
-    await p2.getByLabel("Mevcut (geçici) parola").fill(temp);
-    await p2.getByLabel("Yeni parola", { exact: true }).fill("YeniResepsiyon2026");
-    await p2.getByLabel("Yeni parola (tekrar)").fill("YeniResepsiyon2026");
-    await p2.getByRole("button", { name: "Parolayı kaydet" }).click();
+    await p2.goto(link.pathname + link.search);
+    await p2.getByLabel("Parola", { exact: true }).fill("YeniResepsiyon2026");
+    await p2.getByLabel("Parola (tekrar)").fill("YeniResepsiyon2026");
+    await p2.getByRole("checkbox").check();
+    await p2.getByRole("button", { name: "Daveti kabul et" }).click();
     await expect(p2).toHaveURL(/\/panel/);
     await p2.goto("/panel/musteriler");
     await expect(p2.getByRole("heading", { name: "Müşteriler" })).toBeVisible();
     // Resepsiyon ayarlar menüsünü görmez
     await expect(p2.getByRole("link", { name: "Ayarlar" })).toHaveCount(0);
     await ctx.close();
+    await page.reload();
+    await expect(page.getByRole("row").filter({ hasText: email })).toContainText("Yeni Resepsiyon");
   });
 
   test("abonelik: test ödemesi başarısızlığı ve başarılı aktivasyon", async ({ page }) => {
@@ -238,6 +240,69 @@ test.describe("SaaS sahibi paneli", () => {
     await dlg.getByRole("button", { name: "İptal et" }).click();
     await expectToast(page, "Abonelik iptal edildi");
     await expect(dlg.getByText(/dönem sonunda iptal edilecek/)).toBeVisible();
+  });
+
+  test("kullanıcı yönetimi: personel daveti, parola belirleme, rol değiştirme, erişim kapatma ve sıfırlama", async ({ page, browser }) => {
+    const name = uniq("Ekip Salon");
+    const email = `${uniq("personel").replace(" ", "-")}@ornek.test`;
+    const created = await page.request.post("/api/p/platform/tenants", {
+      data: { name, ownerName: "Ekip Sahibi", ownerEmail: `${uniq("ekipsahip").replace(" ", "-")}@ornek.test`, planCode: "PROFESSIONAL", trialDays: 14 },
+    });
+    expect(created.status()).toBe(201);
+    const tenantId = (await created.json()).tenant.id as string;
+
+    // İşletme detayından personel daveti
+    await page.goto("/yonetim");
+    await page.getByLabel("İşletme ara").fill(name.split(" ").pop()!);
+    await page.getByRole("row").filter({ hasText: name }).getByRole("button", { name: "Yönet" }).click();
+    const dlg = page.getByRole("dialog");
+    await dlg.getByRole("button", { name: "Kullanıcı davet et" }).click();
+    await dlg.getByLabel("Ad soyad").fill("Ekip Personeli");
+    await dlg.getByLabel("E-posta").fill(email);
+    await dlg.getByLabel("Rol").selectOption("STAFF");
+    await dlg.getByRole("button", { name: "Davet et" }).click();
+    await expectToast(page, "Davet e-postası gönderildi");
+    await expect(dlg.getByText(email)).toBeVisible();
+    await dlg.getByRole("button", { name: "Kapat" }).click();
+
+    // Davetli parolasını kendisi belirler
+    const body = lastEmail(email, `${name} – ProGüzellik davetiniz`);
+    expect(body).toMatch(/personel olarak/);
+    const link = new URL(/https?:\/\/\S+\/davet\?token=[A-Za-z0-9_-]+/.exec(body)![0]);
+    const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    const p2 = await ctx.newPage();
+    await p2.goto(link.pathname + link.search);
+    await expect(p2.getByText(/işletmesine personel olarak davet edildiniz/)).toBeVisible();
+    await p2.getByLabel("Parola", { exact: true }).fill("EkipParola2026");
+    await p2.getByLabel("Parola (tekrar)").fill("EkipParola2026");
+    await p2.getByRole("checkbox").check();
+    await p2.getByRole("button", { name: "Daveti kabul et" }).click();
+    await expect(p2).toHaveURL(/\/panel/);
+    const asStaff = (path: string) => p2.request.get(`/api/p${path}`, { headers: { "X-Tenant-Id": tenantId } });
+    expect((await asStaff("/customers")).status()).toBe(200);
+
+    // Kullanıcılar sekmesi: arama, rol değiştirme, erişim kapatma, sıfırlama
+    await page.getByRole("tab", { name: "Kullanıcılar" }).click();
+    await page.getByLabel("Kullanıcı ara").fill(email);
+    const row = page.getByRole("row").filter({ hasText: email });
+    await expect(row).toContainText(`${name} · Personel`);
+    await row.getByRole("button", { name: "Yönet" }).click();
+    const udlg = page.getByRole("dialog");
+    await udlg.getByLabel(`${name} rolü`).selectOption("RECEPTION");
+    await expectToast(page, "Rol güncellendi");
+    await expect(row).toContainText(`${name} · Resepsiyon`);
+    await udlg.getByRole("button", { name: "Erişimi kapat" }).click();
+    await expectToast(page, "İşletme erişimi kapatıldı");
+    await expect(udlg.getByText("Erişim kapalı")).toBeVisible();
+    expect((await asStaff("/customers")).status()).toBe(403);
+    await udlg.getByRole("button", { name: "Erişimi aç" }).click();
+    await expectToast(page, "İşletme erişimi açıldı");
+    expect((await asStaff("/customers")).status()).toBe(200);
+    await udlg.getByRole("button", { name: "Parola sıfırlama bağlantısı gönder" }).click();
+    await expectToast(page, "Sıfırlama bağlantısı e-postayla gönderildi");
+    expect(lastEmail(email, "Parola sıfırlama")).toMatch(/parola-sifirla\?token=/);
+    await expect(udlg.getByRole("row").filter({ hasText: "Rol değiştirildi" })).toBeVisible();
+    await ctx.close();
   });
 
   test("işletme sahibi /yonetim sayfasına erişemez", async ({ browser }) => {

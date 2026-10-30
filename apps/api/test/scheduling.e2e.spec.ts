@@ -1,6 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import { zonedTime } from "../src/common/time";
-import { api, createApp, createTenantWithUser, login, owner, resetDb } from "./helpers";
+import { api, createApp, createTenantWithUser, login, owner, resetDb, addMember, TEST_PASSWORD } from "./helpers";
 
 /** 7 gün sonrası (Europe/Istanbul) */
 const day = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
@@ -107,8 +107,8 @@ describe("Hizmetler, personel, çalışma saatleri ve randevular", () => {
       .post("/appointments")
       .send({ customerId, staffId, serviceId, startsAt: at("18:00"), ignoreSchedule: true })
       .expect(201);
-    const inv = await a.post("/team").send({ email: "r@test.local", fullName: "Resepsiyon", role: "RECEPTION" }).expect(201);
-    const r = api(app, await login(app, "r@test.local", inv.body.temporaryPassword), A.tenant.id);
+    const inv = await addMember(app, a, { email: "r@test.local", fullName: "Resepsiyon", role: "RECEPTION" });
+    const r = api(app, await login(app, "r@test.local", TEST_PASSWORD), A.tenant.id);
     await r.post("/appointments").send({ customerId, staffId, serviceId, startsAt: at("19:00"), ignoreSchedule: true }).expect(403);
     await r.post("/appointments").send({ customerId, staffId, serviceId, startsAt: at("12:00") }).expect(201);
   });
@@ -139,10 +139,10 @@ describe("Hizmetler, personel, çalışma saatleri ve randevular", () => {
   });
 
   it("STAFF yalnızca kendine bağlı randevunun durumunu değiştirebilir", async () => {
-    const inv = await a.post("/team").send({ email: "elif@test.local", fullName: "Elif", role: "STAFF" }).expect(201);
+    const inv = await addMember(app, a, { email: "elif@test.local", fullName: "Elif", role: "STAFF" });
     const elifUser = await su.user.findUniqueOrThrow({ where: { email: "elif@test.local" } });
     await a.patch(`/staff/${staffId}`).send({ userId: elifUser.id }).expect(200);
-    const s = api(app, await login(app, "elif@test.local", inv.body.temporaryPassword), A.tenant.id);
+    const s = api(app, await login(app, "elif@test.local", TEST_PASSWORD), A.tenant.id);
     const mine = await su.appointment.findFirstOrThrow({ where: { staffId, status: "BOOKED" } });
     const other = await su.appointment.findFirstOrThrow({ where: { staffId: staff2Id, status: "BOOKED" } });
     await s.post(`/appointments/${other.id}/status`).send({ status: "COMPLETED" }).expect(403);

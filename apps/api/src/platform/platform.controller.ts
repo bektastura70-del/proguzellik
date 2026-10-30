@@ -3,12 +3,14 @@ import type { Request } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { AuditService } from "../audit/audit.service";
+import { RateLimitService } from "../auth/rate-limit.service";
 import { SubscriptionsService } from "../billing/subscriptions.service";
 import { JobsService } from "../jobs/jobs.service";
 import { AuthUser, CurrentUser, PlatformAdmin } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
 import { PrismaService } from "../prisma/prisma.service";
 import { ManualSubscriptionService } from "./manual-subscription.service";
+import { PlatformUsersService } from "./platform-users.service";
 import { DEFAULT_TRIAL_DAYS, inviteSelect, TenantAdminService } from "./tenant-admin.service";
 
 const planCode = z.enum(["STARTER", "PROFESSIONAL", "SMART"]);
@@ -61,6 +63,31 @@ const manualExtend = z.object({ days: z.number().int().min(1, "En az 1 gün").ma
 const manualPlan = z.object({ planCode, note, requestId });
 const manualCancel = z.object({ mode: z.enum(["immediate", "period_end"]), note, requestId });
 
+const roleSchema = z.enum(["OWNER", "MANAGER", "RECEPTION", "STAFF"]);
+const mfaResetSchema = z.object({
+  password: z.string().min(1).max(200),
+  code: z.string().trim().regex(/^\d{6}$/, "6 haneli doğrulama kodu girin"),
+  reason: z.string().trim().min(5, "Gerekçe en az 5 karakter olmalı").max(500),
+});
+export const memberInvite = z.object({
+  fullName: z.string().trim().min(2, "Ad soyad en az 2 karakter olmalı").max(120),
+  email: z.string().trim().toLowerCase().email("Geçerli bir e-posta girin").max(200),
+  role: z.enum(["MANAGER", "RECEPTION", "STAFF"], { error: "Rol yönetici, resepsiyon veya personel olmalı" }),
+});
+const userList = z.object({
+  search: z.string().trim().max(100).optional(),
+  tenantId: z.string().uuid().optional(),
+  role: roleSchema.optional(),
+  status: z.enum(["active", "inactive", "locked"]).optional(),
+  kind: z.enum(["tenant", "platform"]).optional(),
+  take: z.coerce.number().int().min(1).max(100).default(50),
+  skip: z.coerce.number().int().min(0).max(100_000).default(0),
+});
+const reasonSchema = z.object({ reason: z.string().trim().min(3, "Gerekçe girin").max(300) });
+const optionalReason = z.object({ reason: z.string().trim().max(300).optional() });
+const roleChange = z.object({ role: roleSchema });
+const resetSchema = z.object({ revokeSessions: z.boolean().default(false) });
+
 /** SaaS sahibi (platform yöneticisi) paneli. Tüm işletmeleri görür; RLS'yi atlayan ayrı rol kullanır. */
 @PlatformAdmin()
 @Controller("platform")
@@ -72,6 +99,8 @@ export class PlatformController {
     private readonly audit: AuditService,
     private readonly tenantAdmin: TenantAdminService,
     private readonly manual: ManualSubscriptionService,
+    private readonly users: PlatformUsersService,
+    private readonly rateLimit: RateLimitService,
   ) {}
 
   @Get("stats")
@@ -116,7 +145,7 @@ export class PlatformController {
         plan: { select: { name: true, maxStaff: true } },
         _count: { select: { customers: true, staff: true, memberships: true } },
         memberships: { where: { role: "OWNER" }, take: 1, select: { user: { select: { email: true, fullName: true } } } },
-        invites: { where: { status: { in: ["PENDING_DELIVERY", "SENT"] } }, take: 1, select: { email: true, status: true, expiresAt: true } },
+        invites: { where: { role: "OWNER", status: { in: ["PENDING_DELIVERY", "SENT"] } }, take: 1, select: { email: true, status: true, expiresAt: true } },
       },
     });
     return rows.map(({ memberships, invites, ...t }) => ({ ...t, owner: memberships[0]?.user ?? null, openInvite: invites[0] ?? null }));
@@ -129,13 +158,20 @@ export class PlatformController {
       include: {
         plan: true,
         subscriptions: { orderBy: { createdAt: "desc" }, include: { payments: { orderBy: { createdAt: "desc" } }, grants: { orderBy: { createdAt: "desc" } } } },
-        memberships: { select: { role: true, isActive: true, user: { select: { email: true, fullName: true, lastLoginAt: true } } } },
-        invites: { orderBy: { createdAt: "desc" }, take: 10, select: inviteSelect },
+        memberships: { orderBy: { createdAt: "asc" }, select: { id: true, role: true, isActive: true, user: { select: { id: true, email: true, fullName: true, lastLoginAt: true, isActive: true } } } },
+        // Açık davetlerin tamamı (sınırsız) — kapanmış davetlerden yalnızca son 10'u aşağıda eklenir.
+        invites: { where: { status: { in: ["PENDING_DELIVERY", "SENT"] } }, orderBy: { createdAt: "desc" }, select: inviteSelect },
         _count: { select: { customers: true, staff: true, services: true } },
       },
     });
     if (!t) throw new NotFoundException("İşletme bulunamadı");
-    return t;
+    const closed = await this.prisma.platform.tenantInvite.findMany({
+      where: { tenantId: id, status: { in: ["ACCEPTED", "REVOKED"] } },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: inviteSelect,
+    });
+    return { ...t, invites: [...t.invites, ...closed] };
   }
 
   /** Yeni güzellik merkezi: işletme deneme sürecinde açılır, sahibine e-posta daveti gider (SMTP yoksa bekler). */
@@ -203,6 +239,79 @@ export class PlatformController {
   @HttpCode(200)
   cancelSubscription(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(manualCancel)) b: z.infer<typeof manualCancel>, @Req() req: Request) {
     return this.manual.cancel(id, u.id, b, req.ip);
+  }
+
+  // ---- Kullanıcı yönetimi ----
+
+  @Get("users")
+  listUsers(@Query(new ZodPipe(userList)) q: z.infer<typeof userList>) {
+    return this.users.list(q);
+  }
+
+  @Get("users/:id")
+  getUser(@Param("id", ParseUUIDPipe) id: string) {
+    return this.users.get(id);
+  }
+
+  @Post("users/:id/deactivate")
+  @HttpCode(200)
+  deactivateUser(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(reasonSchema)) b: z.infer<typeof reasonSchema>, @Req() req: Request) {
+    return this.users.deactivateUser(id, u.id, b.reason, req.ip);
+  }
+
+  @Post("users/:id/activate")
+  @HttpCode(200)
+  activateUser(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Req() req: Request) {
+    return this.users.activateUser(id, u.id, req.ip);
+  }
+
+  @Post("users/:id/password-reset")
+  @HttpCode(200)
+  passwordReset(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(resetSchema)) b: z.infer<typeof resetSchema>, @Req() req: Request) {
+    return this.users.sendPasswordReset(id, u.id, b, req.ip);
+  }
+
+  /** 2FA sıfırlama: yöneticinin parolası + güncel 2FA kodu ve gerekçe zorunlu. */
+  @Post("users/:id/mfa-reset")
+  @HttpCode(200)
+  mfaReset(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(mfaResetSchema)) b: z.infer<typeof mfaResetSchema>, @Req() req: Request) {
+    this.rateLimit.hit(`platform-reauth:${u.id}`, 5, 15 * 60_000);
+    return this.users.resetMfa(id, u.id, b, req.ip);
+  }
+
+  @Patch("memberships/:id")
+  changeRole(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(roleChange)) b: z.infer<typeof roleChange>, @Req() req: Request) {
+    return this.users.changeRole(id, u.id, b.role, req.ip);
+  }
+
+  @Post("memberships/:id/deactivate")
+  @HttpCode(200)
+  deactivateMember(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(optionalReason)) b: z.infer<typeof optionalReason>, @Req() req: Request) {
+    return this.users.setMembershipActive(id, u.id, false, b.reason, req.ip);
+  }
+
+  @Post("memberships/:id/activate")
+  @HttpCode(200)
+  activateMember(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Req() req: Request) {
+    return this.users.setMembershipActive(id, u.id, true, undefined, req.ip);
+  }
+
+  /** İşletmeye yönetici/resepsiyon/personel daveti (parolayı davetli belirler). */
+  @Post("tenants/:id/members")
+  inviteMember(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(memberInvite)) b: z.infer<typeof memberInvite>, @Req() req: Request) {
+    return this.tenantAdmin.inviteMember(id, u.id, b, req.ip);
+  }
+
+  @Post("invites/:id/resend")
+  @HttpCode(200)
+  resendInviteById(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Req() req: Request) {
+    return this.tenantAdmin.resendById(id, u.id, req.ip);
+  }
+
+  @Post("invites/:id/revoke")
+  @HttpCode(200)
+  revokeInviteById(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Req() req: Request) {
+    return this.tenantAdmin.revokeById(id, u.id, req.ip);
   }
 
   @Patch("tenants/:id")

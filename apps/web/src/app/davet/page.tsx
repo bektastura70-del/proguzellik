@@ -7,7 +7,8 @@ import { AuthCard } from "@/components/auth-card";
 import { Alert, Button, Field, Input, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 
-type Preview = { salon: string; email: string; fullName: string; existingAccount: boolean };
+type Preview = { salon: string; email: string; fullName: string; role?: string; existingAccount: boolean };
+const INVITE_ROLE_TR: Record<string, string> = { MANAGER: "yönetici", RECEPTION: "resepsiyon görevlisi", STAFF: "personel" };
 
 function InviteForm() {
   const params = useSearchParams();
@@ -43,7 +44,11 @@ function InviteForm() {
       }}
     >
       <p className="text-sm text-neutral-600">
-        <strong>{info.salon}</strong> işletmesinin yöneticisi olarak davet edildiniz. Hesap: <strong>{info.email}</strong>
+        {info.role && info.role !== "OWNER" ? (
+          <><strong>{info.salon}</strong> işletmesine {INVITE_ROLE_TR[info.role] ?? "ekip üyesi"} olarak davet edildiniz.</>
+        ) : (
+          <><strong>{info.salon}</strong> işletmesinin yöneticisi olarak davet edildiniz.</>
+        )}{" "}Hesap: <strong>{info.email}</strong>
       </p>
       {err && <Alert>{err}</Alert>}
       {info.existingAccount ? (

@@ -1,6 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { api, createApp, createTenantWithUser, futureAt, login, owner, resetDb, setupSalon } from "./helpers";
+import { api, createApp, createTenantWithUser, futureAt, login, owner, resetDb, setupSalon, addMember, TEST_PASSWORD } from "./helpers";
 
 describe("Kalite turu: parola değişimi, izin aralığı, bütünlük korumaları", () => {
   const su = owner();
@@ -25,19 +25,22 @@ describe("Kalite turu: parola değişimi, izin aralığı, bütünlük korumalar
     await su.$disconnect();
   });
 
-  it("geçici parolalı kullanıcı parolasını değiştirmeden işlem yapamaz", async () => {
-    const inv = await a.post("/team").send({ email: "yeni@test.local", fullName: "Yeni Personel", role: "STAFF" }).expect(201);
-    const res = await request(app.getHttpServer()).post("/auth/login").send({ email: "yeni@test.local", password: inv.body.temporaryPassword }).expect(200);
+  it("parola değişimi zorunlu kullanıcı (CLI ile açılan hesap) parolasını değiştirmeden işlem yapamaz", async () => {
+    const bcrypt = await import("bcryptjs");
+    const temp = "GeciciParola2026";
+    const u = await su.user.create({ data: { email: "yeni@test.local", fullName: "Yeni Personel", passwordHash: await bcrypt.hash(temp, 4), mustChangePassword: true, emailVerifiedAt: new Date() } });
+    await su.membership.create({ data: { tenantId: A.tenant.id, userId: u.id, role: "STAFF" } });
+    const res = await request(app.getHttpServer()).post("/auth/login").send({ email: "yeni@test.local", password: temp }).expect(200);
     const n = api(app, res.body.accessToken, A.tenant.id);
     const me = await n.get("/auth/me").expect(200);
     expect(me.body.mustChangePassword).toBe(true);
     const blocked = await n.get("/customers").expect(403);
     expect(blocked.body.code).toBe("PASSWORD_CHANGE_REQUIRED");
     await n.post("/auth/change-password").send({ currentPassword: "yanlis", newPassword: "YeniParola2026" }).expect(401);
-    await n.post("/auth/change-password").send({ currentPassword: inv.body.temporaryPassword, newPassword: "kisa" }).expect(400);
-    await n.post("/auth/change-password").send({ currentPassword: inv.body.temporaryPassword, newPassword: "YeniParola2026" }).expect(200);
+    await n.post("/auth/change-password").send({ currentPassword: temp, newPassword: "kisa" }).expect(400);
+    await n.post("/auth/change-password").send({ currentPassword: temp, newPassword: "YeniParola2026" }).expect(200);
     await n.get("/customers").expect(200);
-    await request(app.getHttpServer()).post("/auth/login").send({ email: "yeni@test.local", password: inv.body.temporaryPassword }).expect(401);
+    await request(app.getHttpServer()).post("/auth/login").send({ email: "yeni@test.local", password: temp }).expect(401);
     await login(app, "yeni@test.local", "YeniParola2026");
   });
 
@@ -63,8 +66,8 @@ describe("Kalite turu: parola değişimi, izin aralığı, bütünlük korumalar
     const appt = (await a.post("/appointments").send({ customerId: s.customer.id, staffId: s.staff.id, serviceId: s.service.id, startsAt: futureAt(5, "10:00") }).expect(201)).body;
     const r = await a.patch(`/appointments/${appt.id}`).send({ price: 750, startsAt: futureAt(5, "11:00") }).expect(200);
     expect(r.body.price).toBe("750");
-    const inv = await a.post("/team").send({ email: "r@test.local", fullName: "Resepsiyon", role: "RECEPTION" }).expect(201);
-    const t1 = await login(app, "r@test.local", inv.body.temporaryPassword);
+    await addMember(app, a, { email: "r@test.local", fullName: "Resepsiyon", role: "RECEPTION" });
+    const t1 = await login(app, "r@test.local", TEST_PASSWORD);
     const rec = api(app, t1, A.tenant.id);
     await rec.patch(`/appointments/${appt.id}`).send({ price: 1 }).expect(403);
     const logs = await su.auditLog.count({ where: { entityId: appt.id, action: "appointment.rescheduled" } });

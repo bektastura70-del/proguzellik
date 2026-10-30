@@ -5,6 +5,7 @@ import { Alert, Badge, Button, Dialog, Field, Input, Select, Spinner, statusTone
 import { api, useApi } from "@/lib/api";
 import { dateTr, STATUS_TR } from "@/lib/format";
 import { AdminSubscription, SubscriptionAdmin } from "./subscription-admin";
+import { MemberInvites } from "./user-admin";
 
 export const PLAN_TR: Record<string, string> = { STARTER: "Başlangıç", PROFESSIONAL: "Profesyonel", SMART: "Akıllı" };
 export const INVITE_TR: Record<string, string> = {
@@ -21,7 +22,9 @@ export function InviteBadge({ status }: { status: string }) {
 
 type InviteResult = { status: string; delivered: boolean; reason?: string };
 
-const inviteToast = (r: InviteResult) => (r.delivered ? "Davet e-postası gönderildi" : (r.reason ?? "Davet bekletiliyor"));
+/** Gönderilmeyen davet başarı gibi gösterilmez: kırmızı bildirim ve açık gerekçe. */
+const inviteToast = (r: InviteResult): ToastMsg => (r.delivered ? "Davet e-postası gönderildi" : [`Davet gönderilmedi: ${r.reason ?? "e-posta iletilemedi"}`, "red"]);
+type ToastMsg = string | [string, "red"];
 
 /** Yeni güzellik merkezi + sahip daveti. */
 export function NewTenantDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
@@ -49,7 +52,9 @@ export function NewTenantDialog({ onClose, onCreated }: { onClose: () => void; o
                 trialDays: Number(f.get("trialDays")),
               },
             });
-            toast(`${r.tenant.name} oluşturuldu. ${inviteToast(r.invite)}`);
+            const m = inviteToast(r.invite);
+            if (typeof m === "string") toast(`${r.tenant.name} oluşturuldu. ${m}`);
+            else toast(`${r.tenant.name} oluşturuldu. ${m[0]}`, "red");
             onCreated();
           } catch (e) {
             setErr((e as Error).message);
@@ -81,7 +86,7 @@ export function NewTenantDialog({ onClose, onCreated }: { onClose: () => void; o
   );
 }
 
-type Invite = { id: string; email: string; fullName: string; status: string; expiresAt: string | null; sentAt: string | null; sendCount: number; acceptedAt: string | null; createdAt: string };
+type Invite = { id: string; email: string; fullName: string; role: string; status: string; expiresAt: string | null; sentAt: string | null; sendCount: number; acceptedAt: string | null; createdAt: string };
 type Detail = {
   id: string;
   name: string;
@@ -95,7 +100,7 @@ type Detail = {
   email: string | null;
   createdAt: string;
   plan: { name: string; maxStaff: number };
-  memberships: { role: string; isActive: boolean; user: { email: string; fullName: string; lastLoginAt: string | null } }[];
+  memberships: { id: string; role: string; isActive: boolean; user: { id: string; email: string; fullName: string; lastLoginAt: string | null; isActive: boolean } }[];
   invites: Invite[];
   subscriptions: AdminSubscription[];
   _count: { customers: number; staff: number; services: number };
@@ -110,10 +115,12 @@ export function TenantDetailDialog({ id, onClose, onChanged }: { id: string; onC
   const d = useApi<Detail>(`/platform/tenants/${id}`);
   const [suspending, setSuspending] = useState(false);
   const [inviting, setInviting] = useState(false);
-  const run = async (fn: () => Promise<unknown>, ok: string | ((r: never) => string)) => {
+  const run = async (fn: () => Promise<unknown>, ok: string | ((r: never) => ToastMsg)) => {
     try {
       const r = await fn();
-      toast(typeof ok === "string" ? ok : ok(r as never));
+      const m = typeof ok === "string" ? ok : ok(r as never);
+      if (typeof m === "string") toast(m);
+      else toast(m[0], m[1]);
       d.reload();
       onChanged();
       return true;
@@ -123,7 +130,8 @@ export function TenantDetailDialog({ id, onClose, onChanged }: { id: string; onC
     }
   };
   const t = d.data;
-  const open = t?.invites.find((i) => i.status === "PENDING_DELIVERY" || i.status === "SENT");
+  const ownerInvites = t?.invites.filter((i) => i.role === "OWNER") ?? [];
+  const open = ownerInvites.find((i) => i.status === "PENDING_DELIVERY" || i.status === "SENT");
   const hasOwner = t?.memberships.some((m) => m.role === "OWNER" && m.isActive);
 
   return (
@@ -203,17 +211,19 @@ export function TenantDetailDialog({ id, onClose, onChanged }: { id: string; onC
             {t.memberships.length === 0 ? <p className="text-sm text-neutral-500">Henüz kullanıcı yok (davet kabul edilmedi).</p> : (
               <ul className="space-y-1 text-sm">
                 {t.memberships.map((m) => (
-                  <li key={m.user.email}>{m.user.fullName} · <span className="text-neutral-500">{m.user.email}</span> · {ROLE_TR[m.role]}{!m.isActive && " (pasif)"}</li>
+                  <li key={m.id}>{m.user.fullName} · <span className="text-neutral-500">{m.user.email}</span> · {ROLE_TR[m.role]}{(!m.isActive || !m.user.isActive) && " (pasif)"}</li>
                 ))}
               </ul>
             )}
+            <MemberInvites tenantId={t.id} invites={t.invites} onChanged={() => { d.reload(); onChanged(); }} />
+            <p className="mt-1 text-xs text-neutral-500">Rol değiştirme, erişimi kapatma ve parola sıfırlama: Kullanıcılar bölümünden.</p>
           </section>
 
           <section>
             <h3 className="mb-2 text-sm font-semibold">Sahip daveti</h3>
-            {t.invites.length === 0 ? <p className="text-sm text-neutral-500">Davet yok.</p> : (
+            {ownerInvites.length === 0 ? <p className="text-sm text-neutral-500">Davet yok.</p> : (
               <ul className="space-y-2 text-sm">
-                {t.invites.map((i) => (
+                {ownerInvites.map((i) => (
                   <li key={i.id} className="flex flex-wrap items-center gap-2">
                     <InviteBadge status={i.status} />
                     <span>{i.fullName} · <span className="text-neutral-500">{i.email}</span></span>

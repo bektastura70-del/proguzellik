@@ -1,6 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
-import { api, createApp, createTenantWithUser, futureAt, login, owner, resetDb, setupSalon } from "./helpers";
+import { api, createApp, createTenantWithUser, futureAt, login, owner, resetDb, setupSalon, addMember, TEST_PASSWORD } from "./helpers";
 
 const RANGE = `from=${new Date(Date.now() - 86_400_000).toISOString()}&to=${new Date(Date.now() + 30 * 86_400_000).toISOString()}`;
 
@@ -134,8 +134,8 @@ describe("Paket/seans ve kasa (gelir-gider, tahsilat, iade, prim)", () => {
   });
 
   it("RECEPTION tahsilat alabilir ama iade/gider/prim yapamaz", async () => {
-    const inv = await a.post("/team").send({ email: "r@test.local", fullName: "Resepsiyon", role: "RECEPTION" }).expect(201);
-    const r = api(app, await login(app, "r@test.local", inv.body.temporaryPassword), A.tenant.id);
+    const inv = await addMember(app, a, { email: "r@test.local", fullName: "Resepsiyon", role: "RECEPTION" });
+    const r = api(app, await login(app, "r@test.local", TEST_PASSWORD), A.tenant.id);
     await r.post("/finance/payments").send({ customerId: s.customer.id, amount: 50, method: "CASH" }).expect(201);
     await r.post(`/finance/transactions/${incomeId}/refund`).send({ amount: 1, reason: "Deneme" }).expect(403);
     await r.post("/finance/transactions").send({ type: "EXPENSE", category: "X", amount: 1, method: "CASH" }).expect(403);

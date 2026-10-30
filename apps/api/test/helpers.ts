@@ -137,3 +137,22 @@ export async function loginWithMfa(app: INestApplication, email: string, secret:
   const v = await request(server).post("/auth/mfa/verify").send({ mfaToken: r.body.mfaToken, code: await freshTotp(email, secret) }).expect(200);
   return v.body.accessToken as string;
 }
+
+/**
+ * İşletme ekibine davet eder ve e-postadaki bağlantıyla hesabı açar (parola: TEST_PASSWORD).
+ * Geçici parola yok; davetli parolasını kendisi belirler.
+ */
+export async function addMember(
+  app: INestApplication,
+  a: ReturnType<typeof api>,
+  body: { email: string; fullName: string; role: "MANAGER" | "RECEPTION" | "STAFF" },
+) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { MockEmailProvider } = require("../src/email/email.provider");
+  const res = await a.post("/team").send(body).expect(201);
+  const mail = [...app.get(MockEmailProvider).outbox].reverse().find((m: { to: string }) => m.to === body.email.toLowerCase());
+  const token = /davet\?token=([A-Za-z0-9_-]+)/.exec(mail?.text ?? "")?.[1];
+  if (!token) throw new Error("Davet e-postası bulunamadı");
+  await request(app.getHttpServer()).post("/auth/accept-invite").send({ token, password: TEST_PASSWORD, kvkkAccepted: true }).expect(200);
+  return res;
+}

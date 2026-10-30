@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { PlanCode, Prisma } from "@prisma/client";
+import { PlanCode, Prisma, Role } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { slugify } from "../auth/auth.service";
 import { appUrl, inviteDeliveryEnabled, loadEnv } from "../config/env";
@@ -8,7 +8,11 @@ import { PrismaService } from "../prisma/prisma.service";
 import { randomToken, sha256 } from "../security/crypto";
 
 export const INVITE_DAYS = 7;
+/** Davet e-postasında rol adı (sahip daveti mevcut metni korur). */
+export const ROLE_LABEL_TR: Record<Role, string> = { OWNER: "sahip", MANAGER: "yönetici", RECEPTION: "resepsiyon görevlisi", STAFF: "personel" };
 export const DEFAULT_TRIAL_DAYS = 14;
+/** Denetim kaydı ön eki: işlemi SaaS sahibi mi işletme mi yaptı. */
+export type InviteActor = "platform" | "tenant";
 
 /** API yanıtlarında davetin güvenli alanları; tokenHash asla dışarı verilmez. */
 export const inviteSelect = {
@@ -98,15 +102,15 @@ export class TenantAdminService {
    * Daveti iletir. E-posta gönderilemiyorsa (canlıda SMTP yok) belirteç ÜRETİLMEZ, davet bekler.
    * Her gönderim yeni belirteç üretir; öncekiler geçersiz olur. Belirteç yanıt, log ve denetim kaydına yazılmaz.
    */
-  async deliver(inviteId: string, actorId: string, ip?: string) {
+  async deliver(inviteId: string, actorId: string, ip?: string, by: InviteActor = "platform") {
     const invite = await this.db.tenantInvite.findUnique({ where: { id: inviteId }, include: { tenant: { select: { name: true } } } });
     if (!invite) throw new NotFoundException("Davet bulunamadı");
     if (invite.status === "ACCEPTED" || invite.status === "REVOKED") throw new ConflictException("Bu davet artık kullanılamaz");
     const env = loadEnv();
     if (!inviteDeliveryEnabled(env)) {
       await this.db.tenantInvite.update({ where: { id: invite.id }, data: { status: "PENDING_DELIVERY", tokenHash: null, expiresAt: null } });
-      await this.audit.logPlatform({ tenantId: invite.tenantId, actorId, ip, action: "platform.invite_pending", entity: "TenantInvite", entityId: invite.id, metadata: { reason: "email_not_configured" } });
-      return this.publicInvite(invite.id, { delivered: false, reason: "E-posta (SMTP) yapılandırılmadığı için davet bekletiliyor." });
+      await this.audit.logPlatform({ tenantId: invite.tenantId, actorId, ip, action: `${by}.invite_pending`, entity: "TenantInvite", entityId: invite.id, metadata: { reason: "email_not_configured" } });
+      return this.publicInvite(invite.id, { delivered: false, code: "EMAIL_NOT_CONFIGURED", reason: "E-posta (SMTP) yapılandırılmadığı için davet GÖNDERİLMEDİ; e-posta ayarlanınca yeniden gönderin." });
     }
     const token = randomToken();
     const expiresAt = new Date(Date.now() + INVITE_DAYS * 86_400_000);
@@ -118,25 +122,26 @@ export class TenantAdminService {
     if (r.count !== 1) throw new ConflictException("Bu davet artık kullanılamaz");
     const sent = await this.email.send(invite.email, {
       name: "tenant_invite",
-      vars: { fullName: invite.fullName, salon: invite.tenant.name, link: `${appUrl(env)}/davet?token=${token}`, days: INVITE_DAYS },
+      vars: { fullName: invite.fullName, salon: invite.tenant.name, link: `${appUrl(env)}/davet?token=${token}`, days: INVITE_DAYS, ...(invite.role !== "OWNER" ? { role: ROLE_LABEL_TR[invite.role] } : {}) },
     });
     if ("failed" in sent) {
       // Gönderilemeyen bağlantı geçersiz kılınır; davet yeniden gönderilene kadar bekler.
       await this.db.tenantInvite.updateMany({ where: { id: invite.id, status: "SENT" }, data: { status: "PENDING_DELIVERY", tokenHash: null, expiresAt: null } });
-      await this.audit.logPlatform({ tenantId: invite.tenantId, actorId, ip, action: "platform.invite_failed", entity: "TenantInvite", entityId: invite.id });
-      return this.publicInvite(invite.id, { delivered: false, reason: "E-posta gönderilemedi; davet bekletiliyor." });
+      await this.audit.logPlatform({ tenantId: invite.tenantId, actorId, ip, action: `${by}.invite_failed`, entity: "TenantInvite", entityId: invite.id });
+      return this.publicInvite(invite.id, { delivered: false, code: "EMAIL_SEND_FAILED", reason: "E-posta gönderilemedi; davet GÖNDERİLMEDİ ve bekletiliyor." });
     }
-    await this.audit.logPlatform({ tenantId: invite.tenantId, actorId, ip, action: "platform.invite_sent", entity: "TenantInvite", entityId: invite.id, metadata: { sendCount: invite.sendCount + 1 } });
+    await this.audit.logPlatform({ tenantId: invite.tenantId, actorId, ip, action: `${by}.invite_sent`, entity: "TenantInvite", entityId: invite.id, metadata: { sendCount: invite.sendCount + 1 } });
     return this.publicInvite(invite.id, { delivered: true });
   }
 
-  private async publicInvite(id: string, delivery: { delivered: boolean; reason?: string }) {
+  private async publicInvite(id: string, delivery: { delivered: boolean; reason?: string; code?: string }) {
     const invite = await this.db.tenantInvite.findUniqueOrThrow({ where: { id }, select: inviteSelect });
     return { ...invite, ...delivery };
   }
 
+  /** İşletmenin açık sahip daveti (eski uç noktalar yalnızca sahip davetini yönetir). */
   private async openInvite(tenantId: string) {
-    const invite = await this.db.tenantInvite.findFirst({ where: { tenantId, status: { in: ["PENDING_DELIVERY", "SENT"] } } });
+    const invite = await this.db.tenantInvite.findFirst({ where: { tenantId, role: "OWNER", status: { in: ["PENDING_DELIVERY", "SENT"] } } });
     if (!invite) throw new NotFoundException("Açık davet yok");
     return invite;
   }
@@ -148,13 +153,38 @@ export class TenantAdminService {
 
   async revoke(tenantId: string, actorId: string, ip?: string) {
     const invite = await this.openInvite(tenantId);
+    return this.revokeById(invite.id, actorId, ip);
+  }
+
+  /** Belirli bir daveti yeniden gönderir (her rol). */
+  async resendById(inviteId: string, actorId: string, ip?: string, scope?: { tenantId: string }) {
+    const invite = await this.db.tenantInvite.findUnique({ where: { id: inviteId } });
+    if (!invite || (scope && (invite.tenantId !== scope.tenantId || invite.role === "OWNER"))) throw new NotFoundException("Davet bulunamadı");
+    return this.deliver(invite.id, actorId, ip, scope ? "tenant" : "platform");
+  }
+
+  /** Belirli bir daveti iptal eder; bağlantı geçersiz olur. */
+  async revokeById(inviteId: string, actorId: string, ip?: string, scope?: { tenantId: string }) {
+    const invite = await this.db.tenantInvite.findUnique({ where: { id: inviteId } });
+    if (!invite || (scope && (invite.tenantId !== scope.tenantId || invite.role === "OWNER"))) throw new NotFoundException("Davet bulunamadı");
+    const by: InviteActor = scope ? "tenant" : "platform";
+    const tenantId = invite.tenantId;
     const r = await this.db.tenantInvite.updateMany({
       where: { id: invite.id, status: { in: ["PENDING_DELIVERY", "SENT"] } },
       data: { status: "REVOKED", revokedAt: new Date(), tokenHash: null },
     });
     if (r.count !== 1) throw new ConflictException("Davet artık açık değil");
-    await this.audit.logPlatform({ tenantId, actorId, ip, action: "platform.invite_revoked", entity: "TenantInvite", entityId: invite.id });
+    await this.audit.logPlatform({ tenantId, actorId, ip, action: `${by}.invite_revoked`, entity: "TenantInvite", entityId: invite.id });
     return this.publicInvite(invite.id, { delivered: false });
+  }
+
+  /** İşletmenin kendi ekip davetleri (sahip davetleri hariç). */
+  listTeamInvites(tenantId: string) {
+    return this.db.tenantInvite.findMany({
+      where: { tenantId, role: { not: "OWNER" }, status: { in: ["PENDING_DELIVERY", "SENT"] } },
+      orderBy: { createdAt: "desc" },
+      select: inviteSelect,
+    });
   }
 
   /** Mevcut işletme için yeni sahip daveti (ör. ilk davet iptal edildiyse). Açık davet varsa reddedilir. */
@@ -192,6 +222,33 @@ export class TenantAdminService {
     const updated = await this.db.tenant.update({ where: { id: tenantId }, data: { status, suspendedAt: null, suspendedReason: null, suspendedFromStatus: null } });
     await this.audit.logPlatform({ tenantId, actorId, ip, action: "platform.tenant_reactivated", entity: "Tenant", entityId: tenantId, metadata: { status } });
     return updated;
+  }
+
+  /**
+   * İşletmeye yönetici/resepsiyon/personel daveti. Hesap davetle oluşturulur, parolayı davetli kendisi belirler;
+   * geçici parola üretilmez. SMTP yoksa davet gönderilmez, "teslim bekliyor" olarak kalır.
+   */
+  async inviteMember(tenantId: string, actorId: string, input: { email: string; fullName: string; role: Exclude<Role, "OWNER"> }, ip?: string, by: InviteActor = "platform") {
+    const tenant = await this.db.tenant.findUnique({ where: { id: tenantId }, select: { id: true, status: true } });
+    if (!tenant) throw new NotFoundException("İşletme bulunamadı");
+    if (tenant.status === "CANCELLED") throw new ConflictException("İptal edilmiş işletmeye kullanıcı davet edilemez");
+    const email = input.email.trim().toLowerCase();
+    const user = await this.db.user.findUnique({ where: { email }, select: { id: true, isPlatformAdmin: true, isActive: true } });
+    if (user?.isPlatformAdmin) throw new ConflictException("Platform yöneticisi hesabı işletmeye davet edilemez");
+    if (user && !user.isActive) throw new ConflictException("Bu e-postaya ait hesap pasif; önce hesabı aktifleştirin");
+    if (user) {
+      const m = await this.db.membership.findUnique({ where: { tenantId_userId: { tenantId, userId: user.id } }, select: { isActive: true } });
+      if (m) throw new ConflictException(m.isActive ? "Kullanıcı bu işletmede zaten var" : "Kullanıcı bu işletmede pasif; erişimini yeniden açın");
+    }
+    let invite;
+    try {
+      invite = await this.db.tenantInvite.create({ data: { tenantId, email, fullName: input.fullName.trim(), role: input.role, createdById: actorId } });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") throw new ConflictException("Bu e-postaya bu işletmede zaten açık bir davet var");
+      throw e;
+    }
+    await this.audit.logPlatform({ tenantId, actorId, ip, action: `${by}.member_invited`, entity: "TenantInvite", entityId: invite.id, metadata: { role: input.role, existingAccount: !!user } });
+    return this.deliver(invite.id, actorId, ip, by);
   }
 
   /** Paket değişikliği: aktif personel sayısı yeni paketin sınırını aşıyorsa reddedilir. */

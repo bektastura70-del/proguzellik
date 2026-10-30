@@ -1,5 +1,5 @@
 import { INestApplication } from "@nestjs/common";
-import { api, createApp, createTenantWithUser, futureAt, login, owner, resetDb, setupSalon } from "./helpers";
+import { api, createApp, createTenantWithUser, futureAt, login, owner, resetDb, setupSalon, addMember, TEST_PASSWORD } from "./helpers";
 
 const RANGE = `from=${new Date(Date.now() - 86_400_000).toISOString()}&to=${new Date(Date.now() + 30 * 86_400_000).toISOString()}`;
 
@@ -111,8 +111,8 @@ describe("Stok, sarf malzemeleri ve raporlar", () => {
   });
 
   it("raporlar yalnızca OWNER/MANAGER içindir", async () => {
-    const inv = await a.post("/team").send({ email: "r@test.local", fullName: "Resepsiyon", role: "RECEPTION" }).expect(201);
-    const r = api(app, await login(app, "r@test.local", inv.body.temporaryPassword), A.tenant.id);
+    const inv = await addMember(app, a, { email: "r@test.local", fullName: "Resepsiyon", role: "RECEPTION" });
+    const r = api(app, await login(app, "r@test.local", TEST_PASSWORD), A.tenant.id);
     await r.get(`/reports/dashboard?${RANGE}`).expect(403);
   });
 });

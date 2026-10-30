@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Logo } from "@/components/logo";
 import { InviteBadge, NewTenantDialog, TenantDetailDialog } from "@/components/platform/tenant-admin";
+import { UsersCard } from "@/components/platform/user-admin";
 import { Alert, Badge, Button, Card, CardHeader, Dialog, Field, Input, Select, Spinner, Stat, Table, Td, statusTone, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { dateTr, STATUS_TR, tl } from "@/lib/format";
@@ -19,7 +20,9 @@ export default function PlatformPage() {
   const stats = useApi<Stats>("/platform/stats");
   const tenants = useApi<TenantRow[]>(`/platform/tenants?${new URLSearchParams({ ...(status ? { status } : {}), ...(search ? { search } : {}) })}`);
   const plans = useApi<Plan[]>("/platform/plans");
+  const allTenants = useApi<TenantRow[]>("/platform/tenants");
   const [detail, setDetail] = useState<string | null>(null);
+  const [tab, setTab] = useState<"tenants" | "users">("tenants");
   const [creating, setCreating] = useState(false);
   const [planEdit, setPlanEdit] = useState<Plan | null>(null);
   const jobs = useApi<{ id: string; runKey: string; status: string; startedAt: string; finishedAt: string | null; result: Record<string, unknown> | null; error: string | null }[]>("/platform/jobs");
@@ -46,6 +49,13 @@ export default function PlatformPage() {
           <Stat label="Paket dağılımı" value={Object.values(stats.data.byPlan).reduce((a, b) => a + b, 0)} hint={Object.entries(stats.data.byPlan).map(([k, v]) => `${k} ${v}`).join(" · ")} />
         </div>
       )}
+      <div role="tablist" aria-label="Yönetim bölümleri" className="mt-6 inline-flex rounded-xl border border-sand-200 bg-white p-1 text-sm">
+        {([["tenants", "İşletmeler ve paketler"], ["users", "Kullanıcılar"]] as const).map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={tab === k} className={`rounded-lg px-4 py-1.5 ${tab === k ? "bg-brand-600 text-white" : "text-neutral-600 hover:bg-sand-100"}`} onClick={() => setTab(k)}>{label}</button>
+        ))}
+      </div>
+      {tab === "users" && <UsersCard tenants={allTenants.data ?? []} />}
+      {tab === "tenants" && (<>
       <Card className="mt-6">
         <CardHeader
           title="İşletmeler"
@@ -106,8 +116,9 @@ export default function PlatformPage() {
           ))}
         </Table>
       </Card>
+      </>)}
       {creating && <NewTenantDialog onClose={() => setCreating(false)} onCreated={() => { setCreating(false); tenants.reload(); stats.reload(); }} />}
-      {detail && <TenantDetailDialog id={detail} onClose={() => setDetail(null)} onChanged={() => { tenants.reload(); stats.reload(); }} />}
+      {detail && <TenantDetailDialog id={detail} onClose={() => setDetail(null)} onChanged={() => { tenants.reload(); stats.reload(); allTenants.reload(); }} />}
       {planEdit && (
         <Dialog open onClose={() => setPlanEdit(null)} title={`${planEdit.name} paketi`}>
           <form className="space-y-4" onSubmit={async (e) => {
