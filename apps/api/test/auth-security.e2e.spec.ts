@@ -51,6 +51,28 @@ describe("Kimlik güvenliği: oturumlar, parola sıfırlama, e-posta doğrulama,
       await http().get("/auth/me").set("Authorization", `Bearer ${t2}`).expect(200);
     });
 
+    it("çıkış, diğer oturumları kapatma ve oturum sonlandırma denetim kaydına yazılır", async () => {
+      const jwt = app.get(JwtService);
+      const t1 = await login(app, "a@test.local");
+      const t2 = await login(app, "a@test.local");
+      const t3 = await login(app, "a@test.local");
+      const sid1 = (jwt.decode(t1) as { sid: string }).sid;
+      const sid2 = (jwt.decode(t2) as { sid: string }).sid;
+      const sid3 = (jwt.decode(t3) as { sid: string }).sid;
+      await http().delete(`/auth/sessions/${sid3}`).set("Authorization", `Bearer ${t2}`).expect(200);
+      await http().post("/auth/logout").set("Authorization", `Bearer ${t1}`).expect(200);
+      const r = await http().post("/auth/logout-others").set("Authorization", `Bearer ${t2}`).expect(200);
+      const logs = await su.auditLog.findMany({
+        where: { actorId: A.user.id, action: { in: ["auth.logout", "auth.logout_others", "auth.session_revoked"] } },
+      });
+      const by = (a: string) => logs.filter((l) => l.action === a);
+      expect(by("auth.session_revoked").map((l) => l.entityId)).toContain(sid3);
+      expect(by("auth.logout").map((l) => l.entityId)).toContain(sid1);
+      const others = by("auth.logout_others").find((l) => l.entityId === sid2);
+      expect(others?.metadata).toEqual({ revoked: r.body.revoked });
+      for (const l of logs) expect(l.tenantId).toBeNull();
+    });
+
     it("hareketsiz kalan oturum sona erer", async () => {
       const t = await login(app, "a@test.local");
       const sid = (app.get(JwtService).decode(t) as { sid: string }).sid;

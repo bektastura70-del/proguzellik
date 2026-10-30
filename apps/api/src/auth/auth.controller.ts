@@ -5,6 +5,7 @@ import { planCodeSchema } from "../billing/plans";
 import { AuthUser, CurrentUser, Public } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
 import { loadEnv, registrationEnabled } from "../config/env";
+import { AuditService } from "../audit/audit.service";
 import { AuthService, ClientMeta } from "./auth.service";
 import { RateLimitService } from "./rate-limit.service";
 import { SessionService } from "./session.service";
@@ -50,6 +51,7 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly sessions: SessionService,
     private readonly rateLimit: RateLimitService,
+    private readonly audit: AuditService,
   ) {}
 
   @Public()
@@ -167,20 +169,26 @@ export class AuthController {
   }
 
   @Delete("sessions/:id")
-  revokeSession(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string) {
-    return this.sessions.revoke(u.id, id);
+  async revokeSession(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Req() req: Request) {
+    const r = await this.sessions.revoke(u.id, id);
+    await this.audit.logPlatform({ action: "auth.session_revoked", actorId: u.id, entity: "Session", entityId: id, ip: req.ip });
+    return r;
   }
 
   @Post("logout")
   @HttpCode(200)
-  logout(@CurrentUser() u: AuthUser) {
-    return this.sessions.revoke(u.id, u.sessionId);
+  async logout(@CurrentUser() u: AuthUser, @Req() req: Request) {
+    const r = await this.sessions.revoke(u.id, u.sessionId);
+    await this.audit.logPlatform({ action: "auth.logout", actorId: u.id, entity: "Session", entityId: u.sessionId, ip: req.ip });
+    return r;
   }
 
   @Post("logout-others")
   @HttpCode(200)
-  logoutOthers(@CurrentUser() u: AuthUser) {
-    return this.sessions.revokeAll(u.id, u.sessionId);
+  async logoutOthers(@CurrentUser() u: AuthUser, @Req() req: Request) {
+    const r = await this.sessions.revokeAll(u.id, u.sessionId);
+    await this.audit.logPlatform({ action: "auth.logout_others", actorId: u.id, entity: "Session", entityId: u.sessionId, ip: req.ip, metadata: { revoked: r.revoked } });
+    return r;
   }
 
   /* -------- İki adımlı doğrulama -------- */
