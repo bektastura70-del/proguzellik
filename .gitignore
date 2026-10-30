@@ -32,3 +32,4 @@ pnpm-debug.log*
 
 # Veritabanı yedekleri (asla commit etmeyin)
 backups/
+__pycache__/
