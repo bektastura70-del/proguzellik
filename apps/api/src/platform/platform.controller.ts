@@ -11,6 +11,7 @@ import { AuthUser, CurrentUser, PlatformAdmin } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
 import { PrismaService } from "../prisma/prisma.service";
 import { ManualSubscriptionService } from "./manual-subscription.service";
+import { PlanAdminService } from "./plan-admin.service";
 import { PlatformUsersService } from "./platform-users.service";
 import { DEFAULT_TRIAL_DAYS, inviteSelect, TenantAdminService } from "./tenant-admin.service";
 
@@ -45,24 +46,58 @@ const features = z
   .max(PLAN_FEATURES.length)
   // Temel özellikler her pakette vardır; sıra PLAN_FEATURES ile aynı tutulur.
   .transform((f) => PLAN_FEATURES.filter((k) => f.includes(k) || (PLAN_CORE_FEATURES as readonly string[]).includes(k)));
-const planUpdate = z.object({
-  name: z.string().trim().min(2).max(60).optional(),
-  maxStaff: z.number().int().min(1).max(500).optional(),
-  monthlyPrice: money(1_000_000).optional(),
-  yearlyPrice: money(10_000_000).optional(),
-  features: features.optional(),
-  sortOrder: z.number().int().min(0).max(1000).optional(),
-  isActive: z.boolean().optional(),
-});
-const planCreate = z.object({
-  code: planCodeSchema,
+const limit = z.number().int().min(1).max(10_000_000).nullable();
+const planFields = {
   name: z.string().trim().min(2).max(60),
+  description: z.string().trim().max(500).nullable().transform((v) => v || null),
   maxStaff: z.number().int().min(1).max(500),
-  monthlyPrice: money(1_000_000),
-  yearlyPrice: money(10_000_000),
-  features: features.default([...PLAN_CORE_FEATURES]),
-  sortOrder: z.number().int().min(0).max(1000).default(100),
-  isActive: z.boolean().default(true),
+  maxCustomers: limit,
+  maxMonthlyAppointments: limit,
+  features,
+  sortOrder: z.number().int().min(0).max(1000),
+  isActive: z.boolean(),
+  isPublic: z.boolean(),
+};
+/** Fiyat alanları bu uç noktalarda kabul edilmez: fiyat yalnız onaylı fiyat sürümüyle değişir. */
+const noPrice = (v: Record<string, unknown>, ctx: z.RefinementCtx) => {
+  for (const k of ["monthlyPrice", "yearlyPrice", "vatRate"]) {
+    if (k in v) ctx.addIssue({ code: "custom", path: [k], message: "Fiyat, paket bilgisinden ayrı olarak fiyat sürümüyle (taslak + onay) değiştirilir" });
+  }
+};
+const planUpdate = z.object(planFields).partial().passthrough().superRefine(noPrice);
+const planCreate = z
+  .object({
+    ...planFields,
+    code: planCodeSchema,
+    description: planFields.description.default(null),
+    maxCustomers: limit.default(null),
+    maxMonthlyAppointments: limit.default(null),
+    features: features.default([...PLAN_CORE_FEATURES]),
+    sortOrder: planFields.sortOrder.default(100),
+    isActive: planFields.isActive.default(true),
+    // Yeni paket varsayılan olarak gizli: fiyatı onaylanıp bilinçli olarak satışa açılana kadar sitede görünmez.
+    isPublic: planFields.isPublic.default(false),
+  })
+  .passthrough()
+  .superRefine(noPrice);
+const isoDate = z.string().datetime({ offset: true, message: "Geçerli bir tarih girin" });
+const priceDraft = z
+  .object({
+    monthlyPrice: money(1_000_000),
+    yearlyPrice: money(10_000_000),
+    vatRate: z.number({ error: "KDV oranını girin" }).min(0, "KDV oranı 0-100 arası olmalı").max(100, "KDV oranı 0-100 arası olmalı").multipleOf(0.01, "En fazla 2 ondalık basamak"),
+    effectiveFrom: isoDate.optional(),
+    renewalPolicy: z.enum(["KEEP_EXISTING", "APPLY_ON_RENEWAL"], { error: "Mevcut aboneliklere etkisini seçin" }),
+    renewalsFrom: isoDate.optional(),
+    note: z.string().trim().max(300).optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.renewalPolicy === "KEEP_EXISTING" && v.renewalsFrom) ctx.addIssue({ code: "custom", path: ["renewalsFrom"], message: "Mevcut abonelikler korunuyorsa uygulama tarihi girilmez" });
+    if (v.effectiveFrom && new Date(v.effectiveFrom).getTime() > Date.now() + 730 * 86_400_000) ctx.addIssue({ code: "custom", path: ["effectiveFrom"], message: "En fazla 2 yıl sonrası seçilebilir" });
+  });
+const priceApprove = z.object({
+  password: z.string().min(1, "Parolanızı girin").max(200),
+  code: z.string().trim().regex(/^\d{6}$/, "6 haneli doğrulama kodu girin"),
 });
 const trialSchema = z
   .object({
@@ -133,6 +168,7 @@ export class PlatformController {
     private readonly manual: ManualSubscriptionService,
     private readonly users: PlatformUsersService,
     private readonly rateLimit: RateLimitService,
+    private readonly plansAdmin: PlanAdminService,
   ) {}
 
   @Get("stats")
@@ -149,8 +185,9 @@ export class PlatformController {
     ]);
     const paid = subs.filter((s) => s.source === "PROVIDER");
     const manual = subs.filter((s) => s.source === "MANUAL");
+    // MRR, aboneliğin kilitli fiyatından (KDV hariç) hesaplanır; paketin güncel fiyatı geçmiş abonelikleri etkilemez.
     const mrr = paid.reduce(
-      (s, x) => s.plus(x.billingCycle === "MONTHLY" ? x.plan.monthlyPrice : new Prisma.Decimal(x.plan.yearlyPrice).div(12)),
+      (s, x) => (x.priceAmount == null ? s : s.plus(x.billingCycle === "MONTHLY" ? x.priceAmount : new Prisma.Decimal(x.priceAmount).div(12))),
       new Prisma.Decimal(0),
     );
     return {
@@ -364,40 +401,49 @@ export class PlatformController {
     return updated;
   }
 
+  /** Paketler: güncel/planlanan onaylı fiyat ve taslak sayısıyla (eski fiyat sütunları dönmez). */
   @Get("plans")
   plans() {
-    return this.prisma.platform.plan.findMany({ orderBy: { sortOrder: "asc" } });
+    return this.plansAdmin.list();
   }
 
   @Post("plans")
-  async createPlan(@CurrentUser() u: AuthUser, @Body(new ZodPipe(planCreate)) b: z.infer<typeof planCreate>) {
-    if (b.yearlyPrice > 0 && b.monthlyPrice > 0 && b.yearlyPrice > b.monthlyPrice * 12) throw new ConflictException("Yıllık fiyat, aylık fiyatın 12 katından fazla olamaz");
-    try {
-      const plan = await this.prisma.platform.plan.create({ data: b });
-      await this.audit.logPlatform({ actorId: u.id, action: "platform.plan_created", entity: "Plan", metadata: b });
-      return plan;
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") throw new ConflictException("Bu kodla bir paket zaten var");
-      throw e;
-    }
+  createPlan(@CurrentUser() u: AuthUser, @Body(new ZodPipe(planCreate)) b: z.infer<typeof planCreate>) {
+    const { code, name, description, maxStaff, maxCustomers, maxMonthlyAppointments, features: f, sortOrder, isActive, isPublic } = b;
+    return this.plansAdmin.create(u.id, { code, name, description, maxStaff, maxCustomers, maxMonthlyAppointments, features: f, sortOrder, isActive, isPublic });
   }
 
   @Patch("plans/:code")
-  async updatePlan(@CurrentUser() u: AuthUser, @Param("code") code: string, @Body(new ZodPipe(planUpdate)) b: z.infer<typeof planUpdate>) {
-    const parsed = planCodeSchema.safeParse(code);
-    const before = parsed.success ? await this.prisma.platform.plan.findUnique({ where: { code: parsed.data } }) : null;
-    if (!before) throw new NotFoundException("Paket bulunamadı");
-    if (b.maxStaff !== undefined && b.maxStaff < before.maxStaff) {
-      // Sınır düşürülürken mevcut işletmelerden hiçbiri yeni sınırı aşmamalı.
-      const over = await this.prisma.platform.$queryRaw<{ name: string; n: bigint }[]>`
-        SELECT t.name, count(s.id) AS n FROM "Tenant" t JOIN "StaffMember" s ON s."tenantId" = t.id AND s."isActive"
-        WHERE t."planCode" = ${before.code} AND t.status <> 'CANCELLED' GROUP BY t.id, t.name HAVING count(s.id) > ${b.maxStaff} LIMIT 3`;
-      if (over.length) throw new ConflictException(`Personel sınırı düşürülemez; aşan işletmeler: ${over.map((o) => `${o.name} (${o.n})`).join(", ")}`);
-    }
-    const plan = await this.prisma.platform.plan.update({ where: { code: before.code }, data: b });
-    const changes = Object.fromEntries(Object.keys(b).map((k) => [k, { from: (before as Record<string, unknown>)[k], to: (b as Record<string, unknown>)[k] }]));
-    await this.audit.logPlatform({ actorId: u.id, action: "platform.plan_updated", entity: "Plan", metadata: JSON.parse(JSON.stringify({ code: before.code, changes })) });
-    return plan;
+  updatePlan(@CurrentUser() u: AuthUser, @Param("code") code: string, @Body(new ZodPipe(planUpdate)) b: z.infer<typeof planUpdate>) {
+    const keys = Object.keys(planFields) as (keyof typeof planFields)[];
+    const data = Object.fromEntries(keys.filter((k) => b[k] !== undefined).map((k) => [k, b[k]]));
+    return this.plansAdmin.update(u.id, code, data);
+  }
+
+  /** Fiyat geçmişi (tüm sürümler). */
+  @Get("plans/:code/prices")
+  planPrices(@Param("code") code: string) {
+    return this.plansAdmin.prices(code);
+  }
+
+  /** Yeni fiyat taslağı (KDV hariç). Onaylanana kadar hiçbir yerde kullanılmaz. */
+  @Post("plans/:code/prices")
+  createPlanPrice(@CurrentUser() u: AuthUser, @Param("code") code: string, @Body(new ZodPipe(priceDraft)) b: z.infer<typeof priceDraft>) {
+    return this.plansAdmin.createDraft(u.id, code, b);
+  }
+
+  /** Owner onayı: parola + güncel 2FA kodu. */
+  @Post("plans/:code/prices/:id/approve")
+  @HttpCode(200)
+  approvePlanPrice(@CurrentUser() u: AuthUser, @Param("code") code: string, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(priceApprove)) b: z.infer<typeof priceApprove>, @Req() req: Request) {
+    this.rateLimit.hit(`platform-reauth:${u.id}`, 5, 15 * 60_000);
+    return this.plansAdmin.approve(u.id, code, id, b, req.ip);
+  }
+
+  @Post("plans/:code/prices/:id/cancel")
+  @HttpCode(200)
+  cancelPlanPrice(@CurrentUser() u: AuthUser, @Param("code") code: string, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(reasonSchema)) b: z.infer<typeof reasonSchema>) {
+    return this.plansAdmin.cancel(u.id, code, id, b.reason);
   }
 
   /** Deneme süresini uzatır ya da yeniden açar (süresi dolmuş, aboneliği olmayan işletme). */

@@ -383,7 +383,7 @@ export class AuthService {
     const phone = normalizePhone(input.phone);
     const planCode = input.planCode ?? "PROFESSIONAL";
     const plan = await this.db.plan.findUnique({ where: { code: planCode } });
-    if (!plan || !plan.isActive) throw new BadRequestException("Seçilen paket bulunamadı");
+    if (!plan || !plan.isActive || !plan.isPublic) throw new BadRequestException("Seçilen paket bulunamadı");
     const accepted = { status: "VERIFICATION_SENT" as const, email, expiresInHours: SIGNUP_HOURS };
 
     const existing = await this.db.user.findUnique({ where: { email } });
@@ -436,7 +436,7 @@ export class AuthService {
       if (await tx.user.findUnique({ where: { email: pending.email }, select: { id: true } })) throw new ConflictException("Bu e-posta ile kayıtlı bir hesap var; giriş yapın.");
       await this.assertPhoneFree(pending.phone, tx);
       const plan = await tx.plan.findUnique({ where: { code: pending.planCode } });
-      const planCode = plan?.isActive ? plan.code : "PROFESSIONAL";
+      const planCode = plan?.isActive && plan.isPublic ? plan.code : "PROFESSIONAL";
       let slug = slugify(pending.businessName) || "isletme";
       if (await tx.tenant.findUnique({ where: { slug } })) slug = `${slug}-${randomToken().slice(0, 6).toLowerCase().replace(/[^a-z0-9]/g, "x")}`;
       const now = new Date();

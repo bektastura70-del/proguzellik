@@ -37,4 +37,15 @@ NestJS'te tek global `AuthGuard`:
 | Profesyonel | 8 | + stok, raporlar, WhatsApp |
 | Akıllı | 20 | + yapay zekâ asistanı |
 
-Fiyatlar yer tutucudur; SaaS sahibi panelinden değiştirilir.
+### Fiyat yönetimi (`/platform` → Paketler ve fiyatlar)
+
+- Paket bilgisi (ad, açıklama, personel / müşteri / aylık randevu sınırı, özellikler, **aktif/pasif**, **satışta/gizli**) ile fiyat ayrıdır.
+  Pasif paket hiçbir işletmeye yeni atanamaz; gizli paket sitede ve kayıtta görünmez, yalnız SaaS sahibi atayabilir.
+- Fiyat her zaman yeni bir **sürümdür** (`PlanPrice`): aylık ve yıllık tutar **KDV hariç**, sürümün kendi KDV oranı, yeni satışta geçerlilik tarihi ve mevcut aboneliklere etkisi.
+  Taslak hiçbir yerde kullanılmaz; SaaS sahibi **parola + 2FA** ile onaylar. Onaylı sürüm değiştirilemez ve silinemez (veritabanı tetikleyicisi); yalnız yürürlüğe girmeden ve aboneliğe bağlanmadan iptal edilebilir.
+- Geriye dönük uygulama yoktur: geçmiş tarihli taslak, onay anından itibaren geçerli olur. Aynı anda yürürlükteki sürümler arasında en son onaylanan geçerlidir.
+- **Fiyat kilidi:** abonelik başlarken o anki onaylı sürüme kilitlenir (`Subscription.planPriceId`, `priceAmount`, `vatRate`). Yeni sürüm mevcut aboneliği değiştirmez;
+  yalnız "yenilemede uygula" seçilen sürüm, belirtilen tarihte ya da sonrasında **başlayan** ilk yenileme döneminden itibaren uygulanır. Devam eden dönem hiçbir zaman değişmez.
+- Tahsilat KDV dahil tutardır; ödeme kaydında KDV hariç tutar ve oran ayrıca saklanır. MRR kilitli fiyatlardan hesaplanır.
+- Tanıtım sitesi ve işletme paneli tutarı yalnız onaylı, yürürlükteki sürümden alır; onaylı fiyatı olmayan pakette "Fiyat yakında" yazar ve satın alma yapılamaz.
+  Eski `Plan.monthlyPrice/yearlyPrice` sütunları geriye dönük uyum için durur, hiçbir yanıtta dönmez. `PRICING_PUBLIC=0` acil durumda tüm tutarları gizler.

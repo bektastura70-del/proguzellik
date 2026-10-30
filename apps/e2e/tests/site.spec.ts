@@ -32,18 +32,28 @@ test.describe("Tanıtım sitesi", () => {
     });
   }
 
-  test("fiyatlar veritabanındaki paketlerden gelir; açıklanmadıysa hiçbir tutar gösterilmez", async ({ page }) => {
-    const plans = (await (await page.request.get("/api/p/plans")).json()) as { name: string; maxStaff: number; monthlyPrice: string | null }[];
-    const announced = plans.every((p) => p.monthlyPrice !== null);
+  test("fiyatlar veritabanındaki paketlerden gelir; onaylı fiyatı olmayan pakette hiçbir tutar gösterilmez", async ({ page }) => {
+    const plans = (await (await page.request.get("/api/p/plans")).json()) as { code: string; name: string; maxStaff: number; monthlyPrice: string | null; vatRate: string | null }[];
+    const anyPrice = plans.some((p) => p.monthlyPrice !== null);
     for (const path of ["/fiyatlar", "/"]) {
       await page.goto(path);
-      if (announced) {
+      if (anyPrice) {
         await expect(page.getByText("Fiyatlar Yakında Açıklanacak")).toHaveCount(0);
-        await expect(page.getByText("Fiyatlara KDV dahil değildir.").or(page.getByText(/KDV (dahildir|dahil değildir)/)).first()).toBeVisible();
       } else {
         await expect(page.getByRole("heading", { name: "Fiyatlar Yakında Açıklanacak" })).toBeVisible();
         await expect(page.locator("main")).not.toContainText(/₺|\bTL\b|\/ ay/);
       }
+      for (const p of plans) {
+        const card = page.locator(`article[data-plan="${p.code}"]`);
+        if (p.monthlyPrice === null) {
+          await expect(card).toContainText("Fiyat yakında");
+          await expect(card).not.toContainText("₺");
+        } else {
+          await expect(card).toContainText(`%${Number(p.vatRate).toLocaleString("tr-TR")} KDV eklenir`);
+        }
+      }
+      // Eski demo tutarları hiçbir koşulda görünmez
+      await expect(page.locator("main")).not.toContainText(/₺499|₺999|₺1\.799/);
     }
     await page.goto("/fiyatlar");
     for (const p of plans) {

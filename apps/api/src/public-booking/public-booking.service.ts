@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { AppointmentHooks, AppointmentsService } from "../appointments/appointments.service";
 import { AvailabilityService } from "../appointments/availability.service";
 import { AuditService } from "../audit/audit.service";
+import { assertUsageLimit, UsageLimitError } from "../billing/plan-pricing";
 import { loadEnv } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 
@@ -110,6 +111,7 @@ export class PublicBookingService {
         let customer = await tx.customer.findUnique({ where: { tenantId_phone: { tenantId: t.id, phone: b.phone } } });
         if (customer?.anonymizedAt) customer = null;
         if (!customer) {
+          await assertUsageLimit(tx, t.id, "customer");
           customer = await tx.customer.create({
             data: {
               tenantId: t.id,
@@ -137,7 +139,11 @@ export class PublicBookingService {
         await this.audit.log(tx, { tenantId: t.id, action: "booking.online_created", entity: "Appointment", entityId: appt.id, ip });
         return { appt, service, staffName: slot.staffName };
       })
-      .catch(AppointmentsService.overlapGuard);
+      .catch((e) => {
+        // Paket sınırı ziyaretçiye ayrıntısıyla gösterilmez.
+        if (e instanceof UsageLimitError) throw new ConflictException("Şu anda online randevu alınamıyor. Lütfen işletmeyle iletişime geçin.");
+        return AppointmentsService.overlapGuard(e);
+      });
 
     return {
       bookingId: result.appt.id,

@@ -44,7 +44,10 @@ const schema = z.object({
   TRUST_PROXY: z.enum(["0", "1"]).default("1"),
   // Yeni işletme kaydı. Tanımsızsa: canlıda (NODE_ENV=production) kapalı, diğer ortamlarda açık.
   REGISTRATION_ENABLED: z.enum(["0", "1"]).optional(),
-  /** Paket fiyatları herkese açık mı? Canlıda yalnızca PRICING_PUBLIC=1 ile gösterilir ve satışta kullanılır. */
+  /**
+   * 1 = online satın alma ve otomatik yenileme açık (canlıda tanımsızsa kapalı). 0 = acil durum: tüm tutarlar gizlenir.
+   * Sitede tutar gösterimi ayrıca paket başına SaaS sahibinin onayladığı fiyat sürümüne bağlıdır.
+   */
   PRICING_PUBLIC: z.enum(["0", "1"]).optional(),
   /** İşletmelerin abonelik/ödeme için yazacağı kurumsal adres (şirket ayarlarında e-posta girilmişse o kullanılır) */
   SUPPORT_EMAIL: z.string().email().default("info@proguzellik.com"),
@@ -69,7 +72,13 @@ export function loadEnv(): Env {
   return cached;
 }
 
-/** Paket fiyatları açıklandı mı? Canlıda yalnızca PRICING_PUBLIC=1 ile; kapalıyken fiyatlar herkese açık yanıtlarda null döner ve satın alma yapılamaz. */
+/**
+ * Acil durum anahtarı: PRICING_PUBLIC=0 ise herkese açık yanıtlarda hiçbir tutar gösterilmez.
+ * Tanımsızken tutar gösterimi paket başına SaaS sahibinin onayladığı fiyat sürümüne bağlıdır.
+ */
+export const pricesHidden = (env: Pick<Env, "PRICING_PUBLIC">) => env.PRICING_PUBLIC === "0";
+
+/** Online satın alma/otomatik yenileme açık mı? Canlıda yalnızca PRICING_PUBLIC=1 ile; kapalıyken satın alma ve otomatik tahsilat yapılamaz. */
 export const pricingPublic = (env: Pick<Env, "PRICING_PUBLIC" | "NODE_ENV">) =>
   env.PRICING_PUBLIC ? env.PRICING_PUBLIC === "1" : env.NODE_ENV !== "production";
 

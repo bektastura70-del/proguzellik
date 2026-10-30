@@ -4,7 +4,7 @@ import { addPeriod } from "../src/billing/subscriptions.service";
 import { productionIssues, loadEnv } from "../src/config/env";
 import { MockEmailProvider } from "../src/email/email.provider";
 import { JobsService } from "../src/jobs/jobs.service";
-import { createApp, createTenantWithUser, owner, resetDb } from "./helpers";
+import { approveTestPrices, createApp, createTenantWithUser, owner, resetDb } from "./helpers";
 
 const DAY = 86_400_000;
 
@@ -30,6 +30,7 @@ describe("Günlük abonelik görevi (deneme, yenileme, gecikme, iptal, paket sı
 
   beforeAll(async () => {
     await resetDb(su);
+    await approveTestPrices(su);
     app = await createApp();
     jobs = app.get(JobsService);
     pay = app.get(PaymentProvider) as MockPaymentProvider;

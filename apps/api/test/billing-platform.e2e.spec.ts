@@ -2,7 +2,7 @@ import { INestApplication } from "@nestjs/common";
 import * as bcrypt from "bcryptjs";
 import request from "supertest";
 import { PrismaClient } from "@prisma/client";
-import { api, createApp, createTenantWithUser, enableMfa, login, owner, registerTrial, resetDb, TEST_PASSWORD } from "./helpers";
+import { api, approveTestPrices, createApp, createTenantWithUser, enableMfa, login, owner, registerTrial, resetDb, TEST_PASSWORD } from "./helpers";
 
 describe("Abonelik paketleri, deneme süresi ve SaaS sahibi paneli", () => {
   const su = owner();
@@ -15,7 +15,7 @@ describe("Abonelik paketleri, deneme süresi ve SaaS sahibi paneli", () => {
 
   beforeAll(async () => {
     await resetDb(su);
-    await su.plan.update({ where: { code: "STARTER" }, data: { monthlyPrice: 499 } });
+    await approveTestPrices(su);
     A = await createTenantWithUser(su, { name: "Salon A", email: "a@test.local", status: "TRIAL" });
     B = await createTenantWithUser(su, { name: "Salon B", email: "b@test.local" });
     await su.user.create({
@@ -76,6 +76,8 @@ describe("Abonelik paketleri, deneme süresi ve SaaS sahibi paneli", () => {
     const cur = await a.get("/subscription").expect(200);
     expect(cur.body).toMatchObject({ status: "ACTIVE", plan: { code: "SMART" }, usage: { maxStaff: 20 } });
     expect(cur.body.payments[0]).toMatchObject({ amount: "17990", status: "PAID" });
+    // Fiyat kilidi: abonelik onaylı sürüme bağlanır
+    expect(cur.body.subscription).toMatchObject({ priceAmount: "17990.00", vatRate: "0.00" });
   });
 
   it("aktif personel sayısı yeni paketi aşıyorsa düşürme reddedilir", async () => {
@@ -134,11 +136,12 @@ describe("Abonelik paketleri, deneme süresi ve SaaS sahibi paneli", () => {
     expect(actions.filter((a) => a === "platform.tenant_reactivated")).toHaveLength(1);
   });
 
-  it("deneme süresini uzatma ve paket fiyatı güncelleme", async () => {
+  it("deneme süresini uzatma; paket fiyatı doğrudan güncellenemez (fiyat sürümüyle değişir)", async () => {
     const until = new Date(Date.now() + 30 * 86_400_000).toISOString();
     await admin.patch(`/platform/tenants/${A.tenant.id}`).send({ trialEndsAt: until }).expect(200);
-    const p = await admin.patch("/platform/plans/STARTER").send({ monthlyPrice: 599 }).expect(200);
-    expect(p.body.monthlyPrice).toBe("599");
+    await admin.patch("/platform/plans/STARTER").send({ monthlyPrice: 599 }).expect(400);
+    const d = await admin.post("/platform/plans/STARTER/prices").send({ monthlyPrice: 599, yearlyPrice: 5990, vatRate: 0, renewalPolicy: "KEEP_EXISTING" }).expect(201);
+    expect(d.body).toMatchObject({ status: "DRAFT", monthlyPrice: "599.00", version: null });
   });
 
   it("dönem sonu: iptal istenen abonelik sona erer, diğeri ödemesi alınamayınca ödeme bekler", async () => {

@@ -3,7 +3,7 @@ import { JwtService } from "@nestjs/jwt";
 import request from "supertest";
 import { MockEmailProvider } from "../src/email/email.provider";
 import { currentStep, totp } from "../src/security/crypto";
-import { api, createApp, createTenantWithUser, enableMfa, freshTotp, login, loginWithMfa, owner, resetDb, TEST_PASSWORD, addMember, registerTrial } from "./helpers";
+import { api, createApp, createTenantWithUser, enableMfa, freshTotp, login, loginWithMfa, owner, resetDb, TEST_PASSWORD, addMember, registerTrial, approveTestPrices } from "./helpers";
 
 const linkToken = (text: string) => /token=([A-Za-z0-9_-]+)/.exec(text)?.[1] ?? "";
 
@@ -16,6 +16,7 @@ describe("Kimlik güvenliği: oturumlar, parola sıfırlama, e-posta doğrulama,
 
   beforeAll(async () => {
     await resetDb(su);
+    await approveTestPrices(su);
     A = await createTenantWithUser(su, { name: "Salon A", email: "a@test.local" });
     await su.user.create({ data: { email: "admin@proguzellik.test", fullName: "SaaS Sahibi", passwordHash: (await su.user.findFirstOrThrow()).passwordHash, isPlatformAdmin: true, emailVerifiedAt: new Date() } });
     app = await createApp();

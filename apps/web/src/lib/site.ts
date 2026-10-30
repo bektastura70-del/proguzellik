@@ -1,6 +1,10 @@
 import { API_URL } from "@/lib/server-api";
 
-export type SitePlan = { code: string; name: string; maxStaff: number; monthlyPrice: string | null; yearlyPrice: string | null; features: string[]; sortOrder: number };
+/** Herkese açık paket: tutarlar yalnız SaaS sahibinin onayladığı fiyattan gelir (KDV hariç); onaysızsa null. */
+export type SitePlan = {
+  code: string; name: string; description: string | null; maxStaff: number; maxCustomers: number | null; maxMonthlyAppointments: number | null;
+  monthlyPrice: string | null; yearlyPrice: string | null; vatRate: string | null; features: string[]; sortOrder: number;
+};
 export type SiteInfo = { company: { legalName: string | null; address: string | null; phone: string | null; email: string }; pricesAnnounced?: boolean; vat: { rate: string; included: boolean } | null };
 
 /** Paketler veritabanından gelir (SaaS sahibi panelinden yönetilir); burada fiyat yazılmaz. */

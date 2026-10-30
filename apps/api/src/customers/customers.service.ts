@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from "@nestjs/common
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { TenantInfo } from "../common/decorators";
+import { assertUsageLimit } from "../billing/plan-pricing";
 import { FinanceService } from "../finance/finance.service";
 import { PrismaService, Tx } from "../prisma/prisma.service";
 
@@ -81,6 +82,7 @@ export class CustomersService {
   create(t: TenantInfo, input: CustomerInput) {
     return this.prisma
       .withTenant(t, async (tx) => {
+        await assertUsageLimit(tx, t.tenantId, "customer");
         const c = await tx.customer.create({ data: { tenantId: t.tenantId, ...this.toData(input), firstName: input.firstName, lastName: input.lastName },
         });
         await this.audit.log(tx, {

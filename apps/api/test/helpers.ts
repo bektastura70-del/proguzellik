@@ -184,3 +184,30 @@ export async function registerTrial(
   if (!token) throw new Error("Deneme doğrulama e-postası bulunamadı");
   return request(app.getHttpServer()).post("/auth/register/confirm").send({ token }).expect(200);
 }
+
+/**
+ * Testte onaylı fiyat sürümü oluşturur (SaaS sahibi onayını taklit eder; arayüz/uç nokta testleri ayrıca vardır).
+ * KDV varsayılan 0: eski testlerdeki tutarlar değişmesin.
+ */
+export async function approvePrice(
+  db: PrismaClient,
+  planCode: string,
+  p: { monthly: number; yearly: number; vatRate?: number; effectiveFrom?: Date; renewalPolicy?: "KEEP_EXISTING" | "APPLY_ON_RENEWAL"; renewalsFrom?: Date },
+) {
+  const effectiveFrom = p.effectiveFrom ?? new Date(Date.now() - 1000);
+  const last = await db.planPrice.aggregate({ where: { planCode }, _max: { version: true } });
+  return db.planPrice.create({
+    data: {
+      planCode, monthlyPrice: p.monthly, yearlyPrice: p.yearly, vatRate: p.vatRate ?? 0, effectiveFrom,
+      renewalPolicy: p.renewalPolicy ?? "KEEP_EXISTING", renewalsFrom: p.renewalsFrom ?? null,
+      status: "APPROVED", version: (last._max.version ?? 0) + 1, approvedAt: new Date(Math.min(effectiveFrom.getTime(), Date.now())), approvedById: "00000000-0000-4000-8000-000000000001",
+    },
+  });
+}
+
+/** Eski testlerin kullandığı örnek fiyatlar (yalnız test verisi). */
+export async function approveTestPrices(db: PrismaClient) {
+  await approvePrice(db, "STARTER", { monthly: 499, yearly: 4990 });
+  await approvePrice(db, "PROFESSIONAL", { monthly: 999, yearly: 9990 });
+  await approvePrice(db, "SMART", { monthly: 1799, yearly: 17990 });
+}

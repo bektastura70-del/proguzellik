@@ -3,10 +3,11 @@ import { BillingCycle, Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { TenantInfo } from "../common/decorators";
-import { appUrl, loadEnv, pricingPublic } from "../config/env";
+import { appUrl, loadEnv, pricesHidden, pricingPublic } from "../config/env";
 import { EmailService } from "../email/email.service";
 import { PrismaService, Tx } from "../prisma/prisma.service";
 import { StaffLimitPolicy } from "../staff/staff.service";
+import { approvedVersionsOf, cycleAmount, priceForNewSale, priceForRenewal, publicPlanView, withVat } from "./plan-pricing";
 import { PaymentProvider } from "./payment-provider";
 
 /** Deneme bitişine kaç gün kala hatırlatma gönderilir (büyükten küçüğe). */
@@ -44,11 +45,23 @@ export class SubscriptionsService {
     private readonly email: EmailService,
   ) {}
 
-  /** Herkese açık paket listesi. Fiyatlar açıklanmadıysa (canlıda PRICING_PUBLIC≠1) tutarlar null döner. */
-  async plans() {
-    const plans = await this.prisma.platform.plan.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } });
-    if (pricingPublic(loadEnv())) return plans;
-    return plans.map((p) => ({ ...p, monthlyPrice: null, yearlyPrice: null }));
+  /**
+   * Herkese açık paket listesi: yalnız aktif ve satıştaki (gizli olmayan) paketler.
+   * Tutar yalnız SaaS sahibinin onayladığı, yürürlükteki fiyat sürümünden gelir; onaylı fiyatı olmayan pakette null döner.
+   * PRICING_PUBLIC=0 acil durum anahtarıdır: tüm tutarları gizler.
+   */
+  async plans(now = new Date()) {
+    const db = this.prisma.platform;
+    const plans = await db.plan.findMany({ where: { isActive: true, isPublic: true }, orderBy: { sortOrder: "asc" } });
+    const hidden = pricesHidden(loadEnv());
+    const versions = hidden ? [] : await approvedVersionsOf(db, plans.map((p) => p.code));
+    return plans.map((p) => publicPlanView(p, priceForNewSale(versions.filter((v) => v.planCode === p.code), now)));
+  }
+
+  /** Paketin şu an yeni satışta geçerli onaylı fiyatı (yoksa null). */
+  async currentPrice(planCode: string, now = new Date()) {
+    if (pricesHidden(loadEnv())) return null;
+    return priceForNewSale(await approvedVersionsOf(this.prisma.platform, [planCode]), now);
   }
 
   async publicSite() {
@@ -56,7 +69,7 @@ export class SubscriptionsService {
     return {
       company: { legalName: c?.legalName ?? null, address: c?.address ?? null, phone: c?.phone ?? null, email: c?.email ?? loadEnv().SUPPORT_EMAIL },
       // KDV bilgisi yalnızca şirket ayarlarında hem oran hem dahil/hariç seçildiyse gösterilir.
-      pricesAnnounced: pricingPublic(loadEnv()),
+      pricesAnnounced: (await this.plans()).some((p) => p.monthlyPrice != null),
       vat: c?.vatRate != null && c.pricesIncludeVat != null ? { rate: c.vatRate.toString(), included: c.pricesIncludeVat } : null,
     };
   }
@@ -77,15 +90,22 @@ export class SubscriptionsService {
         this.prisma.platform.savedPaymentMethod.findFirst({ where: { tenantId: t.tenantId }, select: { label: true, provider: true, createdAt: true } }),
         this.prisma.platform.platformCompany.findUnique({ where: { id: 1 }, select: { email: true, phone: true } }),
       ]);
+      const planPrice = await this.currentPrice(tenant.planCode);
       return {
         status: tenant.status,
-        plan: tenant.plan,
+        // Eski fiyat sütunları dışarı verilmez; tutar onaylı fiyat sürümünden gelir.
+        plan: publicPlanView(tenant.plan, planPrice),
         trialEndsAt: tenant.trialEndsAt,
         trialDaysLeft,
         graceEndsAt,
         limitExceeded: !!tenant.limitExceededAt,
         usage: { activeStaff, maxStaff: tenant.plan.maxStaff },
-        subscription,
+        subscription: subscription && {
+          ...subscription,
+          // Kilitli fiyat (KDV hariç, dönem başına)
+          priceAmount: subscription.priceAmount?.toFixed(2) ?? null,
+          vatRate: subscription.vatRate?.toFixed(2) ?? null,
+        },
         savedMethod,
         payments,
         /** false: online ödeme kapalı (canlıda gerçek sağlayıcı yok); paket SaaS sahibi tarafından tanımlanır. */
@@ -111,12 +131,18 @@ export class SubscriptionsService {
       throw new ForbiddenException({ message: "Ödeme yapmadan önce e-posta adresinizi doğrulayın", code: "EMAIL_NOT_VERIFIED" });
     }
     const plan = await db.plan.findUnique({ where: { code: b.planCode } });
-    if (!plan || !plan.isActive) throw new NotFoundException("Paket bulunamadı");
+    // Gizli paket yalnız SaaS sahibince (manuel abonelikle) atanır; işletme kendisi satın alamaz.
+    if (!plan || !plan.isActive || !plan.isPublic) throw new NotFoundException("Paket bulunamadı");
+    const now = new Date();
+    const price = await this.currentPrice(plan.code, now);
+    if (!price) throw new ConflictException({ message: "Bu paketin onaylı fiyatı yok. Paket için bizimle iletişime geçin.", code: "PRICE_NOT_APPROVED" });
     const activeStaff = await db.staffMember.count({ where: { tenantId: t.tenantId, isActive: true } });
     if (activeStaff > plan.maxStaff) {
       throw new ConflictException(`${plan.name} paketi en fazla ${plan.maxStaff} aktif personel destekler (şu an ${activeStaff}).`);
     }
-    const amount = b.billingCycle === "MONTHLY" ? plan.monthlyPrice : plan.yearlyPrice;
+    const net = cycleAmount(price, b.billingCycle);
+    if (!net.gt(0)) throw new ConflictException("Bu pakette yıllık ödeme seçeneği yok");
+    const { gross: amount } = withVat(net, price.vatRate);
     const idempotencyKey = `checkout:${t.tenantId}:${randomUUID()}`;
     const charge = await this.payments.charge({
       tenantId: t.tenantId,
@@ -130,7 +156,6 @@ export class SubscriptionsService {
       await this.audit.logPlatform({ tenantId: t.tenantId, actorId: t.userId, action: "subscription.payment_failed", metadata: { error: charge.error ?? null } });
       throw new HttpException(charge.error ?? "Ödeme başarısız", HttpStatus.PAYMENT_REQUIRED);
     }
-    const now = new Date();
     return db.$transaction(async (tx) => {
       await tx.subscription.updateMany({ where: { tenantId: t.tenantId, status: { in: ["ACTIVE", "PAST_DUE"] } }, data: { status: "CANCELLED" } });
       const sub = await tx.subscription.create({
@@ -142,16 +167,20 @@ export class SubscriptionsService {
           currentPeriodEnd: addPeriod(now, b.billingCycle),
           provider: this.payments.name,
           providerRef: charge.providerRef,
+          // Fiyat kilidi: sonraki fiyat değişiklikleri bu aboneliği geriye dönük etkilemez.
+          planPriceId: price.id,
+          priceAmount: net,
+          vatRate: price.vatRate,
         },
       });
       await tx.subscriptionPayment.create({
-        data: { tenantId: t.tenantId, subscriptionId: sub.id, amount, status: "PAID", provider: this.payments.name, providerRef: charge.providerRef, description: `${plan.name} paketi`, idempotencyKey },
+        data: { tenantId: t.tenantId, subscriptionId: sub.id, amount, netAmount: net, vatRate: price.vatRate, status: "PAID", provider: this.payments.name, providerRef: charge.providerRef, description: `${plan.name} paketi`, idempotencyKey },
       });
       // Otomatik yenileme için yalnızca sağlayıcı belirteci saklanır.
       await tx.savedPaymentMethod.deleteMany({ where: { tenantId: t.tenantId } });
       await tx.savedPaymentMethod.create({ data: { tenantId: t.tenantId, provider: this.payments.name, token: b.paymentToken, label: `Test kartı (${b.paymentToken.slice(-4)})` } });
       await tx.tenant.update({ where: { id: t.tenantId }, data: { status: "ACTIVE", planCode: plan.code, pastDueSince: null, limitExceededAt: null } });
-      await tx.auditLog.create({ data: { tenantId: t.tenantId, actorId: t.userId, action: "subscription.activated", metadata: { plan: plan.code, cycle: b.billingCycle } } });
+      await tx.auditLog.create({ data: { tenantId: t.tenantId, actorId: t.userId, action: "subscription.activated", metadata: { plan: plan.code, cycle: b.billingCycle, planPriceId: price.id, priceVersion: price.version, net: net.toFixed(2), vatRate: price.vatRate.toFixed(2) } } });
       return sub;
     });
   }
@@ -298,7 +327,12 @@ export class SubscriptionsService {
     const db = this.prisma.platform;
     const env = loadEnv();
     const key = `renew:${s.id}:${s.currentPeriodEnd.toISOString()}`;
-    const amount = s.billingCycle === "MONTHLY" ? s.plan.monthlyPrice : s.plan.yearlyPrice;
+    // Yeni dönemin fiyatı: kilitli sürüm; yalnız "yenilemede uygula" sürümü, başlangıcı renewalsFrom'dan sonra olan dönemde geçerli olur.
+    const versions = pricesHidden(env) ? [] : await approvedVersionsOf(db, [s.planCode]);
+    const locked = versions.find((v) => v.id === s.planPriceId) ?? null;
+    const price = priceForRenewal(versions, locked, s.currentPeriodEnd);
+    const net = price ? cycleAmount(price, s.billingCycle) : null;
+    const amount = price && net ? withVat(net, price.vatRate).gross : new Prisma.Decimal(0);
     const method = await db.savedPaymentMethod.findFirst({ where: { tenantId: s.tenantId } });
     const existing = await db.subscriptionPayment.findUnique({ where: { idempotencyKey: key } });
     let ok = existing?.status === "PAID";
@@ -308,6 +342,8 @@ export class SubscriptionsService {
       if (!pricingPublic(env)) {
         // Fiyatlar açıklanmadan onaysız tutarla tahsilat yapılmaz.
         error = "Paket fiyatları henüz açıklanmadı";
+      } else if (!price) {
+        error = "Paketin onaylı fiyatı yok";
       } else if (!this.payments.acceptsPayments) {
         // Canlıda test sağlayıcısıyla/ödeme kapalıyken yenileme "ödendi" sayılmaz.
         error = "Online ödeme aktif değil";
@@ -331,19 +367,21 @@ export class SubscriptionsService {
       const nextEnd = addPeriod(s.currentPeriodEnd, s.billingCycle);
       await db.$transaction(async (tx) => {
         if (!existing) {
-          await tx.subscriptionPayment.create({ data: { tenantId: s.tenantId, subscriptionId: s.id, amount, status: "PAID", provider: this.payments.name, providerRef, description: `${s.plan.name} yenileme`, idempotencyKey: key } });
+          await tx.subscriptionPayment.create({ data: { tenantId: s.tenantId, subscriptionId: s.id, amount, netAmount: net, vatRate: price?.vatRate ?? null, status: "PAID", provider: this.payments.name, providerRef, description: `${s.plan.name} yenileme`, idempotencyKey: key } });
         }
-        await tx.subscription.update({ where: { id: s.id }, data: { currentPeriodStart: s.currentPeriodEnd, currentPeriodEnd: nextEnd } });
+        // Kilit yeni dönemin fiyat sürümüne güncellenir.
+        const lock = price ? { planPriceId: price.id, priceAmount: net, vatRate: price.vatRate } : {};
+        await tx.subscription.update({ where: { id: s.id }, data: { currentPeriodStart: s.currentPeriodEnd, currentPeriodEnd: nextEnd, ...lock } });
         await tx.tenant.update({ where: { id: s.tenantId }, data: { status: "ACTIVE", pastDueSince: null } });
       });
       r.renewed++;
-      await this.audit.logPlatform({ tenantId: s.tenantId, action: "lifecycle.renewed", metadata: { until: nextEnd.toISOString() } });
+      await this.audit.logPlatform({ tenantId: s.tenantId, action: "lifecycle.renewed", metadata: { until: nextEnd.toISOString(), planPriceId: price?.id ?? null, priceVersion: price?.version ?? null } });
       await this.mail(s.tenantId, { name: "subscription_renewed", vars: { salon: s.tenant.name, plan: s.plan.name, amount: amount.toFixed(2), until: nextEnd.toISOString().slice(0, 10) } }, `renewed:${key}`);
       return;
     }
     await db.$transaction(async (tx: Tx) => {
       if (!existing) {
-        await tx.subscriptionPayment.create({ data: { tenantId: s.tenantId, subscriptionId: s.id, amount, status: "FAILED", provider: this.payments.name, description: error ?? "Ödeme alınamadı", idempotencyKey: key } });
+        await tx.subscriptionPayment.create({ data: { tenantId: s.tenantId, subscriptionId: s.id, amount, netAmount: net, vatRate: price?.vatRate ?? null, status: "FAILED", provider: this.payments.name, description: error ?? "Ödeme alınamadı", idempotencyKey: key } });
       }
       await tx.subscription.update({ where: { id: s.id }, data: { status: "PAST_DUE" } });
       await tx.tenant.update({ where: { id: s.tenantId }, data: { status: "PAST_DUE", pastDueSince: s.currentPeriodEnd } });

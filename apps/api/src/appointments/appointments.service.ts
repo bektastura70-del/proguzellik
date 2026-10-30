@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { AppointmentStatus, BookingSource, Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { TenantInfo } from "../common/decorators";
+import { assertUsageLimit } from "../billing/plan-pricing";
 import { addMinutes } from "../common/time";
 import { PrismaService, Tx } from "../prisma/prisma.service";
 import { PackagesService } from "../packages/packages.service";
@@ -94,6 +95,7 @@ export class AppointmentsService {
     const startsAt = new Date(input.startsAt);
     const endsAt = addMinutes(startsAt, service.durationMin);
     if (!input.ignoreSchedule) await this.availability.assertWithinSchedule(tx, tenantId, staff.id, startsAt, endsAt);
+    await assertUsageLimit(tx, tenantId, "appointment", startsAt);
 
     const appt = await tx.appointment.create({
       data: {

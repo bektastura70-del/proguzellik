@@ -6,11 +6,11 @@ import { Alert, Badge, Button, Card, CardBody, CardHeader, Dialog, Field, Input,
 import { api, useApi } from "@/lib/api";
 import { dateTr, STATUS_TR, tl } from "@/lib/format";
 
-type Plan = { code: string; name: string; maxStaff: number; monthlyPrice: string | null; yearlyPrice: string | null; features: string[] };
+type Plan = { code: string; name: string; description: string | null; maxStaff: number; maxCustomers: number | null; maxMonthlyAppointments: number | null; monthlyPrice: string | null; yearlyPrice: string | null; vatRate: string | null; features: string[] };
 type Sub = {
   status: string; trialDaysLeft: number | null; plan: Plan; usage: { activeStaff: number; maxStaff: number };
   graceEndsAt: string | null; limitExceeded: boolean; savedMethod: { label: string | null } | null;
-  subscription: { billingCycle: string; currentPeriodEnd: string; cancelAtPeriodEnd: boolean; status: string; source: "PROVIDER" | "MANUAL"; isComplimentary: boolean } | null;
+  subscription: { billingCycle: string; currentPeriodEnd: string; cancelAtPeriodEnd: boolean; status: string; source: "PROVIDER" | "MANUAL"; isComplimentary: boolean; priceAmount: string | null; vatRate: string | null } | null;
   payments: { id: string; amount: string; status: string; description: string; createdAt: string; provider: string }[];
   onlinePayment: boolean;
   contact: { email: string; phone: string | null };
@@ -38,6 +38,9 @@ export default function SubscriptionPage() {
             {s.trialDaysLeft !== null && <p>Deneme süresinden <b>{s.trialDaysLeft} gün</b> kaldı.</p>}
             {s.subscription && s.subscription.source === "MANUAL" && (
               <p className="flex flex-wrap items-center gap-2"><Badge tone="blue">Yönetici tarafından tanımlandı</Badge>{s.subscription.isComplimentary && <Badge tone="green">Ücretsiz</Badge>}</p>
+            )}
+            {s.subscription?.priceAmount && (
+              <p>Abonelik fiyatınız: <b>{tl(s.subscription.priceAmount)}</b> / {s.subscription.billingCycle === "YEARLY" ? "yıl" : "ay"} + %{Number(s.subscription.vatRate).toLocaleString("tr-TR")} KDV <span className="text-xs text-neutral-500">(paket fiyatı değişse de dönem boyunca sabittir)</span></p>
             )}
             {s.subscription && <p>Dönem sonu: {dateTr(s.subscription.currentPeriodEnd)} {s.subscription.cancelAtPeriodEnd ? "(iptal edilecek)" : s.subscription.source === "MANUAL" ? "(otomatik yenilenmez)" : "(otomatik yenilenir)"}</p>}
             {s.savedMethod && <p className="text-xs text-neutral-500">Kayıtlı ödeme yöntemi: {s.savedMethod.label}</p>}
@@ -67,12 +70,13 @@ export default function SubscriptionPage() {
                 {p.monthlyPrice != null ? (
                   <>
                     <div className="mt-3 text-xl font-semibold">{tl(p.monthlyPrice)}<span className="text-sm font-normal text-neutral-500">/ay + KDV</span></div>
-                    <div className="text-xs text-neutral-500">veya {tl(p.yearlyPrice!)}/yıl + KDV</div>
+                    {Number(p.yearlyPrice) > 0 && <div className="text-xs text-neutral-500">veya {tl(p.yearlyPrice!)}/yıl + KDV</div>}
+                    <div className="text-xs text-neutral-500">KDV oranı %{Number(p.vatRate).toLocaleString("tr-TR")}</div>
                   </>
                 ) : (
-                  <div className="mt-3 text-sm text-neutral-500">Fiyatlar yakında açıklanacak</div>
+                  <div className="mt-3 text-sm text-neutral-500">Fiyat yakında açıklanacak</div>
                 )}
-                {can("OWNER") && s.onlinePayment && <Button className="mt-4 w-full" size="sm" variant={p.code === s.plan.code ? "outline" : "default"} onClick={() => setBuy(p)}>{p.code === s.plan.code && s.status === "ACTIVE" ? "Yenile" : "Seç"}</Button>}
+                {can("OWNER") && s.onlinePayment && p.monthlyPrice != null && <Button className="mt-4 w-full" size="sm" variant={p.code === s.plan.code ? "outline" : "default"} onClick={() => setBuy(p)}>{p.code === s.plan.code && s.status === "ACTIVE" ? "Yenile" : "Seç"}</Button>}
               </CardBody>
             </Card>
           ))}
@@ -99,7 +103,7 @@ export default function SubscriptionPage() {
             <Alert tone="amber"><b>Test modu:</b> gerçek ödeme alınmaz. Gerçek sağlayıcı (iyzico, PayTR vb.) entegre edildiğinde kart bilgisi yalnızca sağlayıcının güvenli formunda girilir.</Alert>
             {err && <Alert>{err}</Alert>}
             <Field label="Ödeme dönemi">
-              <Select name="cycle"><option value="MONTHLY">Aylık · {tl(buy.monthlyPrice!)}</option><option value="YEARLY">Yıllık · {tl(buy.yearlyPrice!)}</option></Select>
+              <Select name="cycle"><option value="MONTHLY">Aylık · {tl(buy.monthlyPrice!)} + KDV</option>{Number(buy.yearlyPrice) > 0 && <option value="YEARLY">Yıllık · {tl(buy.yearlyPrice!)} + KDV</option>}</Select>
             </Field>
             <Field label="Test ödeme belirteci" hint='"tok_fail" başarısız ödemeyi dener.'><Input name="token" defaultValue="tok_test" required /></Field>
             <Button className="w-full">Test ödemesiyle etkinleştir</Button>

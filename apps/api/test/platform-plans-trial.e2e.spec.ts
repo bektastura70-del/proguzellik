@@ -23,7 +23,7 @@ describe("SaaS sahibi: paketler, deneme süresi ve abonelik izleme", () => {
     await su.$disconnect();
   });
 
-  const plan = { code: "kurumsal_plus", name: "Kurumsal Plus", maxStaff: 40, monthlyPrice: 2500, yearlyPrice: 25000, features: ["CRM", "APPOINTMENTS", "REPORTS", "REPORTS"] };
+  const plan = { code: "kurumsal_plus", name: "Kurumsal Plus", maxStaff: 40, features: ["CRM", "APPOINTMENTS", "REPORTS", "REPORTS"] };
 
   describe("paket yönetimi", () => {
     it("işletme sahibi paket oluşturamaz/düzenleyemez", async () => {
@@ -34,7 +34,8 @@ describe("SaaS sahibi: paketler, deneme süresi ve abonelik izleme", () => {
 
     it("yeni paket oluşturulur; kod büyük harfe çevrilir, özellikler tekilleşir, denetim kaydı yazılır", async () => {
       const r = await admin.post("/platform/plans").send(plan).expect(201);
-      expect(r.body).toMatchObject({ code: "KURUMSAL_PLUS", maxStaff: 40, monthlyPrice: "2500", isActive: true });
+      // Yeni paket gizli başlar; fiyatı yoktur (fiyat ayrı sürümle girilip onaylanır)
+      expect(r.body).toMatchObject({ code: "KURUMSAL_PLUS", maxStaff: 40, isActive: true, isPublic: false, maxCustomers: null, maxMonthlyAppointments: null });
       // Tekilleşir; temel özellikler (müşteri, randevu, kasa, paket) her pakette eklenir
       expect(r.body.features).toEqual(["CRM", "APPOINTMENTS", "FINANCE", "PACKAGES", "REPORTS"]);
       await admin.post("/platform/plans").send(plan).expect(409);
@@ -44,17 +45,27 @@ describe("SaaS sahibi: paketler, deneme süresi ve abonelik izleme", () => {
     it("geçersiz girdiler reddedilir", async () => {
       await admin.post("/platform/plans").send({ ...plan, code: "1x" }).expect(400);
       await admin.post("/platform/plans").send({ ...plan, code: "YENI", features: ["UCURAN_HALI"] }).expect(400);
-      await admin.post("/platform/plans").send({ ...plan, code: "YENI", monthlyPrice: -1 }).expect(400);
-      await admin.post("/platform/plans").send({ ...plan, code: "YENI", monthlyPrice: 10.001 }).expect(400);
-      await admin.post("/platform/plans").send({ ...plan, code: "YENI", monthlyPrice: 100, yearlyPrice: 5000 }).expect(409);
+      // Fiyat paketle birlikte girilemez (taslak + onay akışı zorunlu)
+      await admin.post("/platform/plans").send({ ...plan, code: "YENI", monthlyPrice: 100 }).expect(400);
+      await admin.post("/platform/plans").send({ ...plan, code: "YENI", maxCustomers: 0 }).expect(400);
+      await admin.post("/platform/plans/KURUMSAL_PLUS/prices").send({ monthlyPrice: -1, yearlyPrice: 0, vatRate: 20, renewalPolicy: "KEEP_EXISTING" }).expect(400);
+      await admin.post("/platform/plans/KURUMSAL_PLUS/prices").send({ monthlyPrice: 10.001, yearlyPrice: 0, vatRate: 20, renewalPolicy: "KEEP_EXISTING" }).expect(400);
+      await admin.post("/platform/plans/KURUMSAL_PLUS/prices").send({ monthlyPrice: 100, yearlyPrice: 5000, vatRate: 20, renewalPolicy: "KEEP_EXISTING" }).expect(409);
+      await admin.post("/platform/plans/KURUMSAL_PLUS/prices").send({ monthlyPrice: 100, yearlyPrice: 1000, renewalPolicy: "KEEP_EXISTING" }).expect(400);
+      await admin.post("/platform/plans/KURUMSAL_PLUS/prices").send({ monthlyPrice: 100, yearlyPrice: 1000, vatRate: 101, renewalPolicy: "KEEP_EXISTING" }).expect(400);
+      await admin.post("/platform/plans/KURUMSAL_PLUS/prices").send({ monthlyPrice: 100, yearlyPrice: 1000, vatRate: 20 }).expect(400);
       await admin.patch("/platform/plans/YOK_BOYLE").send({ name: "X paket" }).expect(404);
     });
 
-    it("fiyat, limit ve özellikler düzenlenir; önceki/sonraki değer kaydedilir", async () => {
-      const r = await admin.patch("/platform/plans/KURUMSAL_PLUS").send({ monthlyPrice: 2750.5, features: ["CRM", "STOCK"], sortOrder: 9 }).expect(200);
-      expect(r.body).toMatchObject({ monthlyPrice: "2750.5", features: ["CRM", "APPOINTMENTS", "FINANCE", "PACKAGES", "STOCK"], sortOrder: 9 });
+    it("ad, açıklama, limit, görünürlük ve özellikler düzenlenir; önceki/sonraki değer kaydedilir", async () => {
+      const r = await admin.patch("/platform/plans/KURUMSAL_PLUS").send({ description: "Çok şubeli salonlar", maxCustomers: 5000, maxMonthlyAppointments: 3000, features: ["CRM", "STOCK"], sortOrder: 9, isPublic: true }).expect(200);
+      expect(r.body).toMatchObject({ description: "Çok şubeli salonlar", maxCustomers: 5000, maxMonthlyAppointments: 3000, isPublic: true, features: ["CRM", "APPOINTMENTS", "FINANCE", "PACKAGES", "STOCK"], sortOrder: 9 });
+      expect(r.body.monthlyPrice).toBeUndefined();
       const log = await su.auditLog.findFirstOrThrow({ where: { action: "platform.plan_updated" }, orderBy: { createdAt: "desc" } });
-      expect(log.metadata).toMatchObject({ code: "KURUMSAL_PLUS", changes: { monthlyPrice: { to: 2750.5 } } });
+      expect(log.metadata).toMatchObject({ code: "KURUMSAL_PLUS", changes: { maxCustomers: { from: null, to: 5000 }, isPublic: { from: false, to: true } } });
+      // null = sınırsız
+      const u = await admin.patch("/platform/plans/KURUMSAL_PLUS").send({ maxCustomers: null, maxMonthlyAppointments: null }).expect(200);
+      expect(u.body).toMatchObject({ maxCustomers: null, maxMonthlyAppointments: null });
     });
 
     it("yeni paketle işletme açılır; pasif pakete işletme atanamaz", async () => {

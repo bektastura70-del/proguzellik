@@ -7,6 +7,7 @@ import { PlatformInvoiceService } from "./finance/invoice.service";
 import { PlatformEmailController } from "./email-admin.controller";
 import { PaymentReminderService } from "./finance/payment-reminder.service";
 import { ManualSubscriptionService } from "./manual-subscription.service";
+import { PlanAdminService } from "./plan-admin.service";
 import { PlatformController } from "./platform.controller";
 import { PlatformUsersService } from "./platform-users.service";
 import { TenantAdminService } from "./tenant-admin.service";
@@ -17,6 +18,7 @@ import { TenantAdminService } from "./tenant-admin.service";
     TenantAdminService,
     ManualSubscriptionService,
     PlatformUsersService,
+    PlanAdminService,
     PlatformFinanceService,
     PlatformInvoiceService,
     PaymentReminderService,

@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { PASSWORD } from "../env";
 import { apiGet, authFile, expectToast, login, submitTrialForm, uniq } from "./helpers";
-import { lastEmail, sql } from "./totp";
+import { readFileSync } from "node:fs";
+import { lastEmail, resetTotpReplay, sql, totp } from "./totp";
 
 test.describe("İşletme sahibi modülleri", () => {
   test.use({ storageState: authFile("owner") });
@@ -92,6 +93,10 @@ test.describe("İşletme sahibi modülleri", () => {
   });
 
   test("abonelik: test ödemesi başarısızlığı ve başarılı aktivasyon", async ({ page }) => {
+    // Satın alma yalnız SaaS sahibinin onayladığı fiyatla yapılabilir: test verisi olarak onaylı fiyat eklenir (KDV hariç 1.000 ₺, %20).
+    sql(`INSERT INTO "PlanPrice" (id, "planCode", version, "monthlyPrice", "yearlyPrice", "vatRate", "effectiveFrom", "renewalPolicy", status, "approvedAt", "approvedById")
+      SELECT gen_random_uuid(), 'SMART', COALESCE(max(version), 0) + 1, 1000, 10000, 20, now(), 'KEEP_EXISTING', 'APPROVED', now(), (SELECT id FROM "User" WHERE email = 'owner@proguzellik.local')
+      FROM "PlanPrice" WHERE "planCode" = 'SMART' HAVING NOT bool_or(status = 'APPROVED') OR count(*) = 0`);
     await page.goto("/panel/abonelik");
     await expect(page.getByText(/Deneme süresinden/)).toBeVisible();
     // Paket açıkça seçilir: testte oluşturulan (özellikleri kısıtlı) paketler demo salona atanmasın
@@ -106,7 +111,9 @@ test.describe("İşletme sahibi modülleri", () => {
     await dlg.getByLabel("Ödeme dönemi").selectOption("MONTHLY");
     await dlg.getByRole("button", { name: /Test ödemesiyle etkinleştir/ }).click();
     await expectToast(page, "Abonelik etkinleştirildi");
-    await expect(page.getByRole("row").filter({ hasText: "Ödendi" }).first()).toBeVisible();
+    // Tahsilat KDV dahil (1.000 + %20); abonelik fiyatı kilitlenir
+    await expect(page.getByRole("row").filter({ hasText: "Ödendi" }).first()).toContainText("₺1.200,00");
+    await expect(page.getByText(/Abonelik fiyatınız: ₺1\.000,00/)).toBeVisible();
     const sub = await apiGet<{ status: string }>(page, "/subscription");
     expect(sub.status).toBe("ACTIVE");
   });
@@ -195,14 +202,84 @@ test.describe("SaaS sahibi paneli", () => {
     await expect(page.getByRole("row").filter({ hasText: name })).toContainText(email);
   });
 
-  test("paket fiyatı güncellenir", async ({ page }) => {
+  test("paket fiyatı: taslak sitede görünmez; parola + 2FA ile onaylanınca KDV hariç yayımlanır ve geçmişte kalır", async ({ page, browser }) => {
+    const code = `FIYAT_${Date.now().toString(36).toUpperCase()}`;
+    const name = `Fiyat ${code.slice(-5)}`;
     await page.goto("/platform");
-    const row = page.getByRole("row").filter({ hasText: "Başlangıç" }).filter({ has: page.getByRole("button", { name: "Düzenle" }) });
+    // Paket: açıklama, sınırlar, satışta
+    await page.getByRole("button", { name: "Yeni paket" }).click();
+    const pd = page.getByRole("dialog");
+    await pd.getByLabel("Paket kodu").fill(code);
+    await pd.getByLabel("Paket adı").fill(name);
+    await pd.getByLabel("Açıklama").fill("E2E fiyat paketi açıklaması");
+    await pd.getByLabel("Personel sınırı").fill("4");
+    await pd.getByLabel("Müşteri sınırı").fill("250");
+    await expect(pd.getByLabel("Aylık (₺)")).toHaveCount(0);
+    await pd.getByLabel(/Satışta/).check();
+    await pd.getByRole("button", { name: "Kaydet" }).click();
+    await expectToast(page, "Paket oluşturuldu");
+    const row = page.locator(`tr[data-plan="${code}"]`);
+    await expect(row).toContainText("Onaylı fiyat yok");
+    await expect(row).toContainText("250 müşteri");
+    await expect(row).toContainText("Satışta");
+
+    // Taslak
+    await row.getByRole("button", { name: "Fiyatlar" }).click();
+    const fd = page.getByRole("dialog", { name: `${name} · fiyat yönetimi` });
+    await expect(fd.getByText("Henüz fiyat girilmedi")).toBeVisible();
+    const form = fd.getByRole("form", { name: "Yeni fiyat taslağı" });
+    await form.getByLabel("Aylık (₺, KDV hariç)").fill("1250");
+    await form.getByLabel("Yıllık (₺, KDV hariç)").fill("12500");
+    await form.getByLabel("KDV oranı (%)").fill("20");
+    await form.getByRole("button", { name: "Taslak olarak kaydet" }).click();
+    await expectToast(page, /Fiyat taslağı kaydedildi/);
+    await expect(fd.locator('[data-price-status="DRAFT"]')).toContainText("₺1.250,00");
+
+    // Taslak sitede görünmez
+    const site = await browser.newContext();
+    const sp = await site.newPage();
+    await sp.goto("/fiyatlar");
+    const card = sp.locator(`article[data-plan="${code}"]`);
+    await expect(card).toContainText("Fiyat yakında");
+    await expect(card).toContainText("E2E fiyat paketi açıklaması");
+    await expect(card).not.toContainText("₺");
+
+    // Yanlış kod reddedilir, doğru parola + 2FA ile onaylanır
+    await fd.locator('[data-price-status="DRAFT"]').getByRole("button", { name: "Onayla" }).click();
+    const ad = page.getByRole("dialog", { name: "Fiyatı onayla" });
+    await expect(ad).toContainText("tanıtım sitesinde yayımlanır");
+    await ad.getByLabel("Parolanız").fill(PASSWORD);
+    await ad.getByLabel("2FA doğrulama kodu").fill("000000");
+    await ad.getByRole("button", { name: "Onayla ve yayımla" }).click();
+    await expectToast(page, /hatalı/);
+    resetTotpReplay("owner@proguzellik.local");
+    await ad.getByLabel("2FA doğrulama kodu").fill(totp(readFileSync(".auth/platform-secret.txt", "utf8").trim()));
+    await ad.getByRole("button", { name: "Onayla ve yayımla" }).click();
+    await expectToast(page, "Fiyat onaylandı");
+    const approved = fd.locator('[data-price-status="APPROVED"]');
+    await expect(approved).toContainText("s1");
+    await expect(approved).toContainText("Yürürlükte");
+    await expect(approved).toContainText("Onaylayan: owner@proguzellik.local");
+    await expect(approved.getByRole("button", { name: "İptal et" })).toHaveCount(0);
+    await fd.getByRole("button", { name: "Kapat" }).click();
+    await expect(row).toContainText("₺1.250,00");
+    await expect(row).toContainText("%20 KDV");
+
+    // Sitede KDV hariç ve oranıyla görünür
+    await sp.reload();
+    await expect(card).toContainText("₺1.250,00");
+    await expect(card).toContainText("Yıllık: ₺12.500,00 + KDV");
+    await expect(card).toContainText("Fiyatlara KDV dahil değildir; %20 KDV eklenir.");
+
+    // Gizlenince sitede listelenmez
     await row.getByRole("button", { name: "Düzenle" }).click();
-    await page.getByRole("dialog").getByLabel("Aylık (₺)").fill("549");
+    await page.getByRole("dialog").getByLabel(/Satışta/).uncheck();
     await page.getByRole("dialog").getByRole("button", { name: "Kaydet" }).click();
     await expectToast(page, "Paket güncellendi");
-    await expect(row).toContainText("₺549,00");
+    await expect(row).toContainText("Gizli");
+    await sp.reload();
+    await expect(sp.locator(`article[data-plan="${code}"]`)).toHaveCount(0);
+    await site.close();
   });
 
   test("yeni paket oluşturulur, deneme süresi uzatılır, abonelikler sekmesinde izlenir", async ({ page }) => {
@@ -213,8 +290,6 @@ test.describe("SaaS sahibi paneli", () => {
     await pd.getByLabel("Paket kodu").fill(code);
     await pd.getByLabel("Paket adı").fill(`Paket ${code}`);
     await pd.getByLabel("Personel sınırı").fill("12");
-    await pd.getByLabel("Aylık (₺)").fill("1200");
-    await pd.getByLabel("Yıllık (₺)").fill("12000");
     await pd.getByLabel("Raporlar").check();
     await pd.getByRole("button", { name: "Kaydet" }).click();
     await expectToast(page, "Paket oluşturuldu");

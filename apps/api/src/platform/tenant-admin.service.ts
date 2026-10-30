@@ -67,7 +67,7 @@ export class TenantAdminService {
     if (existingUser?.isPlatformAdmin) throw new ConflictException("Platform yöneticisi hesabı işletme sahibi olarak davet edilemez");
     const plan = await this.db.plan.findUnique({ where: { code: input.planCode } });
     if (!plan) throw new NotFoundException("Paket bulunamadı");
-    if (!plan.isActive) throw new ConflictException(`${plan.name} paketi satışta değil`);
+    if (!plan.isActive) throw new ConflictException(`${plan.name} paketi pasif`);
     const slug = await this.uniqueSlug(input.name);
     const { tenant, invite } = await this.db.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
@@ -287,9 +287,13 @@ export class TenantAdminService {
       this.db.staffMember.count({ where: { tenantId, isActive: true } }),
     ]);
     if (!plan) throw new NotFoundException("Paket bulunamadı");
-    if (!plan.isActive) throw new ConflictException(`${plan.name} paketi satışta değil; önce paketi etkinleştirin`);
+    if (!plan.isActive) throw new ConflictException(`${plan.name} paketi pasif; önce paketi etkinleştirin`);
     if (active > plan.maxStaff) {
       throw new ConflictException(`Bu işletmede ${active} aktif personel var; ${plan.name} paketi en fazla ${plan.maxStaff} personele izin veriyor`);
+    }
+    if (plan.maxCustomers != null) {
+      const customers = await this.db.customer.count({ where: { tenantId, anonymizedAt: null } });
+      if (customers > plan.maxCustomers) throw new ConflictException(`Bu işletmede ${customers} müşteri kaydı var; ${plan.name} paketi en fazla ${plan.maxCustomers} müşteriye izin veriyor`);
     }
   }
 }

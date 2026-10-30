@@ -3,14 +3,18 @@ import { buttonVariants } from "@/components/ui/button-variants";
 import { tl } from "@/lib/format";
 import { FEATURE_TR, type SiteInfo, type SitePlan } from "@/lib/site";
 
-/** Paket kartları: fiyat, sınır ve özellikler doğrudan veritabanındaki paketlerden gelir. */
-/** Fiyatlar açıklanmadıysa (API tutarları null döndürür) kartlarda tutar yerine bilgilendirme gösterilir. */
-export function PricingCards({ plans, vat }: { plans: SitePlan[]; vat: SiteInfo["vat"] }) {
+const pct = (v: string) => `%${Number(v).toLocaleString("tr-TR")}`;
+
+/**
+ * Paket kartları: ad, açıklama, sınırlar ve özellikler veritabanından gelir.
+ * Tutar yalnız SaaS sahibinin onayladığı fiyat sürümünden gelir (KDV hariç); onaylı fiyatı olmayan pakette "Fiyat yakında" yazar.
+ */
+export function PricingCards({ plans }: { plans: SitePlan[]; vat?: SiteInfo["vat"] }) {
   if (!plans.length) return <p className="text-center text-sm text-neutral-500">Paket bilgisi şu an yüklenemedi. Lütfen daha sonra tekrar deneyin.</p>;
-  const announced = plans.every((p) => p.monthlyPrice != null);
+  const anyPrice = plans.some((p) => p.monthlyPrice != null);
   return (
     <>
-      {!announced && (
+      {!anyPrice && (
         <div className="mb-8 rounded-2xl border border-brand-200 bg-brand-50 p-6 text-center" role="note">
           <h2 className="text-2xl font-semibold text-ink">Fiyatlar Yakında Açıklanacak</h2>
           <p className="mt-2 text-sm text-neutral-600">Paket içerikleri aşağıdadır. Fiyatlar kesinleştiğinde bu sayfada yayımlanacaktır.</p>
@@ -18,13 +22,17 @@ export function PricingCards({ plans, vat }: { plans: SitePlan[]; vat: SiteInfo[
       )}
       <div className={`grid gap-6 ${plans.length >= 3 ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
         {plans.map((p) => (
-          <article key={p.code} className="flex flex-col rounded-2xl border border-sand-200 bg-white p-6">
+          <article key={p.code} className="flex flex-col rounded-2xl border border-sand-200 bg-white p-6" data-plan={p.code}>
             <h3 className="text-xl font-semibold">{p.name}</h3>
+            {p.description && <p className="mt-1 text-sm text-neutral-600">{p.description}</p>}
             <p className="mt-1 text-sm text-neutral-500">En fazla {p.maxStaff} aktif personel</p>
-            {p.monthlyPrice != null ? (
+            {p.maxCustomers != null && <p className="text-sm text-neutral-500">En fazla {p.maxCustomers.toLocaleString("tr-TR")} müşteri kaydı</p>}
+            {p.maxMonthlyAppointments != null && <p className="text-sm text-neutral-500">Ayda en fazla {p.maxMonthlyAppointments.toLocaleString("tr-TR")} randevu</p>}
+            {p.monthlyPrice != null && p.vatRate != null ? (
               <>
                 <p className="mt-4 text-3xl font-semibold">{tl(p.monthlyPrice)}<span className="text-base font-normal text-neutral-500"> / ay + KDV</span></p>
                 {Number(p.yearlyPrice) > 0 && <p className="text-sm text-neutral-500">Yıllık: {tl(p.yearlyPrice!)} + KDV</p>}
+                <p className="text-xs text-neutral-500">Fiyatlara KDV dahil değildir; {pct(p.vatRate)} KDV eklenir.</p>
               </>
             ) : (
               <p className="mt-4 text-lg font-medium text-neutral-500">Fiyat yakında</p>
@@ -38,11 +46,6 @@ export function PricingCards({ plans, vat }: { plans: SitePlan[]; vat: SiteInfo[
           </article>
         ))}
       </div>
-      {announced && (
-        <p className="mt-6 text-center text-xs text-neutral-500">
-          {vat ? `Fiyatlara %${Number(vat.rate).toLocaleString("tr-TR")} KDV ${vat.included ? "dahildir" : "dahil değildir"}.` : "Fiyatlara KDV dahil değildir."}
-        </p>
-      )}
     </>
   );
 }
