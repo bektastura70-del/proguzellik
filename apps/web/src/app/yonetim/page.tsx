@@ -8,7 +8,7 @@ import { Alert, Badge, Button, Card, CardHeader, Dialog, Field, Input, Select, S
 import { api, useApi } from "@/lib/api";
 import { dateTr, STATUS_TR, tl } from "@/lib/format";
 
-type Stats = { tenants: { total: number; byStatus: Record<string, number> }; byPlan: Record<string, number>; signupsLast30Days: number; appointmentsLast30Days: number; mrr: string; activeSubscriptions: number };
+type Stats = { tenants: { total: number; byStatus: Record<string, number> }; byPlan: Record<string, number>; signupsLast30Days: number; appointmentsLast30Days: number; mrr: string; activeSubscriptions: number; manualSubscriptions: { total: number; complimentary: number } };
 type TenantRow = { id: string; name: string; slug: string; status: string; planCode: string; trialEndsAt: string | null; createdAt: string; plan: { name: string; maxStaff: number }; _count: { customers: number; staff: number; memberships: number }; owner: { email: string; fullName: string } | null; openInvite: { email: string; status: string; expiresAt: string | null } | null };
 type Plan = { code: string; name: string; maxStaff: number; monthlyPrice: string; yearlyPrice: string; isActive: boolean };
 
@@ -40,7 +40,7 @@ export default function PlatformPage() {
       {!stats.data ? <Spinner /> : (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Stat label="İşletme" value={stats.data.tenants.total} hint={Object.entries(stats.data.tenants.byStatus).map(([k, v]) => `${STATUS_TR[k]} ${v}`).join(" · ")} />
-          <Stat label="MRR (aylık gelir)" value={tl(stats.data.mrr)} hint={`${stats.data.activeSubscriptions} aktif abonelik`} />
+          <Stat label="MRR (aylık gelir)" value={tl(stats.data.mrr)} hint={`${stats.data.activeSubscriptions} ödemeli abonelik · ${stats.data.manualSubscriptions.total} manuel (${stats.data.manualSubscriptions.complimentary} ücretsiz) hariç`} />
           <Stat label="Yeni kayıt (30 gün)" value={stats.data.signupsLast30Days} />
           <Stat label="Randevu (30 gün)" value={stats.data.appointmentsLast30Days} />
           <Stat label="Paket dağılımı" value={Object.values(stats.data.byPlan).reduce((a, b) => a + b, 0)} hint={Object.entries(stats.data.byPlan).map(([k, v]) => `${k} ${v}`).join(" · ")} />

@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { BillingCycle, PlanCode, Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
@@ -23,6 +23,7 @@ export interface LifecycleResult {
   trialReminders: number;
   renewed: number;
   renewalFailed: number;
+  manualExpired: number;
   cancelledAtPeriodEnd: number;
   cancelledAfterGrace: number;
   limitExceeded: number;
@@ -69,12 +70,18 @@ export class SubscriptionsService {
         subscription,
         savedMethod,
         payments,
+        /** false: online ödeme kapalı (canlıda gerçek sağlayıcı yok); paket SaaS sahibi tarafından tanımlanır. */
+        onlinePayment: this.payments.acceptsPayments,
       };
     });
   }
 
   /** Paket satın alma/değiştirme (test sağlayıcısıyla). */
   async checkout(t: TenantInfo, b: { planCode: PlanCode; billingCycle: BillingCycle; paymentToken: string }) {
+    // Gerçek, doğrulanmış tahsilat yapamayan sağlayıcıyla (canlıda test sağlayıcısı) abonelik asla açılmaz.
+    if (!this.payments.acceptsPayments) {
+      throw new ServiceUnavailableException({ message: "Online ödeme henüz aktif değil. Paket için bizimle iletişime geçin.", code: "ONLINE_PAYMENT_DISABLED" });
+    }
     const db = this.prisma.platform;
     const user = await db.user.findUniqueOrThrow({ where: { id: t.userId } });
     if (!user.emailVerifiedAt) {
@@ -96,7 +103,7 @@ export class SubscriptionsService {
       paymentToken: b.paymentToken,
       idempotencyKey,
     });
-    if (!charge.ok) {
+    if (!charge.ok || !this.payments.acceptsPayments) {
       await this.audit.logPlatform({ tenantId: t.tenantId, actorId: t.userId, action: "subscription.payment_failed", metadata: { error: charge.error ?? null } });
       throw new HttpException(charge.error ?? "Ödeme başarısız", HttpStatus.PAYMENT_REQUIRED);
     }
@@ -130,6 +137,8 @@ export class SubscriptionsService {
     const db = this.prisma.platform;
     const sub = await db.subscription.findFirst({ where: { tenantId: t.tenantId, status: "ACTIVE" } });
     if (!sub) throw new NotFoundException("Aktif abonelik yok");
+    // Manuel abonelik SaaS sahibince yönetilir; iptali de onun defterinden yapılır.
+    if (sub.source === "MANUAL") throw new ConflictException("Bu abonelik yönetici tarafından tanımlandı; iptal için bizimle iletişime geçin");
     await this.audit.logPlatform({ tenantId: t.tenantId, actorId: t.userId, action: "subscription.cancel_requested" });
     return db.subscription.update({ where: { id: sub.id }, data: { cancelAtPeriodEnd: true } });
   }
@@ -152,7 +161,7 @@ export class SubscriptionsService {
     const db = this.prisma.platform;
     const env = loadEnv();
     const link = `${appUrl(env)}/panel/abonelik`;
-    const r: LifecycleResult = { trialsEnded: 0, trialReminders: 0, renewed: 0, renewalFailed: 0, cancelledAtPeriodEnd: 0, cancelledAfterGrace: 0, limitExceeded: 0, limitResolved: 0, errors: [] };
+    const r: LifecycleResult = { trialsEnded: 0, trialReminders: 0, renewed: 0, renewalFailed: 0, manualExpired: 0, cancelledAtPeriodEnd: 0, cancelledAfterGrace: 0, limitExceeded: 0, limitResolved: 0, errors: [] };
     const guard = async (label: string, fn: () => Promise<void>) => {
       try {
         await fn();
@@ -200,6 +209,10 @@ export class SubscriptionsService {
           await this.mail(s.tenantId, { name: "subscription_cancelled", vars: { salon: s.tenant.name, link } }, `cancelled:${s.id}`);
           return;
         }
+        if (s.source === "MANUAL") {
+          await this.expireManual(s, r, link);
+          return;
+        }
         await this.renew(s, now, r, link);
       });
     }
@@ -238,6 +251,19 @@ export class SubscriptionsService {
     return r;
   }
 
+  /** Manuel abonelik otomatik yenilenmez ve tahsilat denenmez: süresi dolunca ödeme bekliyor (grace) durumuna geçer. */
+  private async expireManual(s: Prisma.SubscriptionGetPayload<{ include: { plan: true; tenant: true } }>, r: LifecycleResult, link: string) {
+    const db = this.prisma.platform;
+    const env = loadEnv();
+    const u = await db.subscription.updateMany({ where: { id: s.id, status: "ACTIVE", currentPeriodEnd: s.currentPeriodEnd }, data: { status: "PAST_DUE" } });
+    if (u.count === 0) return;
+    await db.tenant.updateMany({ where: { id: s.tenantId, status: "ACTIVE" }, data: { status: "PAST_DUE", pastDueSince: s.currentPeriodEnd } });
+    await db.tenant.updateMany({ where: { id: s.tenantId, status: "SUSPENDED" }, data: { suspendedFromStatus: "PAST_DUE", pastDueSince: s.currentPeriodEnd } });
+    r.manualExpired++;
+    await this.audit.logPlatform({ tenantId: s.tenantId, action: "lifecycle.manual_expired", entity: "Subscription", entityId: s.id });
+    await this.mail(s.tenantId, { name: "subscription_expired", vars: { salon: s.tenant.name, graceDays: env.BILLING_GRACE_DAYS, link } }, `manual-expired:${s.id}:${s.currentPeriodEnd.toISOString()}`);
+  }
+
   /** Yenileme: dönem sonuna bağlı idempotency anahtarıyla tek tahsilat. */
   private async renew(
     s: Prisma.SubscriptionGetPayload<{ include: { plan: true; tenant: true } }>,
@@ -255,8 +281,13 @@ export class SubscriptionsService {
     let providerRef = existing?.providerRef ?? undefined;
     let error: string | undefined;
     if (!existing) {
-      if (!method) {
+      if (!this.payments.acceptsPayments) {
+        // Canlıda test sağlayıcısıyla/ödeme kapalıyken yenileme "ödendi" sayılmaz.
+        error = "Online ödeme aktif değil";
+      } else if (!method) {
         error = "Kayıtlı ödeme yöntemi yok";
+      } else if (method.provider !== this.payments.name) {
+        error = "Kayıtlı ödeme yöntemi bu sağlayıcıya ait değil";
       } else {
         try {
           const c = await this.payments.charge({ tenantId: s.tenantId, amount: amount.toFixed(2), currency: "TRY", description: `ProGüzellik ${s.plan.name} yenileme`, paymentToken: method.token, idempotencyKey: key });

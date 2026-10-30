@@ -512,6 +512,20 @@ enum SubscriptionStatus {
   CANCELLED
 }
 
+/// PROVIDER: ödeme sağlayıcısıyla tahsil edilen abonelik. MANUAL: SaaS sahibinin elle tanımladığı (tahsilat değildir).
+enum SubscriptionSource {
+  PROVIDER
+  MANUAL
+}
+
+enum SubscriptionGrantAction {
+  CREATED
+  EXTENDED
+  RENEWED
+  PLAN_CHANGED
+  CANCELLED
+}
+
 /// Global paket tanımları (kiracıya ait değil, herkes okuyabilir).
 model Plan {
   code         PlanCode @id
@@ -538,12 +552,16 @@ model Subscription {
   cancelAtPeriodEnd  Boolean            @default(false)
   provider           String
   providerRef        String?
+  source             SubscriptionSource @default(PROVIDER)
+  /// Manuel abonelikte ücretsiz (hediye) mi? Gelir/MRR hesabına girmez.
+  isComplimentary    Boolean            @default(false)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
   tenant   Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   plan     Plan                  @relation(fields: [planCode], references: [code])
   payments SubscriptionPayment[]
+  grants   SubscriptionGrant[]
 
   @@unique([tenantId, id])
   @@index([tenantId])
@@ -560,6 +578,32 @@ model SubscriptionPayment {
   description    String?
   idempotencyKey String?  @unique
   createdAt      DateTime @default(now())
+
+  subscription Subscription @relation(fields: [tenantId, subscriptionId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+}
+
+/// SaaS sahibinin manuel abonelik işlemleri defteri. Gerçek tahsilat (SubscriptionPayment) DEĞİLDİR;
+/// yalnızca eklenebilir, değiştirilemez/silinemez.
+model SubscriptionGrant {
+  id                String                  @id @default(uuid()) @db.Uuid
+  tenantId          String                  @db.Uuid
+  subscriptionId    String                  @db.Uuid
+  action            SubscriptionGrantAction
+  planCode          PlanCode
+  periodStart       DateTime?
+  periodEnd         DateTime?
+  previousPeriodEnd DateTime?
+  previousPlanCode  PlanCode?
+  /// Owner'ın kayda geçirdiği anlaşılan tutar (bilgi amaçlı, tahsilat değildir).
+  agreedAmount      Decimal                 @default(0) @db.Decimal(12, 2)
+  isComplimentary   Boolean                 @default(false)
+  note              String
+  actorId           String                  @db.Uuid
+  /// İstemcinin her işlem için ürettiği kimlik; tekrar istekte işlem ikinci kez uygulanmaz.
+  requestId         String                  @unique
+  createdAt         DateTime                @default(now())
 
   subscription Subscription @relation(fields: [tenantId, subscriptionId], references: [tenantId, id], onDelete: Cascade)
 

@@ -11,6 +11,7 @@ export type EmailTemplate =
   | { name: "payment_failed"; vars: { salon: string; graceDays: number; link: string } }
   | { name: "subscription_renewed"; vars: { salon: string; plan: string; amount: string; until: string } }
   | { name: "subscription_cancelled"; vars: { salon: string; link: string } }
+  | { name: "subscription_expired"; vars: { salon: string; graceDays: number; link: string } }
   | { name: "plan_limit_exceeded"; vars: { salon: string; active: number; max: number; link: string } };
 
 function layout(title: string, paragraphs: string[], cta?: { label: string; link: string }) {
@@ -73,6 +74,11 @@ export function render(t: EmailTemplate): { subject: string; html: string; text:
       subject = "Aboneliğiniz sona erdi";
       paras = [`${esc(t.vars.salon)} aboneliği sona erdi. Verileriniz saklanıyor; yeniden paket seçerek kaldığınız yerden devam edebilirsiniz.`];
       cta = { label: "Paket seç", link: t.vars.link };
+      break;
+    case "subscription_expired":
+      subject = "Abonelik süreniz doldu";
+      paras = [`${esc(t.vars.salon)} için tanımlı abonelik süresi doldu. Verileriniz korunuyor.`, `${t.vars.graceDays} gün içinde yenilenmezse abonelik sona erer. Yenileme için bizimle iletişime geçin.`];
+      cta = { label: "Abonelik durumu", link: t.vars.link };
       break;
     case "plan_limit_exceeded":
       subject = "Paket personel sınırı aşıldı";

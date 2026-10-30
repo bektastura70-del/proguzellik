@@ -10,8 +10,9 @@ type Plan = { code: string; name: string; maxStaff: number; monthlyPrice: string
 type Sub = {
   status: string; trialDaysLeft: number | null; plan: Plan; usage: { activeStaff: number; maxStaff: number };
   graceEndsAt: string | null; limitExceeded: boolean; savedMethod: { label: string | null } | null;
-  subscription: { billingCycle: string; currentPeriodEnd: string; cancelAtPeriodEnd: boolean; status: string } | null;
+  subscription: { billingCycle: string; currentPeriodEnd: string; cancelAtPeriodEnd: boolean; status: string; source: "PROVIDER" | "MANUAL"; isComplimentary: boolean } | null;
   payments: { id: string; amount: string; status: string; description: string; createdAt: string; provider: string }[];
+  onlinePayment: boolean;
 };
 
 export default function SubscriptionPage() {
@@ -34,7 +35,10 @@ export default function SubscriptionPage() {
             <div className="text-2xl font-semibold">{s.plan.name}</div>
             <Badge tone={statusTone(s.status)}>{STATUS_TR[s.status]}</Badge>
             {s.trialDaysLeft !== null && <p>Deneme süresinden <b>{s.trialDaysLeft} gün</b> kaldı.</p>}
-            {s.subscription && <p>Dönem sonu: {dateTr(s.subscription.currentPeriodEnd)} {s.subscription.cancelAtPeriodEnd ? "(iptal edilecek)" : "(otomatik yenilenir)"}</p>}
+            {s.subscription && s.subscription.source === "MANUAL" && (
+              <p className="flex flex-wrap items-center gap-2"><Badge tone="blue">Yönetici tarafından tanımlandı</Badge>{s.subscription.isComplimentary && <Badge tone="green">Ücretsiz</Badge>}</p>
+            )}
+            {s.subscription && <p>Dönem sonu: {dateTr(s.subscription.currentPeriodEnd)} {s.subscription.cancelAtPeriodEnd ? "(iptal edilecek)" : s.subscription.source === "MANUAL" ? "(otomatik yenilenmez)" : "(otomatik yenilenir)"}</p>}
             {s.savedMethod && <p className="text-xs text-neutral-500">Kayıtlı ödeme yöntemi: {s.savedMethod.label}</p>}
             {s.status === "PAST_DUE" && s.graceEndsAt && <Alert tone="amber">Ödeme bekleniyor. {dateTr(s.graceEndsAt)} tarihine kadar ödeme yapılmazsa abonelik sona erer; bu sürede panel salt okunur.</Alert>}
             {s.limitExceeded && <Alert tone="amber">Aktif personel sayınız paket sınırını aşıyor. Yeni personel eklenemez; paketi yükseltin veya personel pasife alın.</Alert>}
@@ -42,7 +46,7 @@ export default function SubscriptionPage() {
               <div className="mb-1 flex justify-between"><span>Aktif personel</span><span>{s.usage.activeStaff}/{s.usage.maxStaff}</span></div>
               <div className="h-2 rounded-full bg-sand-100"><div className="h-2 rounded-full bg-brand-500" style={{ width: `${Math.min(100, (s.usage.activeStaff / s.usage.maxStaff) * 100)}%` }} /></div>
             </div>
-            {s.subscription?.status === "ACTIVE" && !s.subscription.cancelAtPeriodEnd && can("OWNER") && (
+            {s.subscription?.status === "ACTIVE" && s.subscription.source === "PROVIDER" && !s.subscription.cancelAtPeriodEnd && can("OWNER") && (
               <Button variant="ghost" size="sm" className="mt-2 px-0 text-red-600" onClick={async () => {
                 if (!confirm("Abonelik dönem sonunda sona erecek. Onaylıyor musunuz?")) return;
                 try { await api("/subscription/cancel", { method: "POST" }); toast("Abonelik dönem sonunda sona erecek"); sub.reload(); } catch (e) { toast((e as Error).message, "red"); }
@@ -51,6 +55,9 @@ export default function SubscriptionPage() {
           </CardBody>
         </Card>
         <div className="grid gap-4 sm:grid-cols-3 lg:col-span-2">
+          {!s.onlinePayment && (
+            <div className="sm:col-span-3"><Alert tone="amber">Online ödeme henüz aktif değil. Paket satın almak, değiştirmek veya yenilemek için bizimle iletişime geçin.</Alert></div>
+          )}
           {plans.data?.map((p) => (
             <Card key={p.code} className={p.code === s.plan.code ? "border-brand-400" : ""}>
               <CardBody>
@@ -58,7 +65,7 @@ export default function SubscriptionPage() {
                 <div className="text-sm text-neutral-500">{p.maxStaff} personel</div>
                 <div className="mt-3 text-xl font-semibold">{tl(p.monthlyPrice)}<span className="text-sm font-normal text-neutral-500">/ay</span></div>
                 <div className="text-xs text-neutral-500">veya {tl(p.yearlyPrice)}/yıl</div>
-                {can("OWNER") && <Button className="mt-4 w-full" size="sm" variant={p.code === s.plan.code ? "outline" : "default"} onClick={() => setBuy(p)}>{p.code === s.plan.code && s.status === "ACTIVE" ? "Yenile" : "Seç"}</Button>}
+                {can("OWNER") && s.onlinePayment && <Button className="mt-4 w-full" size="sm" variant={p.code === s.plan.code ? "outline" : "default"} onClick={() => setBuy(p)}>{p.code === s.plan.code && s.status === "ACTIVE" ? "Yenile" : "Seç"}</Button>}
               </CardBody>
             </Card>
           ))}
@@ -70,7 +77,7 @@ export default function SubscriptionPage() {
           {s.payments.map((p) => <tr key={p.id}><Td>{dateTr(p.createdAt)}</Td><Td>{p.description}</Td><Td>{tl(p.amount)}</Td><Td>{p.status === "PAID" ? "Ödendi" : p.status}</Td><Td>{p.provider === "mock" ? "Test" : p.provider}</Td></tr>)}
         </Table>
       </Card>
-      {buy && (
+      {buy && s.onlinePayment && (
         <Dialog open onClose={() => setBuy(null)} title={`${buy.name} paketi`}>
           <form className="space-y-4" onSubmit={async (e) => {
             e.preventDefault();

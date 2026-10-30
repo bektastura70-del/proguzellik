@@ -33,7 +33,7 @@ const schema = z.object({
   SMTP_URL: z.string().optional(),
   EMAIL_FROM: z.string().default("ProGüzellik <no-reply@proguzellik.local>"),
   APP_URL: z.string().optional(),
-  // Ödeme: yalnızca test sağlayıcısı uygulanmıştır.
+  // Ödeme: yalnızca test sağlayıcısı uygulanmıştır; canlıda (NODE_ENV=production) online ödeme her zaman kapalıdır.
   PAYMENT_MODE: z.enum(["mock"]).default("mock"),
   // Zamanlanmış görevler
   JOBS_ENABLED: z.enum(["0", "1"]).default("1"),
@@ -98,7 +98,7 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
   if (env.WHATSAPP_MODE === "cloud") {
     for (const k of ["WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN"] as const) if (!env[k]) err(`${k} gerekli`);
   }
-  if (env.PAYMENT_MODE === "mock") warn("PAYMENT_MODE=mock: gerçek ödeme alınmaz; canlı satıştan önce ödeme sağlayıcısı entegre edilmeli");
+  if (env.PAYMENT_MODE === "mock") warn("PAYMENT_MODE=mock: canlıda online ödeme kapalı; abonelikler yalnızca SaaS sahibi panelinden manuel tanımlanır");
   if (env.AI_MODE === "anthropic" && !raw.ANTHROPIC_API_KEY) err("AI_MODE=anthropic için ANTHROPIC_API_KEY gerekli");
   if (env.JOBS_ENABLED !== "1") warn("JOBS_ENABLED=0: günlük abonelik görevi bu süreçte çalışmaz (başka bir süreçte çalıştığından emin olun)");
   if (env.REGISTRATION_ENABLED === "1") warn("REGISTRATION_ENABLED=1: herkese açık işletme kaydı açık");

@@ -173,6 +173,13 @@ Herkese açık kayıt canlıda kapalıdır. SaaS sahibi `/yonetim` → **Yeni i�
 - Davetli e-posta zaten bir hesaba aitse kabul için o hesabın parolası istenir ve oturum açılmaz (normal giriş + 2FA). Platform yöneticisi hesapları davet edilemez.
 - **Pasife al / Aktifleştir** gerekçeyle yapılır; işletme önceki durumuna döner. Paket düşürme aktif personel sınırını aşamaz. Tüm işlemler denetim kaydına (`platform.tenant_*`, `platform.invite_*`, `tenant.invite_accepted`) yazılır.
 
+### Abonelik ve ödeme (gerçek sağlayıcı entegre edilene kadar)
+- Canlıda (`NODE_ENV=production`) online ödeme **kapalıdır**: test sağlayıcısı devre dışı kalır, `POST /subscription/checkout` her belirteçle (`tok_test` dahil) 503 `ONLINE_PAYMENT_DISABLED` döner, otomatik yenileme "ödendi" sayılmaz. İşletmenin abonelik sayfasında satın alma düğmeleri gizlenir.
+- İşletme yalnızca SaaS sahibinin **manuel aboneliğiyle** aktif olur: `/yonetim` → işletme → **Abonelik** bölümünde oluştur, süre uzat, yenile, paket ata, iptal et (dönem sonunda / hemen). Her işlemde açıklama zorunludur.
+- Manuel abonelikler gerçek tahsilattan ayrıdır: `Subscription.source = MANUAL`, `provider = manual`; işlemler değiştirilemez `SubscriptionGrant` defterine yazılır (ücretsiz ya da anlaşılan tutar bilgi amaçlı). `SubscriptionPayment` tablosuna manuel aboneliğe bağlı kayıt veritabanı tetikleyicisiyle engellenir. MRR yalnızca ödeme sağlayıcılı abonelikleri sayar.
+- Manuel abonelik otomatik yenilenmez; süresi dolunca günlük görev işletmeyi "ödeme bekliyor"a alır (`BILLING_GRACE_DAYS` sonra iptal).
+- Tekrar istek koruması: panel her işlem için bir istek kimliği (`requestId`) gönderir; aynı kimlikle gelen istek ikinci kez uygulanmaz. Denetim kaydı: `platform.subscription_manual_*`, `platform.subscription_cancelled`, `lifecycle.manual_expired`.
+
 ### Yeni sürüm
 1. `backup.sh` (yedek) → 2. `archive-image.sh <çalışan-sürüm>` (gece `docker image prune` önceki imajı silebilir) → 3. yeni imajları yükle → 4. `docker compose run --rm migrate node dist/cli/migrate.js status` ile bekleyenleri gör → 5. `.env`'de `APP_VERSION` güncelle → 6. `docker compose run --rm migrate` → 7. `docker compose up -d api web` → 8. duman testi.
 

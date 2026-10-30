@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Alert, Badge, Button, Dialog, Field, Input, Select, Spinner, statusTone, Textarea, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { dateTr, STATUS_TR } from "@/lib/format";
+import { AdminSubscription, SubscriptionAdmin } from "./subscription-admin";
 
 export const PLAN_TR: Record<string, string> = { STARTER: "Başlangıç", PROFESSIONAL: "Profesyonel", SMART: "Akıllı" };
 export const INVITE_TR: Record<string, string> = {
@@ -96,6 +97,7 @@ type Detail = {
   plan: { name: string; maxStaff: number };
   memberships: { role: string; isActive: boolean; user: { email: string; fullName: string; lastLoginAt: string | null } }[];
   invites: Invite[];
+  subscriptions: AdminSubscription[];
   _count: { customers: number; staff: number; services: number };
 };
 
@@ -139,7 +141,10 @@ export function TenantDetailDialog({ id, onClose, onChanged }: { id: string; onC
           </section>
 
           <section>
-            <h3 className="mb-2 text-sm font-semibold">Paket ve deneme süresi</h3>
+            <h3 className="mb-2 text-sm font-semibold">Deneme paketi ve süresi</h3>
+            {t.subscriptions.some((x) => x.status === "ACTIVE" || x.status === "PAST_DUE") ? (
+              <p className="text-sm text-neutral-500">Açık abonelik var; paket abonelik bölümünden atanır.</p>
+            ) : (
             <form
               className="grid items-end gap-3 sm:grid-cols-3"
               onSubmit={async (e) => {
@@ -158,7 +163,18 @@ export function TenantDetailDialog({ id, onClose, onChanged }: { id: string; onC
               <Field label="Deneme bitişi"><Input name="trialEndsAt" type="date" defaultValue={toDateInput(t.trialEndsAt)} /></Field>
               <Button>Kaydet</Button>
             </form>
+            )}
           </section>
+
+          <SubscriptionAdmin
+            tenantId={t.id}
+            subscriptions={t.subscriptions}
+            onChanged={(msg) => {
+              toast(msg);
+              d.reload();
+              onChanged();
+            }}
+          />
 
           <section>
             <h3 className="mb-2 text-sm font-semibold">Erişim</h3>

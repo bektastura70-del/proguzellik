@@ -1,5 +1,5 @@
 import { INestApplication } from "@nestjs/common";
-import { Test } from "@nestjs/testing";
+import { Test, TestingModuleBuilder } from "@nestjs/testing";
 import { PrismaClient, Role } from "@prisma/client";
 import * as bcrypt from "bcryptjs";
 import request from "supertest";
@@ -42,8 +42,9 @@ export async function createTenantWithUser(
   return { tenant, user };
 }
 
-export async function createApp(): Promise<INestApplication> {
-  const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
+export async function createApp(configure?: (b: TestingModuleBuilder) => TestingModuleBuilder): Promise<INestApplication> {
+  const builder = Test.createTestingModule({ imports: [AppModule] });
+  const mod = await (configure ? configure(builder) : builder).compile();
   const app = configureApp(mod.createNestApplication({ rawBody: true }));
   await app.init();
   return app;

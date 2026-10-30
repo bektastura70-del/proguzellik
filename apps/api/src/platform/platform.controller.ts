@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, Req } from "@nestjs/common";
+import { Body, ConflictException, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
@@ -8,6 +8,7 @@ import { JobsService } from "../jobs/jobs.service";
 import { AuthUser, CurrentUser, PlatformAdmin } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
 import { PrismaService } from "../prisma/prisma.service";
+import { ManualSubscriptionService } from "./manual-subscription.service";
 import { DEFAULT_TRIAL_DAYS, inviteSelect, TenantAdminService } from "./tenant-admin.service";
 
 const planCode = z.enum(["STARTER", "PROFESSIONAL", "SMART"]);
@@ -30,7 +31,8 @@ const listSchema = z.object({
 });
 const tenantUpdate = z.object({
   // Pasife alma/açma ayrı uç noktalarla (gerekçe ve denetim kaydıyla) yapılır.
-  status: z.enum(["TRIAL", "ACTIVE", "PAST_DUE", "CANCELLED"]).optional(),
+  // ACTIVE yalnızca abonelikle (ödeme sağlayıcısı ya da kayıtlı manuel abonelik) verilir.
+  status: z.enum(["TRIAL", "PAST_DUE", "CANCELLED"]).optional(),
   planCode: planCode.optional(),
   trialEndsAt: z.string().datetime({ offset: true }).optional(),
 });
@@ -42,6 +44,23 @@ const planUpdate = z.object({
   isActive: z.boolean().optional(),
 });
 
+const note = z.string().trim().min(3, "Açıklama girin (en az 3 karakter)").max(500);
+const requestId = z.string().uuid("Geçersiz istek kimliği");
+const amount = z.number().min(0).max(10_000_000).optional();
+const paidOrFree = <T extends { complimentary: boolean; agreedAmount?: number }>(v: T, ctx: z.RefinementCtx) => {
+  if (v.complimentary && (v.agreedAmount ?? 0) > 0) ctx.addIssue({ code: "custom", path: ["agreedAmount"], message: "Ücretsiz abonelikte tutar girilemez" });
+  if (!v.complimentary && !((v.agreedAmount ?? 0) > 0)) ctx.addIssue({ code: "custom", path: ["agreedAmount"], message: "Ücretli manuel abonelik için anlaşılan tutarı girin" });
+};
+const manualCreate = z
+  .object({ planCode, billingCycle: z.enum(["MONTHLY", "YEARLY"]), durationDays: z.number().int().min(1).max(730).optional(), complimentary: z.boolean(), agreedAmount: amount, note, requestId })
+  .superRefine(paidOrFree);
+const manualRenew = z
+  .object({ durationDays: z.number().int().min(1).max(730).optional(), complimentary: z.boolean(), agreedAmount: amount, note, requestId })
+  .superRefine(paidOrFree);
+const manualExtend = z.object({ days: z.number().int().min(1, "En az 1 gün").max(366, "En fazla 366 gün"), note, requestId });
+const manualPlan = z.object({ planCode, note, requestId });
+const manualCancel = z.object({ mode: z.enum(["immediate", "period_end"]), note, requestId });
+
 /** SaaS sahibi (platform yöneticisi) paneli. Tüm işletmeleri görür; RLS'yi atlayan ayrı rol kullanır. */
 @PlatformAdmin()
 @Controller("platform")
@@ -52,6 +71,7 @@ export class PlatformController {
     private readonly jobs: JobsService,
     private readonly audit: AuditService,
     private readonly tenantAdmin: TenantAdminService,
+    private readonly manual: ManualSubscriptionService,
   ) {}
 
   @Get("stats")
@@ -63,9 +83,12 @@ export class PlatformController {
       db.tenant.groupBy({ by: ["planCode"], _count: true }),
       db.tenant.count({ where: { createdAt: { gte: since } } }),
       db.appointment.count({ where: { createdAt: { gte: since } } }),
+      // MRR yalnızca ödeme sağlayıcısıyla tahsil edilen aboneliklerden hesaplanır; manuel/ücretsiz olanlar ayrı sayılır.
       db.subscription.findMany({ where: { status: "ACTIVE" }, include: { plan: true } }),
     ]);
-    const mrr = subs.reduce(
+    const paid = subs.filter((s) => s.source === "PROVIDER");
+    const manual = subs.filter((s) => s.source === "MANUAL");
+    const mrr = paid.reduce(
       (s, x) => s.plus(x.billingCycle === "MONTHLY" ? x.plan.monthlyPrice : new Prisma.Decimal(x.plan.yearlyPrice).div(12)),
       new Prisma.Decimal(0),
     );
@@ -75,7 +98,8 @@ export class PlatformController {
       signupsLast30Days: signups,
       appointmentsLast30Days: appts,
       mrr: mrr.toFixed(2),
-      activeSubscriptions: subs.length,
+      activeSubscriptions: paid.length,
+      manualSubscriptions: { total: manual.length, complimentary: manual.filter((s) => s.isComplimentary).length },
     };
   }
 
@@ -104,7 +128,7 @@ export class PlatformController {
       where: { id },
       include: {
         plan: true,
-        subscriptions: { orderBy: { createdAt: "desc" }, include: { payments: true } },
+        subscriptions: { orderBy: { createdAt: "desc" }, include: { payments: { orderBy: { createdAt: "desc" } }, grants: { orderBy: { createdAt: "desc" } } } },
         memberships: { select: { role: true, isActive: true, user: { select: { email: true, fullName: true, lastLoginAt: true } } } },
         invites: { orderBy: { createdAt: "desc" }, take: 10, select: inviteSelect },
         _count: { select: { customers: true, staff: true, services: true } },
@@ -149,11 +173,48 @@ export class PlatformController {
     return this.tenantAdmin.reactivate(id, u.id, req.ip);
   }
 
+  // ---- Manuel abonelik (gerçek tahsilat değildir; SubscriptionGrant defterine ve denetim kaydına yazılır) ----
+
+  @Post("tenants/:id/subscriptions")
+  @HttpCode(200)
+  createManual(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(manualCreate)) b: z.infer<typeof manualCreate>, @Req() req: Request) {
+    return this.manual.create(id, u.id, b, req.ip);
+  }
+
+  @Post("subscriptions/:id/extend")
+  @HttpCode(200)
+  extendManual(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(manualExtend)) b: z.infer<typeof manualExtend>, @Req() req: Request) {
+    return this.manual.extend(id, u.id, b, req.ip);
+  }
+
+  @Post("subscriptions/:id/renew")
+  @HttpCode(200)
+  renewManual(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(manualRenew)) b: z.infer<typeof manualRenew>, @Req() req: Request) {
+    return this.manual.renew(id, u.id, b, req.ip);
+  }
+
+  @Post("subscriptions/:id/plan")
+  @HttpCode(200)
+  changeManualPlan(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(manualPlan)) b: z.infer<typeof manualPlan>, @Req() req: Request) {
+    return this.manual.changePlan(id, u.id, b, req.ip);
+  }
+
+  @Post("subscriptions/:id/cancel")
+  @HttpCode(200)
+  cancelSubscription(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(manualCancel)) b: z.infer<typeof manualCancel>, @Req() req: Request) {
+    return this.manual.cancel(id, u.id, b, req.ip);
+  }
+
   @Patch("tenants/:id")
   async updateTenant(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(tenantUpdate)) b: z.infer<typeof tenantUpdate>) {
     const current = await this.prisma.platform.tenant.findUnique({ where: { id } });
     if (!current) throw new NotFoundException("İşletme bulunamadı");
-    if (b.planCode && b.planCode !== current.planCode) await this.tenantAdmin.assertPlanFits(id, b.planCode);
+    if (b.planCode && b.planCode !== current.planCode) {
+      // Açık abonelikte paket abonelik üzerinden atanır (abonelik ve işletme paketi ayrışmasın).
+      const open = await this.prisma.platform.subscription.count({ where: { tenantId: id, status: { in: ["ACTIVE", "PAST_DUE"] } } });
+      if (open > 0) throw new ConflictException("Açık aboneliği olan işletmede paket, abonelik bölümünden atanır");
+      await this.tenantAdmin.assertPlanFits(id, b.planCode);
+    }
     const updated = await this.prisma.platform.tenant.update({
       where: { id },
       data: { ...b, ...(b.trialEndsAt ? { trialEndsAt: new Date(b.trialEndsAt) } : {}) },

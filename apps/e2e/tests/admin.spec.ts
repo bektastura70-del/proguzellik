@@ -19,9 +19,12 @@ test.describe("İşletme sahibi modülleri", () => {
     const services = await apiGet<{ id: string; name: string }[]>(page, "/services");
     const staff = await apiGet<{ id: string; displayName: string }[]>(page, "/staff");
     const customers = await apiGet<{ items: { id: string }[] }>(page, "/customers?search=Sena");
+    // 9 gün sonrası; demo salonu pazar kapalı olduğundan pazara denk gelirse pazartesi.
+    const day = new Date(Date.now() + 9 * 86_400_000);
+    if (day.getUTCDay() === 0) day.setUTCDate(day.getUTCDate() + 1);
     const slots = await apiGet<{ startsAt: string; staffId: string }[]>(
       page,
-      `/availability?date=${new Date(Date.now() + 9 * 86_400_000).toISOString().slice(0, 10)}&serviceId=${services.find((s) => s.name === "Kirpik Lifting")!.id}&staffId=${staff.find((s) => s.displayName === "Selin")!.id}`,
+      `/availability?date=${day.toISOString().slice(0, 10)}&serviceId=${services.find((s) => s.name === "Kirpik Lifting")!.id}&staffId=${staff.find((s) => s.displayName === "Selin")!.id}`,
     );
     const res = await page.request.post("/api/p/appointments", {
       data: { customerId: customers.items[0].id, serviceId: services.find((s) => s.name === "Kirpik Lifting")!.id, staffId: slots[0].staffId, startsAt: slots[0].startsAt },
@@ -196,6 +199,45 @@ test.describe("SaaS sahibi paneli", () => {
     await page.getByRole("dialog").getByRole("button", { name: "Kaydet" }).click();
     await expectToast(page, "Paket güncellendi");
     await expect(row).toContainText("₺549,00");
+  });
+
+  test("manuel abonelik: ücretsiz oluşturma, süre uzatma ve dönem sonu iptali; tahsilattan ayrı listelenir", async ({ page }) => {
+    const name = uniq("Manuel Salon");
+    const created = await page.request.post("/api/p/platform/tenants", {
+      data: { name, ownerName: "Manuel Sahip", ownerEmail: `${uniq("manuel").replace(" ", "-")}@ornek.test`, planCode: "STARTER", trialDays: 14 },
+    });
+    expect(created.status()).toBe(201);
+    await page.goto("/yonetim");
+    await page.getByLabel("İşletme ara").fill(name.split(" ").pop()!);
+    const row = page.getByRole("row").filter({ hasText: name });
+    await row.getByRole("button", { name: "Yönet" }).click();
+    const dlg = page.getByRole("dialog");
+    await expect(dlg.getByText(/Açık abonelik yok/)).toBeVisible();
+    await dlg.getByRole("button", { name: "Manuel abonelik oluştur" }).click();
+    const form = dlg.locator("form").filter({ has: page.getByRole("button", { name: "Oluştur", exact: true }) });
+    await form.getByLabel("Paket").selectOption("SMART");
+    await form.getByLabel("Dönem").selectOption("YEARLY");
+    await form.getByLabel(/Açıklama/).fill("E2E açılış hediyesi");
+    await form.getByRole("button", { name: "Oluştur", exact: true }).click();
+    await expectToast(page, "Manuel abonelik oluşturuldu");
+    await expect(dlg.getByText("Manuel · ücretsiz")).toBeVisible();
+    await expect(dlg.getByRole("row").filter({ hasText: "E2E açılış hediyesi" })).toContainText("Ücretsiz");
+    await expect(dlg.getByText("Tahsilat yok")).toBeVisible();
+    await expect(row).toContainText("Aktif");
+    await expect(row).toContainText("Akıllı");
+
+    await dlg.getByRole("button", { name: "Süre uzat" }).click();
+    await dlg.getByLabel("Eklenecek gün").fill("10");
+    await dlg.getByLabel(/Açıklama/).fill("E2E telafi");
+    await dlg.getByRole("button", { name: "Uzat", exact: true }).click();
+    await expectToast(page, "Süre uzatıldı");
+    await expect(dlg.getByRole("row").filter({ hasText: "E2E telafi" })).toContainText("Süre uzatıldı");
+
+    await dlg.getByRole("button", { name: "İptal et" }).click();
+    await dlg.getByLabel(/Açıklama/).fill("E2E iptal");
+    await dlg.getByRole("button", { name: "İptal et" }).click();
+    await expectToast(page, "Abonelik iptal edildi");
+    await expect(dlg.getByText(/dönem sonunda iptal edilecek/)).toBeVisible();
   });
 
   test("işletme sahibi /yonetim sayfasına erişemez", async ({ browser }) => {
