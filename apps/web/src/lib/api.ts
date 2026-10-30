@@ -30,7 +30,8 @@ export async function api<T = unknown>(path: string, init: { method?: string; bo
     if (typeof window !== "undefined") {
       const publicAuth = /^\/auth\/(login|register|forgot-password|reset-password|verify-email|mfa\/verify|invite|accept-invite)/.test(path);
       // Oturum sona erdiyse (süre, çıkış veya başka cihazdan kapatma) giriş sayfasına yönlendir.
-      if (res.status === 401 && !publicAuth) window.location.href = "/giris?sure=doldu";
+      // Açık oturumda yanlış parola/kod (REAUTH_FAILED) oturumu sonlandırmaz; hata formda gösterilir.
+      if (res.status === 401 && !publicAuth && data?.code !== "REAUTH_FAILED") window.location.href = "/giris?sure=doldu";
       if (res.status === 403 && data?.code === "PASSWORD_CHANGE_REQUIRED") window.location.href = "/parola-degistir";
       if (res.status === 403 && data?.code === "MFA_SETUP_REQUIRED") window.location.href = "/guvenlik?zorunlu=1";
       if (res.status === 403 && data?.code === "MFA_REQUIRED") {

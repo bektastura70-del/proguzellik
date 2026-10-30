@@ -52,6 +52,9 @@ export interface ClientMeta {
   userAgent?: string;
 }
 
+/** Oturum açıkken parola/kod doğrulaması başarısız: istemci bunu oturum sonu saymamalı. */
+export const REAUTH_FAILED = "REAUTH_FAILED";
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -176,7 +179,7 @@ export class AuthService {
 
   private async assertPassword(userId: string, password: string) {
     const user = await this.db.user.findUniqueOrThrow({ where: { id: userId } });
-    if (!(await bcrypt.compare(password, user.passwordHash))) throw new UnauthorizedException("Parola hatalı");
+    if (!(await bcrypt.compare(password, user.passwordHash))) throw new UnauthorizedException({ message: "Parola hatalı", code: REAUTH_FAILED });
     return user;
   }
 
@@ -320,7 +323,7 @@ export class AuthService {
   private async assertTotp(userId: string, code: string) {
     const user = await this.db.user.findUniqueOrThrow({ where: { id: userId } });
     if (!user.mfaEnabledAt || !user.mfaSecretEnc) throw new BadRequestException("İki adımlı doğrulama kapalı");
-    if (verifyTotp(decrypt(user.mfaSecretEnc, loadEnv().MFA_ENCRYPTION_KEY), code) === null) throw new UnauthorizedException("Doğrulama kodu hatalı");
+    if (verifyTotp(decrypt(user.mfaSecretEnc, loadEnv().MFA_ENCRYPTION_KEY), code) === null) throw new UnauthorizedException({ message: "Doğrulama kodu hatalı", code: REAUTH_FAILED });
     return user;
   }
 
@@ -350,10 +353,10 @@ export class AuthService {
     const fresh = step !== null && (user.mfaLastStep === null || step > user.mfaLastStep);
     if (!okPw || !fresh) {
       await this.audit.logPlatform({ action: "auth.reauth_failed", actorId: userId, ip });
-      throw new UnauthorizedException("Parola veya doğrulama kodu hatalı");
+      throw new UnauthorizedException({ message: "Parola veya doğrulama kodu hatalı", code: REAUTH_FAILED });
     }
     const r = await this.db.user.updateMany({ where: { id: userId, OR: [{ mfaLastStep: null }, { mfaLastStep: { lt: step } }] }, data: { mfaLastStep: step } });
-    if (r.count !== 1) throw new UnauthorizedException("Doğrulama kodu zaten kullanıldı");
+    if (r.count !== 1) throw new UnauthorizedException({ message: "Doğrulama kodu zaten kullanıldı", code: REAUTH_FAILED });
   }
 
   async regenerateRecoveryCodes(userId: string, password: string, code: string) {

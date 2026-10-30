@@ -108,7 +108,9 @@ Yerelde doğrulandı: geliştirme veritabanı yedeklendi, geçici veritabanına 
 ## 9. Canlıya almadan önce yapılacaklar (eksikler)
 
 - [ ] Gerçek ödeme sağlayıcısı (`PaymentProvider` arayüzü) ve fatura/e-Arşiv entegrasyonu
-- [ ] SMTP sağlayıcısı, SPF/DKIM/DMARC kayıtları
+- [ ] SMTP sağlayıcısı (info@proguzellik.com), MX/SPF/DKIM/DMARC kayıtları — bkz. §10 "Kurumsal e-posta"
+- [ ] Şirket unvanı, adres, telefon, IBAN ve KDV ayarı (`/platform` → Muhasebe → Şirket bilgileri); fiyatların onayı
+- [ ] Kullanım Koşulları metnindeki [YER TUTUCU] alanlarının doldurulması
 - [ ] Meta WhatsApp Business hesabı, onaylı şablonlar (`randevu_onay`, `randevu_hatirlatma`, `randevu_iptal`)
 - [ ] Hız sınırlayıcının Redis'e taşınması (çoklu örnek için)
 - [ ] Hukuki metinlerin (KVKK, gizlilik, çerez) avukat onayı, VERBİS kaydı değerlendirmesi
@@ -127,7 +129,7 @@ Dosyalar: `infra/production/` (compose, `.env.example`, betikler, Caddy bloğu).
 
 **Yalıtım:** proje adı `proguzellik-prod`, servisler postgres/redis/api/worker/web, konteynerler `proguzellik-prod-*`, volume'lar `proguzellik_prod_pg`/`proguzellik_prod_redis`, iç ağ `proguzellik_prod_internal` (internal: internet çıkışı yok). Host'a hiçbir port yayınlanmaz. Yalnızca `web`, ortak `edge_proxy` ağına `proguzellik-web` adıyla bağlanır. Diğer projelerin veritabanı, Redis, volume ve ağları kullanılmaz; mevcut Caddy blokları ve global ayarlar değiştirilmez. Konteynerler salt okunur dosya sistemi, `no-new-privileges`, `cap_drop: ALL` ve bellek/CPU sınırlarıyla çalışır (toplam ~1.9 GB).
 
-**Pasif entegrasyonlar:** compose `EMAIL_MODE`, `WHATSAPP_MODE`, `PAYMENT_MODE`, `AI_MODE` değerlerini `mock` olarak sabitler; API'nin internet çıkışı da yoktur. Kayıt `REGISTRATION_ENABLED=0` ile kapalıdır (Caddy bloğu ayrıca kayıt yolunu 403 ile engeller).
+**Pasif entegrasyonlar:** compose `WHATSAPP_MODE`, `PAYMENT_MODE`, `AI_MODE` değerlerini `mock` olarak sabitler, `EINVOICE_PROVIDER=none`. `EMAIL_MODE` `.env`'den gelir, varsayılanı `mock`tur (gönderim yok). Varsayılan kurulumda API'nin internet çıkışı yoktur; SMTP açılırken yalnızca api ve worker `docker-compose.egress.yml` ile çıkış ağına bağlanır. Kayıt `REGISTRATION_ENABLED=0` ile kapalıdır (Caddy bloğu ayrıca `/auth/register` ve `/auth/register/*` yollarını 403 ile engeller).
 
 ### İlk kurulum — tek betik (önerilen)
 Mac'te (proje kökü, imajlar `linux/amd64` olarak derlenmiş olmalı; `<V>` = imaj etiketi):
@@ -164,10 +166,10 @@ Parola gizli olarak iki kez sorulur (en az 10 karakter, harf + rakam). Tekrar ç
 9. Yedek cron'u: `/etc/cron.d/proguzellik-backup` → `45 3 * * * root /opt/proguzellik/infra/production/backup.sh >> /opt/proguzellik/backups/backup.log 2>&1`; ilk yedekte `infra/scripts/verify-backup.sh` tatbikatı (`PG_CONTAINER=proguzellik-prod-postgres PGUSER=proguzellik_owner`).
 10. DNS (Hostinger paneli): `@` A → VPS IP, `www` → aynı; TTL 300. Yayılmayı `dig +short proguzellik.com` ile doğrulayın.
 11. Ortak ağa bağlanma: `.env` içinde `COMPOSE_FILE=docker-compose.yml:docker-compose.edge.yml` yapılıp `docker compose up -d --no-deps web` (yalnızca web, `proguzellik-web` adıyla `edge_proxy`'ye katılır). Caddy: `/opt/edge/Caddyfile` yedeği alınır, `Caddyfile.proguzellik.snippet` içeriği **sona eklenir**, `caddy validate` ardından `caddy reload` (restart değil). Sertifika Let's Encrypt ile otomatik alınır.
-12. Duman testi: `https://proguzellik.com/giris` açılır, sahip girişi + 2FA, `/kayit` "kayıtlar kapalı" gösterir, kayıt isteği 403.
+12. Duman testi: `https://proguzellik.com/` tanıtım sitesi açılır; `/giris` → sahip girişi + 2FA → `/platform`; işletme kullanıcısı `/panel`'e gider ve `/platform`'a giremez; `/ucretsiz-deneme` "kayıtlar kapalı" gösterir, kayıt isteği 403; `/robots.txt` ve `/sitemap.xml` açılır; `/yonetim` → `/platform` yönlendirir.
 
 ### İşletme ekleme (kayıt kapalıyken)
-Herkese açık kayıt canlıda kapalıdır. SaaS sahibi `/yonetim` → **Yeni işletme** ile güzellik merkezini (ad, sahip adı/e-postası, paket, 1–60 gün deneme) oluşturur; sahibe tek kullanımlık, 7 gün geçerli davet bağlantısı e-postayla gider (`/davet`). Bağlantı API yanıtında, panelde, loglarda veya denetim kayıtlarında görünmez; veritabanında yalnızca SHA-256 özeti tutulur ve canlıda e-posta gövdesi kaydedilmez.
+Herkese açık kayıt canlıda kapalıdır. SaaS sahibi `/platform` → **Yeni işletme** ile güzellik merkezini (ad, sahip adı/e-postası, paket, 1–60 gün deneme) oluşturur; sahibe tek kullanımlık, 7 gün geçerli davet bağlantısı e-postayla gider (`/davet`). Bağlantı API yanıtında, panelde, loglarda veya denetim kayıtlarında görünmez; veritabanında yalnızca SHA-256 özeti tutulur ve canlıda e-posta gövdesi kaydedilmez.
 - **SMTP yoksa** (`EMAIL_MODE=mock`, canlı): davet "Davet bekliyor (e-posta yok)" durumunda kalır, belirteç hiç üretilmez. SMTP yapılandırıldıktan sonra işletme detayında **Daveti yeniden gönder**.
 - Yeniden gönderim önceki bağlantıyı geçersiz kılar; iptal edilen, kabul edilen veya süresi dolan bağlantı çalışmaz. Aynı işletmede tek açık davet olabilir.
 - Davetli e-posta zaten bir hesaba aitse kabul için o hesabın parolası istenir ve oturum açılmaz (normal giriş + 2FA). Platform yöneticisi hesapları davet edilemez.
@@ -175,10 +177,41 @@ Herkese açık kayıt canlıda kapalıdır. SaaS sahibi `/yonetim` → **Yeni i�
 
 ### Abonelik ve ödeme (gerçek sağlayıcı entegre edilene kadar)
 - Canlıda (`NODE_ENV=production`) online ödeme **kapalıdır**: test sağlayıcısı devre dışı kalır, `POST /subscription/checkout` her belirteçle (`tok_test` dahil) 503 `ONLINE_PAYMENT_DISABLED` döner, otomatik yenileme "ödendi" sayılmaz. İşletmenin abonelik sayfasında satın alma düğmeleri gizlenir.
-- İşletme yalnızca SaaS sahibinin **manuel aboneliğiyle** aktif olur: `/yonetim` → işletme → **Abonelik** bölümünde oluştur, süre uzat, yenile, paket ata, iptal et (dönem sonunda / hemen). Her işlemde açıklama zorunludur.
+- İşletme yalnızca SaaS sahibinin **manuel aboneliğiyle** aktif olur: `/platform` → işletme → **Abonelik** bölümünde oluştur, süre uzat, yenile, paket ata, iptal et (dönem sonunda / hemen). Her işlemde açıklama zorunludur.
 - Manuel abonelikler gerçek tahsilattan ayrıdır: `Subscription.source = MANUAL`, `provider = manual`; işlemler değiştirilemez `SubscriptionGrant` defterine yazılır (ücretsiz ya da anlaşılan tutar bilgi amaçlı). `SubscriptionPayment` tablosuna manuel aboneliğe bağlı kayıt veritabanı tetikleyicisiyle engellenir. MRR yalnızca ödeme sağlayıcılı abonelikleri sayar.
 - Manuel abonelik otomatik yenilenmez; süresi dolunca günlük görev işletmeyi "ödeme bekliyor"a alır (`BILLING_GRACE_DAYS` sonra iptal).
 - Tekrar istek koruması: panel her işlem için bir istek kimliği (`requestId`) gönderir; aynı kimlikle gelen istek ikinci kez uygulanmaz. Denetim kaydı: `platform.subscription_manual_*`, `platform.subscription_cancelled`, `lifecycle.manual_expired`.
+
+### Kurumsal e-posta (info@proguzellik.com) ve SMTP
+SMTP bilgisi gelmeden e-posta açılmaz; `mock` modda hiçbir e-posta gönderilmez, kayıtlar "yapılandırılmadı" olarak tutulur.
+1. E-posta sağlayıcısı seçilir (Hostinger Business Email, Google Workspace, Zoho vb.). Sağlayıcının verdiği DNS kayıtları **onayla** eklenir:
+   - `MX` → sağlayıcının posta sunucuları
+   - `TXT @` SPF: `v=spf1 include:<sağlayıcı> ~all` (tek SPF kaydı olmalı)
+   - `TXT <seçici>._domainkey` DKIM: sağlayıcının verdiği anahtar
+   - `TXT _dmarc`: başlangıçta `v=DMARC1; p=none; rua=mailto:info@proguzellik.com`, teslim doğrulandıktan sonra `p=quarantine`
+2. Sunucuda `.env`: `EMAIL_MODE=smtp`, `SMTP_URL=smtps://KULLANICI:PAROLA@smtp.saglayici.com:465` (parolada özel karakter varsa URL kodlanmalı), `COMPOSE_FILE` sonuna `:docker-compose.egress.yml`.
+3. `preflight.sh` (SMTP_URL ve egress dosyası kontrol edilir) → `docker compose up -d api worker`.
+4. `/platform` → E-postalar → bir hizmet bilgilendirmesini kendinize gönderin veya bekleyen daveti yeniden gönderin; geçmişte `SENT` görünmeli. Gelen kutusunda SPF/DKIM `pass` kontrol edilir.
+5. Geri alma: `EMAIL_MODE=mock`, egress dosyasını `COMPOSE_FILE`'dan çıkarıp `docker compose up -d api worker`.
+
+### 14 gün ücretsiz denemeyi açma
+Ön koşul: SMTP çalışıyor (doğrulama e-postası gidemezse başvuru alınmaz, 503), hukuki metinler onaylı, fiyatlar doğru.
+1. `.env`: `REGISTRATION_ENABLED=1`; preflight smtp olmadan bunu **engeller**.
+2. Caddy bloğundaki kayıt engelini (`/auth/register` ve `/auth/register/*` → 403) kaldırın: `/opt/edge/Caddyfile` yedeği → düzenle → `caddy validate` → `caddy reload`.
+3. `docker compose up -d api web`.
+4. Deneme: `/ucretsiz-deneme` → doğrulama e-postası → bağlantı → `/panel` açılır; `/platform`'da işletme `TRIAL`, bitiş tarihi doğrulama anından 14 gün sonra.
+5. Kapatma: `REGISTRATION_ENABLED=0` + Caddy engelini geri koyun. Açık başvurular 24 saatte geçersizleşir, günlük görev siler.
+
+Akış: başvuru yalnızca `SignupRequest` olarak (parola özeti, KVKK/koşul sürümü, IP) 24 saat tutulur; işletme, kullanıcı ve onay kayıtları (`UserConsent`, değiştirilemez) ancak e-posta doğrulandığında oluşur. Bağlantı tek kullanımlıktır. Aynı e-postayla başvuru aynı yanıtı alır (hesap varlığı sızdırılmaz), etkin deneme/aboneliği olan telefonla ikinci deneme açılamaz, IP ve e-posta başına hız sınırı vardır.
+
+### Canlıya alma onay listesi (sırasıyla, her adım ayrı onay)
+1. Yerelde: `pnpm build`, API testleri, Playwright testleri yeşil; `V=$(git rev-parse --short HEAD)` ile amd64 imajlar.
+2. Sunucuda **değişiklik öncesi**: `backup.sh` + `verify-backup.sh`, `/opt/edge/Caddyfile` yedeği, `docker ps` çıktısı (diğer projelerin durumu) kaydedilir.
+3. İlk kurulum (`first-install.sh`) veya yeni sürüm adımları. Diğer projelerin konteyner/volume/ağlarına dokunulmaz.
+4. DNS (`@`, `www` A kayıtları) — **ayrı onay**.
+5. Caddy bloğu + `caddy reload` — **ayrı onay**.
+6. Duman testi (madde 12). Sorun olursa aşağıdaki geri dönüş.
+7. SMTP ve deneme kaydının açılması — bilgiler geldikten sonra ayrı onay.
 
 ### Yeni sürüm
 1. `backup.sh` (yedek) → 2. `archive-image.sh <çalışan-sürüm>` (gece `docker image prune` önceki imajı silebilir) → 3. yeni imajları yükle → 4. `docker compose run --rm migrate node dist/cli/migrate.js status` ile bekleyenleri gör → 5. `.env`'de `APP_VERSION` güncelle → 6. `docker compose run --rm migrate` → 7. `docker compose up -d api web` → 8. duman testi.

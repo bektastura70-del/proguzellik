@@ -320,7 +320,8 @@ describe("SaaS sahibi: kullanıcı yönetimi", () => {
       await admin.post(url).send({ reason: "Telefon kayboldu" }).expect(400);
       await admin.post(url).send({ password: TEST_PASSWORD, code: await freshTotp(ADMIN, adminSecret) }).expect(400);
       await admin.post(url).send({ password: "yanlis", code: await freshTotp(ADMIN, adminSecret), reason: "Telefon kayboldu" }).expect(401);
-      await admin.post(url).send({ password: TEST_PASSWORD, code: "000000", reason: "Telefon kayboldu" }).expect(401);
+      await admin.post(url).send({ password: TEST_PASSWORD, code: "000000", reason: "Telefon kayboldu" }).expect(401)
+        .expect((r) => expect(r.body).toMatchObject({ code: "REAUTH_FAILED", message: "Parola veya doğrulama kodu hatalı" }));
       expect(await su.auditLog.count({ where: { actorId: adminId, action: "auth.reauth_failed" } })).toBeGreaterThanOrEqual(2);
       expect((await su.user.findUniqueOrThrow({ where: { id: C.user.id } })).mfaEnabledAt).not.toBeNull();
     });
