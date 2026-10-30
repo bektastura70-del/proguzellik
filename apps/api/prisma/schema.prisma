@@ -31,7 +31,7 @@ model Tenant {
   name                 String
   slug                 String        @unique
   status               TenantStatus  @default(TRIAL)
-  planCode             PlanCode      @default(PROFESSIONAL)
+  planCode             String        @default("PROFESSIONAL")
   trialEndsAt          DateTime?
   onlineBookingEnabled Boolean       @default(true)
   requireMfa           Boolean       @default(false)
@@ -495,12 +495,6 @@ model ServiceConsumable {
 // ---------------------------------------------------------------------
 // SaaS abonelik paketleri
 // ---------------------------------------------------------------------
-enum PlanCode {
-  STARTER
-  PROFESSIONAL
-  SMART
-}
-
 enum BillingCycle {
   MONTHLY
   YEARLY
@@ -528,7 +522,7 @@ enum SubscriptionGrantAction {
 
 /// Global paket tanımları (kiracıya ait değil, herkes okuyabilir).
 model Plan {
-  code         PlanCode @id
+  code         String   @id
   name         String
   maxStaff     Int
   monthlyPrice Decimal  @db.Decimal(12, 2)
@@ -539,12 +533,13 @@ model Plan {
 
   tenants       Tenant[]
   subscriptions Subscription[]
+  grants        SubscriptionGrant[]
 }
 
 model Subscription {
   id                 String             @id @default(uuid()) @db.Uuid
   tenantId           String             @db.Uuid
-  planCode           PlanCode
+  planCode           String
   billingCycle       BillingCycle
   status             SubscriptionStatus @default(ACTIVE)
   currentPeriodStart DateTime
@@ -591,11 +586,11 @@ model SubscriptionGrant {
   tenantId          String                  @db.Uuid
   subscriptionId    String                  @db.Uuid
   action            SubscriptionGrantAction
-  planCode          PlanCode
+  planCode          String
   periodStart       DateTime?
   periodEnd         DateTime?
   previousPeriodEnd DateTime?
-  previousPlanCode  PlanCode?
+  previousPlanCode  String?
   /// Owner'ın kayda geçirdiği anlaşılan tutar (bilgi amaçlı, tahsilat değildir).
   agreedAmount      Decimal                 @default(0) @db.Decimal(12, 2)
   isComplimentary   Boolean                 @default(false)
@@ -606,6 +601,7 @@ model SubscriptionGrant {
   createdAt         DateTime                @default(now())
 
   subscription Subscription @relation(fields: [tenantId, subscriptionId], references: [tenantId, id], onDelete: Cascade)
+  plan         Plan         @relation(fields: [planCode], references: [code], onUpdate: Restrict)
 
   @@index([tenantId, createdAt])
 }

@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { AuditService } from "../audit/audit.service";
 import { RateLimitService } from "../auth/rate-limit.service";
+import { PLAN_FEATURES, planCodeSchema } from "../billing/plans";
 import { SubscriptionsService } from "../billing/subscriptions.service";
 import { JobsService } from "../jobs/jobs.service";
 import { AuthUser, CurrentUser, PlatformAdmin } from "../common/decorators";
@@ -13,7 +14,7 @@ import { ManualSubscriptionService } from "./manual-subscription.service";
 import { PlatformUsersService } from "./platform-users.service";
 import { DEFAULT_TRIAL_DAYS, inviteSelect, TenantAdminService } from "./tenant-admin.service";
 
-const planCode = z.enum(["STARTER", "PROFESSIONAL", "SMART"]);
+const planCode = planCodeSchema;
 const createTenantSchema = z.object({
   name: z.string().trim().min(2, "İşletme adı en az 2 karakter olmalı").max(120),
   ownerName: z.string().trim().min(2, "Sahip adı en az 2 karakter olmalı").max(120),
@@ -38,12 +39,39 @@ const tenantUpdate = z.object({
   planCode: planCode.optional(),
   trialEndsAt: z.string().datetime({ offset: true }).optional(),
 });
+const money = (max: number) => z.number().min(0).max(max).multipleOf(0.01, "En fazla 2 ondalık basamak");
+const features = z.array(z.enum(PLAN_FEATURES)).max(PLAN_FEATURES.length).transform((f) => [...new Set(f)]);
 const planUpdate = z.object({
   name: z.string().trim().min(2).max(60).optional(),
   maxStaff: z.number().int().min(1).max(500).optional(),
-  monthlyPrice: z.number().min(0).max(1_000_000).optional(),
-  yearlyPrice: z.number().min(0).max(10_000_000).optional(),
+  monthlyPrice: money(1_000_000).optional(),
+  yearlyPrice: money(10_000_000).optional(),
+  features: features.optional(),
+  sortOrder: z.number().int().min(0).max(1000).optional(),
   isActive: z.boolean().optional(),
+});
+const planCreate = z.object({
+  code: planCodeSchema,
+  name: z.string().trim().min(2).max(60),
+  maxStaff: z.number().int().min(1).max(500),
+  monthlyPrice: money(1_000_000),
+  yearlyPrice: money(10_000_000),
+  features: features.default([]),
+  sortOrder: z.number().int().min(0).max(1000).default(100),
+  isActive: z.boolean().default(true),
+});
+const trialSchema = z
+  .object({
+    days: z.number().int().min(1, "En az 1 gün").max(90, "Tek seferde en fazla 90 gün").optional(),
+    until: z.string().datetime({ offset: true }).optional(),
+    reason: z.string().trim().min(3, "Gerekçe girin").max(300),
+  })
+  .refine((v) => (v.days === undefined) !== (v.until === undefined), "Gün sayısı ya da bitiş tarihinden yalnızca birini girin");
+const subscriptionList = z.object({
+  status: z.enum(["ACTIVE", "PAST_DUE", "CANCELLED"]).optional(),
+  source: z.enum(["PROVIDER", "MANUAL"]).optional(),
+  q: z.string().trim().max(100).optional(),
+  expiringDays: z.coerce.number().int().min(1).max(365).optional(),
 });
 
 const note = z.string().trim().min(3, "Açıklama girin (en az 3 karakter)").max(500);
@@ -337,13 +365,81 @@ export class PlatformController {
     return this.prisma.platform.plan.findMany({ orderBy: { sortOrder: "asc" } });
   }
 
+  @Post("plans")
+  async createPlan(@CurrentUser() u: AuthUser, @Body(new ZodPipe(planCreate)) b: z.infer<typeof planCreate>) {
+    if (b.yearlyPrice > 0 && b.monthlyPrice > 0 && b.yearlyPrice > b.monthlyPrice * 12) throw new ConflictException("Yıllık fiyat, aylık fiyatın 12 katından fazla olamaz");
+    try {
+      const plan = await this.prisma.platform.plan.create({ data: b });
+      await this.audit.logPlatform({ actorId: u.id, action: "platform.plan_created", entity: "Plan", metadata: b });
+      return plan;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") throw new ConflictException("Bu kodla bir paket zaten var");
+      throw e;
+    }
+  }
+
   @Patch("plans/:code")
   async updatePlan(@CurrentUser() u: AuthUser, @Param("code") code: string, @Body(new ZodPipe(planUpdate)) b: z.infer<typeof planUpdate>) {
-    const parsed = z.enum(["STARTER", "PROFESSIONAL", "SMART"]).safeParse(code);
-    if (!parsed.success) throw new NotFoundException("Paket bulunamadı");
-    const plan = await this.prisma.platform.plan.update({ where: { code: parsed.data }, data: b });
-    await this.audit.logPlatform({ actorId: u.id, action: "platform.plan_updated", metadata: { code, ...b } });
+    const parsed = planCodeSchema.safeParse(code);
+    const before = parsed.success ? await this.prisma.platform.plan.findUnique({ where: { code: parsed.data } }) : null;
+    if (!before) throw new NotFoundException("Paket bulunamadı");
+    if (b.maxStaff !== undefined && b.maxStaff < before.maxStaff) {
+      // Sınır düşürülürken mevcut işletmelerden hiçbiri yeni sınırı aşmamalı.
+      const over = await this.prisma.platform.$queryRaw<{ name: string; n: bigint }[]>`
+        SELECT t.name, count(s.id) AS n FROM "Tenant" t JOIN "StaffMember" s ON s."tenantId" = t.id AND s."isActive"
+        WHERE t."planCode" = ${before.code} AND t.status <> 'CANCELLED' GROUP BY t.id, t.name HAVING count(s.id) > ${b.maxStaff} LIMIT 3`;
+      if (over.length) throw new ConflictException(`Personel sınırı düşürülemez; aşan işletmeler: ${over.map((o) => `${o.name} (${o.n})`).join(", ")}`);
+    }
+    const plan = await this.prisma.platform.plan.update({ where: { code: before.code }, data: b });
+    const changes = Object.fromEntries(Object.keys(b).map((k) => [k, { from: (before as Record<string, unknown>)[k], to: (b as Record<string, unknown>)[k] }]));
+    await this.audit.logPlatform({ actorId: u.id, action: "platform.plan_updated", entity: "Plan", metadata: JSON.parse(JSON.stringify({ code: before.code, changes })) });
     return plan;
+  }
+
+  /** Deneme süresini uzatır ya da yeniden açar (süresi dolmuş, aboneliği olmayan işletme). */
+  @Post("tenants/:id/trial")
+  @HttpCode(200)
+  extendTrial(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(trialSchema)) b: z.infer<typeof trialSchema>, @Req() req: Request) {
+    return this.tenantAdmin.extendTrial(id, u.id, b, req.ip);
+  }
+
+  /** Abonelik izleme: durum/kaynak filtresi, yakında bitenler ve özet sayılar. */
+  @Get("subscriptions")
+  async subscriptions(@Query(new ZodPipe(subscriptionList)) q: z.infer<typeof subscriptionList>) {
+    const db = this.prisma.platform;
+    const now = new Date();
+    const soon = new Date(now.getTime() + 7 * 86_400_000);
+    const where: Prisma.SubscriptionWhereInput = {
+      ...(q.status ? { status: q.status } : {}),
+      ...(q.source ? { source: q.source } : {}),
+      ...(q.q ? { tenant: { name: { contains: q.q, mode: "insensitive" } } } : {}),
+      ...(q.expiringDays ? { status: { in: ["ACTIVE", "PAST_DUE"] }, currentPeriodEnd: { lte: new Date(now.getTime() + q.expiringDays * 86_400_000) } } : {}),
+    };
+    const [items, tenantsByStatus, trialsEnding, subsEnding, bySubStatus] = await Promise.all([
+      db.subscription.findMany({
+        where,
+        orderBy: { currentPeriodEnd: "asc" },
+        take: 300,
+        select: {
+          id: true, status: true, source: true, isComplimentary: true, billingCycle: true, currentPeriodStart: true, currentPeriodEnd: true, cancelAtPeriodEnd: true, createdAt: true,
+          plan: { select: { code: true, name: true } },
+          tenant: { select: { id: true, name: true, status: true } },
+        },
+      }),
+      db.tenant.groupBy({ by: ["status"], _count: true }),
+      db.tenant.findMany({ where: { status: "TRIAL", trialEndsAt: { gt: now, lte: soon } }, orderBy: { trialEndsAt: "asc" }, select: { id: true, name: true, trialEndsAt: true } }),
+      db.subscription.count({ where: { status: "ACTIVE", currentPeriodEnd: { gt: now, lte: soon } } }),
+      db.subscription.groupBy({ by: ["status"], _count: true }),
+    ]);
+    return {
+      summary: {
+        tenants: Object.fromEntries(tenantsByStatus.map((r) => [r.status, r._count])),
+        subscriptions: Object.fromEntries(bySubStatus.map((r) => [r.status, r._count])),
+        trialsEndingIn7Days: trialsEnding,
+        subscriptionsEndingIn7Days: subsEnding,
+      },
+      items,
+    };
   }
 
   /** Günlük abonelik görevini elle tetikler; aynı gün ikinci kez yalnızca force=true ile çalışır. */

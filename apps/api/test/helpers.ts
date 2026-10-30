@@ -17,6 +17,8 @@ export async function resetDb(db: PrismaClient) {
       `TRUNCATE ${tables.map((t) => `"${t.tablename}"`).join(", ")} RESTART IDENTITY CASCADE`,
     );
   }
+  // Testlerde oluşturulan paketler silinir; seed paketleri (migration ile gelen) kalır.
+  await db.plan.deleteMany({ where: { code: { notIn: ["STARTER", "PROFESSIONAL", "SMART"] } } });
 }
 
 export const TEST_PASSWORD = "TestParola123";

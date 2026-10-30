@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { PlanCode, Prisma, Role } from "@prisma/client";
+import { Prisma, Role } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { slugify } from "../auth/auth.service";
 import { appUrl, inviteDeliveryEnabled, loadEnv } from "../config/env";
@@ -33,7 +33,7 @@ export interface CreateTenantInput {
   name: string;
   ownerEmail: string;
   ownerName: string;
-  planCode: PlanCode;
+  planCode: string;
   trialDays: number;
   phone?: string;
 }
@@ -65,6 +65,9 @@ export class TenantAdminService {
     const ownerEmail = input.ownerEmail.trim().toLowerCase();
     const existingUser = await this.db.user.findUnique({ where: { email: ownerEmail }, select: { isPlatformAdmin: true } });
     if (existingUser?.isPlatformAdmin) throw new ConflictException("Platform yöneticisi hesabı işletme sahibi olarak davet edilemez");
+    const plan = await this.db.plan.findUnique({ where: { code: input.planCode } });
+    if (!plan) throw new NotFoundException("Paket bulunamadı");
+    if (!plan.isActive) throw new ConflictException(`${plan.name} paketi satışta değil`);
     const slug = await this.uniqueSlug(input.name);
     const { tenant, invite } = await this.db.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
@@ -251,12 +254,40 @@ export class TenantAdminService {
     return this.deliver(invite.id, actorId, ip, by);
   }
 
+  /**
+   * Deneme süresi: TRIAL işletmede bitiş ileri alınır; süresi dolmuş (PAST_DUE) ve açık aboneliği olmayan
+   * işletmede deneme yeniden açılır. Veriler etkilenmez. Gerekçe ve önceki/sonraki tarih denetim kaydına yazılır.
+   */
+  async extendTrial(tenantId: string, actorId: string, input: { days?: number; until?: string; reason: string }, ip?: string) {
+    const DAY = 86_400_000;
+    return this.db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"tenant-trial:" + tenantId}))`;
+      const t = await tx.tenant.findUnique({ where: { id: tenantId } });
+      if (!t) throw new NotFoundException("İşletme bulunamadı");
+      const openSubs = await tx.subscription.count({ where: { tenantId, status: { in: ["ACTIVE", "PAST_DUE"] } } });
+      if (openSubs > 0) throw new ConflictException("Aboneliği olan işletmenin deneme süresi değiştirilemez; aboneliği yönetin");
+      if (t.status !== "TRIAL" && t.status !== "PAST_DUE") throw new ConflictException("Yalnızca deneme sürecindeki ya da denemesi bitmiş işletmede uygulanır");
+      const now = Date.now();
+      const base = Math.max(now, t.trialEndsAt?.getTime() ?? now);
+      const next = input.until ? new Date(input.until) : new Date(base + input.days! * DAY);
+      if (next.getTime() <= now) throw new ConflictException("Yeni bitiş tarihi gelecekte olmalı");
+      if (next.getTime() > now + 365 * DAY) throw new ConflictException("Deneme bitişi en fazla 1 yıl sonrası olabilir");
+      const updated = await tx.tenant.update({ where: { id: tenantId }, data: { status: "TRIAL", trialEndsAt: next, pastDueSince: null } });
+      await tx.auditLog.create({
+        data: { tenantId, actorId, ip, action: "platform.trial_extended", entity: "Tenant", entityId: tenantId, metadata: { from: t.trialEndsAt?.toISOString() ?? null, to: next.toISOString(), previousStatus: t.status, reason: input.reason } },
+      });
+      return { id: updated.id, status: updated.status, trialEndsAt: updated.trialEndsAt };
+    });
+  }
+
   /** Paket değişikliği: aktif personel sayısı yeni paketin sınırını aşıyorsa reddedilir. */
-  async assertPlanFits(tenantId: string, planCode: PlanCode) {
+  async assertPlanFits(tenantId: string, planCode: string) {
     const [plan, active] = await Promise.all([
-      this.db.plan.findUniqueOrThrow({ where: { code: planCode } }),
+      this.db.plan.findUnique({ where: { code: planCode } }),
       this.db.staffMember.count({ where: { tenantId, isActive: true } }),
     ]);
+    if (!plan) throw new NotFoundException("Paket bulunamadı");
+    if (!plan.isActive) throw new ConflictException(`${plan.name} paketi satışta değil; önce paketi etkinleştirin`);
     if (active > plan.maxStaff) {
       throw new ConflictException(`Bu işletmede ${active} aktif personel var; ${plan.name} paketi en fazla ${plan.maxStaff} personele izin veriyor`);
     }

@@ -185,7 +185,7 @@ describe("SaaS sahibi: işletme oluşturma, davet ve yönetim", () => {
 
     it("platform yöneticisi işletme sahibi olarak davet edilemez; geçersiz girdiler reddedilir", async () => {
       await admin.post("/platform/tenants").send(newSalon({ ownerEmail: "admin@proguzellik.test", name: "Yönetici Salonu" })).expect(409);
-      await admin.post("/platform/tenants").send(newSalon({ planCode: "GOLD" })).expect(400);
+      await admin.post("/platform/tenants").send(newSalon({ planCode: "GOLD" })).expect(404);
       await admin.post("/platform/tenants").send(newSalon({ trialDays: 0 })).expect(400);
       await admin.post("/platform/tenants").send(newSalon({ trialDays: 61 })).expect(400);
       await admin.post("/platform/tenants").send(newSalon({ ownerEmail: "gecersiz" })).expect(400);

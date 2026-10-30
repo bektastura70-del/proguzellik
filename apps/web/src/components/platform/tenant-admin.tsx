@@ -4,10 +4,10 @@ import { useState } from "react";
 import { Alert, Badge, Button, Dialog, Field, Input, Select, Spinner, statusTone, Textarea, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { dateTr, STATUS_TR } from "@/lib/format";
+import { PlanOptions, usePlatformPlans } from "./plan-admin";
 import { AdminSubscription, SubscriptionAdmin } from "./subscription-admin";
 import { MemberInvites } from "./user-admin";
 
-export const PLAN_TR: Record<string, string> = { STARTER: "Başlangıç", PROFESSIONAL: "Profesyonel", SMART: "Akıllı" };
 export const INVITE_TR: Record<string, string> = {
   PENDING_DELIVERY: "Davet bekliyor (e-posta yok)",
   SENT: "Davet gönderildi",
@@ -31,6 +31,7 @@ export function NewTenantDialog({ onClose, onCreated }: { onClose: () => void; o
   const toast = useToast();
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const plans = usePlatformPlans();
   return (
     <Dialog open onClose={onClose} title="Yeni güzellik merkezi">
       <form
@@ -75,7 +76,7 @@ export function NewTenantDialog({ onClose, onCreated }: { onClose: () => void; o
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Paket">
             <Select name="planCode" defaultValue="PROFESSIONAL">
-              {Object.entries(PLAN_TR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              <PlanOptions plans={plans.data} />
             </Select>
           </Field>
           <Field label="Deneme süresi (gün)"><Input name="trialDays" type="number" min={1} max={60} defaultValue={14} required /></Field>
@@ -107,12 +108,12 @@ type Detail = {
 };
 
 const ROLE_TR: Record<string, string> = { OWNER: "Sahip", MANAGER: "Yönetici", RECEPTION: "Resepsiyon", STAFF: "Personel" };
-const toDateInput = (iso: string | null) => (iso ? new Date(new Date(iso).getTime() + 3 * 3_600_000).toISOString().slice(0, 10) : "");
 
 /** İşletme detayı: bilgiler, paket/deneme, aktif/pasif, davetler. */
 export function TenantDetailDialog({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
   const toast = useToast();
   const d = useApi<Detail>(`/platform/tenants/${id}`);
+  const plans = usePlatformPlans();
   const [suspending, setSuspending] = useState(false);
   const [inviting, setInviting] = useState(false);
   const run = async (fn: () => Promise<unknown>, ok: string | ((r: never) => ToastMsg)) => {
@@ -153,24 +154,36 @@ export function TenantDetailDialog({ id, onClose, onChanged }: { id: string; onC
             {t.subscriptions.some((x) => x.status === "ACTIVE" || x.status === "PAST_DUE") ? (
               <p className="text-sm text-neutral-500">Açık abonelik var; paket abonelik bölümünden atanır.</p>
             ) : (
-            <form
-              className="grid items-end gap-3 sm:grid-cols-3"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const f = new FormData(e.currentTarget);
-                const trial = f.get("trialEndsAt") as string;
-                await run(
-                  () => api(`/platform/tenants/${t.id}`, { method: "PATCH", body: { planCode: f.get("planCode"), ...(trial ? { trialEndsAt: new Date(`${trial}T23:59:00+03:00`).toISOString() } : {}) } }),
-                  "İşletme güncellendi",
-                );
-              }}
-            >
-              <Field label="Paket">
-                <Select name="planCode" defaultValue={t.planCode}>{Object.entries(PLAN_TR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select>
-              </Field>
-              <Field label="Deneme bitişi"><Input name="trialEndsAt" type="date" defaultValue={toDateInput(t.trialEndsAt)} /></Field>
-              <Button>Kaydet</Button>
-            </form>
+              <div className="space-y-4">
+                <form
+                  className="grid items-end gap-3 sm:grid-cols-3"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const f = new FormData(e.currentTarget);
+                    await run(() => api(`/platform/tenants/${t.id}`, { method: "PATCH", body: { planCode: f.get("planCode") } }), "Paket güncellendi");
+                  }}
+                >
+                  <Field label="Paket" className="sm:col-span-2">
+                    <Select name="planCode" defaultValue={t.planCode}><PlanOptions plans={plans.data} current={t.planCode} /></Select>
+                  </Field>
+                  <Button variant="outline">Paketi kaydet</Button>
+                </form>
+                {(t.status === "TRIAL" || t.status === "PAST_DUE") && (
+                  <form
+                    className="grid items-end gap-3 sm:grid-cols-4"
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      const f = new FormData(e.currentTarget);
+                      const ok = await run(() => api(`/platform/tenants/${t.id}/trial`, { method: "POST", body: { days: Number(f.get("days")), reason: f.get("reason") } }), t.status === "TRIAL" ? "Deneme süresi uzatıldı" : "Deneme yeniden açıldı");
+                      if (ok) e.currentTarget?.reset();
+                    }}
+                  >
+                    <Field label="Uzatılacak gün"><Input name="days" type="number" min={1} max={90} defaultValue={7} required /></Field>
+                    <Field label="Gerekçe" className="sm:col-span-2"><Input name="reason" required minLength={3} maxLength={300} /></Field>
+                    <Button>{t.status === "TRIAL" ? "Süreyi uzat" : "Denemeyi yeniden aç"}</Button>
+                  </form>
+                )}
+              </div>
             )}
           </section>
 

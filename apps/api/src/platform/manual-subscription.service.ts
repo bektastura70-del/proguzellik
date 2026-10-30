@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { BillingCycle, PlanCode, Prisma, Subscription, SubscriptionGrantAction, Tenant, TenantStatus } from "@prisma/client";
+import { BillingCycle, Prisma, Subscription, SubscriptionGrantAction, Tenant, TenantStatus } from "@prisma/client";
 import { addPeriod } from "../billing/subscriptions.service";
 import { PrismaService, Tx } from "../prisma/prisma.service";
 import { TenantAdminService } from "./tenant-admin.service";
@@ -13,7 +13,7 @@ interface Common {
   requestId: string;
 }
 export interface ManualCreateInput extends Common {
-  planCode: PlanCode;
+  planCode: string;
   billingCycle: BillingCycle;
   durationDays?: number;
   complimentary: boolean;
@@ -28,7 +28,7 @@ export interface ManualExtendInput extends Common {
   days: number;
 }
 export interface ManualPlanInput extends Common {
-  planCode: PlanCode;
+  planCode: string;
 }
 export interface ManualCancelInput extends Common {
   mode: "immediate" | "period_end";

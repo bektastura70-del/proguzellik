@@ -350,13 +350,16 @@ export class AuthService {
   /* ------------------------- Yeni işletme ------------------------- */
 
   async registerBusiness(
-    input: { businessName: string; fullName: string; email: string; password: string; phone?: string; planCode?: "STARTER" | "PROFESSIONAL" | "SMART" },
+    input: { businessName: string; fullName: string; email: string; password: string; phone?: string; planCode?: string },
     meta: ClientMeta,
   ) {
     const email = input.email.toLowerCase();
     if (await this.db.user.findUnique({ where: { email } })) throw new ConflictException("Bu e-posta ile kayıtlı bir hesap var");
     let slug = slugify(input.businessName) || "isletme";
     if (await this.db.tenant.findUnique({ where: { slug } })) slug = `${slug}-${Math.random().toString(36).slice(2, 7)}`;
+    const planCode = input.planCode ?? "PROFESSIONAL";
+    const plan = await this.db.plan.findUnique({ where: { code: planCode } });
+    if (!plan || !plan.isActive) throw new BadRequestException("Seçilen paket bulunamadı");
     const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
     const result = await this.db.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
@@ -364,7 +367,7 @@ export class AuthService {
           name: input.businessName,
           slug,
           status: "TRIAL",
-          planCode: input.planCode ?? "PROFESSIONAL",
+          planCode,
           trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 86_400_000),
           phone: input.phone,
           email,

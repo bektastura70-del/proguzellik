@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { Alert, Badge, Button, Field, Input, Select, Table, Td, Textarea, statusTone } from "@/components/ui";
 import { api } from "@/lib/api";
+import { PlanOptions, usePlatformPlans } from "./plan-admin";
 import { dateTr, tl } from "@/lib/format";
 
-const PLANS: Record<string, string> = { STARTER: "Başlangıç", PROFESSIONAL: "Profesyonel", SMART: "Akıllı" };
 const SUB_STATUS_TR: Record<string, string> = { ACTIVE: "Aktif", PAST_DUE: "Süresi doldu / ödeme bekliyor", CANCELLED: "İptal" };
 const ACTION_TR: Record<string, string> = { CREATED: "Oluşturuldu", EXTENDED: "Süre uzatıldı", RENEWED: "Yenilendi", PLAN_CHANGED: "Paket değişti", CANCELLED: "İptal" };
 const day = (iso: string | null) => (iso ? dateTr(iso, { day: "numeric", month: "short", year: "numeric" }) : "—");
@@ -60,6 +60,8 @@ const optionalDays = (f: FormData, key = "durationDays") => (f.get(key) ? { [key
 
 /** İşletme detayındaki abonelik bölümü: manuel oluşturma, uzatma, yenileme, paket atama, iptal ve geçmiş. */
 export function SubscriptionAdmin({ tenantId, subscriptions, onChanged }: { tenantId: string; subscriptions: AdminSubscription[]; onChanged: (msg: string) => void }) {
+  const plans = usePlatformPlans();
+  const planName = (code: string) => plans.data?.find((p) => p.code === code)?.name ?? code;
   const [mode, setMode] = useState<Mode>(null);
   // Her form açılışında yeni istek kimliği; hata sonrası tekrar gönderimde aynı kimlik kullanılır (çift işlem olmaz).
   const [requestId, setRequestId] = useState("");
@@ -105,7 +107,7 @@ export function SubscriptionAdmin({ tenantId, subscriptions, onChanged }: { tena
       {current ? (
         <div className="space-y-1 rounded-xl border border-sand-200 p-3 text-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <b>{PLANS[current.planCode]}</b>
+            <b>{planName(current.planCode)}</b>
             <SourceBadge s={current} />
             <Badge tone={statusTone(current.status)}>{SUB_STATUS_TR[current.status]}</Badge>
           </div>
@@ -140,7 +142,7 @@ export function SubscriptionAdmin({ tenantId, subscriptions, onChanged }: { tena
           {mode === "create" && (
             <form className="space-y-3" onSubmit={submit(`/platform/tenants/${tenantId}/subscriptions`, "Manuel abonelik oluşturuldu", (f) => ({ planCode: f.get("planCode"), billingCycle: f.get("billingCycle"), ...optionalDays(f), ...priceBody(f) }))}>
               <div className="grid gap-3 sm:grid-cols-3">
-                <Field label="Paket"><Select name="planCode" defaultValue="PROFESSIONAL">{Object.entries(PLANS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
+                <Field label="Paket"><Select name="planCode" defaultValue="PROFESSIONAL"><PlanOptions plans={plans.data} /></Select></Field>
                 <Field label="Dönem"><Select name="billingCycle" defaultValue="MONTHLY"><option value="MONTHLY">Aylık</option><option value="YEARLY">Yıllık</option></Select></Field>
                 <Field label="Özel süre (gün)" hint="Boşsa dönem kadar."><Input name="durationDays" type="number" min={1} max={730} /></Field>
               </div>
@@ -167,7 +169,7 @@ export function SubscriptionAdmin({ tenantId, subscriptions, onChanged }: { tena
           {mode === "plan" && (
             <form className="space-y-3" onSubmit={submit(`/platform/subscriptions/${current!.id}/plan`, "Paket değiştirildi", (f) => ({ planCode: f.get("planCode") }))}>
               <Field label="Yeni paket">
-                <Select name="planCode" defaultValue={current!.planCode}>{Object.entries(PLANS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select>
+                <Select name="planCode" defaultValue={current!.planCode}><PlanOptions plans={plans.data} current={current!.planCode} /></Select>
               </Field>
               {noteField}
               {actions("Paketi ata")}
@@ -192,7 +194,7 @@ export function SubscriptionAdmin({ tenantId, subscriptions, onChanged }: { tena
           <tr key={g.id}>
             <Td>{day(g.createdAt)}</Td>
             <Td>{ACTION_TR[g.action] ?? g.action}</Td>
-            <Td>{g.previousPlanCode ? `${PLANS[g.previousPlanCode]} → ${PLANS[g.planCode]}` : PLANS[g.planCode]}</Td>
+            <Td>{g.previousPlanCode ? `${planName(g.previousPlanCode)} → ${planName(g.planCode)}` : planName(g.planCode)}</Td>
             <Td>{day(g.periodEnd)}</Td>
             <Td>{g.isComplimentary || Number(g.agreedAmount) === 0 ? "Ücretsiz" : tl(g.agreedAmount)}</Td>
             <Td>{g.note}</Td>

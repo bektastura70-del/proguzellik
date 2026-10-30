@@ -203,6 +203,45 @@ test.describe("SaaS sahibi paneli", () => {
     await expect(row).toContainText("₺549,00");
   });
 
+  test("yeni paket oluşturulur, deneme süresi uzatılır, abonelikler sekmesinde izlenir", async ({ page }) => {
+    const code = `E2E_${Date.now().toString(36).toUpperCase()}`;
+    await page.goto("/yonetim");
+    await page.getByRole("button", { name: "Yeni paket" }).click();
+    const pd = page.getByRole("dialog");
+    await pd.getByLabel("Paket kodu").fill(code);
+    await pd.getByLabel("Paket adı").fill(`Paket ${code}`);
+    await pd.getByLabel("Personel sınırı").fill("12");
+    await pd.getByLabel("Aylık (₺)").fill("1200");
+    await pd.getByLabel("Yıllık (₺)").fill("12000");
+    await pd.getByLabel("Raporlar").check();
+    await pd.getByRole("button", { name: "Kaydet" }).click();
+    await expectToast(page, "Paket oluşturuldu");
+    await expect(page.getByRole("row").filter({ hasText: code })).toContainText("Raporlar");
+
+    const name = uniq("Deneme Salon");
+    const created = await page.request.post("/api/p/platform/tenants", {
+      data: { name, ownerName: "Deneme Sahip", ownerEmail: `${uniq("deneme").replace(" ", "-")}@ornek.test`, planCode: code, trialDays: 5 },
+    });
+    expect(created.status()).toBe(201);
+    await page.reload();
+    await page.getByLabel("İşletme ara").fill(name.split(" ").pop()!);
+    const row = page.getByRole("row").filter({ hasText: name });
+    await expect(row).toContainText(`Paket ${code}`);
+    await row.getByRole("button", { name: "Yönet" }).click();
+    const dlg = page.getByRole("dialog");
+    await dlg.getByLabel("Uzatılacak gün").fill("10");
+    await dlg.getByLabel("Gerekçe").fill("E2E kurulum desteği");
+    await dlg.getByRole("button", { name: "Süreyi uzat" }).click();
+    await expectToast(page, "Deneme süresi uzatıldı");
+    const end = new Date(Date.now() + 15 * 86_400_000).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Istanbul" });
+    await expect(dlg.getByText(end)).toBeVisible();
+    await dlg.getByRole("button", { name: "Kapat" }).click();
+
+    await page.getByRole("tab", { name: "Abonelikler" }).click();
+    await expect(page.getByText("Deneme", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Abonelikler" })).toBeVisible();
+  });
+
   test("manuel abonelik: ücretsiz oluşturma, süre uzatma ve dönem sonu iptali; tahsilattan ayrı listelenir", async ({ page }) => {
     const name = uniq("Manuel Salon");
     const created = await page.request.post("/api/p/platform/tenants", {

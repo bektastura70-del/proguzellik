@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { z } from "zod";
+import { planCodeSchema } from "../billing/plans";
 import { AuthUser, CurrentUser, Public } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
 import { loadEnv, registrationEnabled } from "../config/env";
@@ -20,7 +21,7 @@ const registerSchema = z.object({
   email: z.string().email().max(200),
   password: passwordSchema,
   phone: z.string().trim().max(30).optional(),
-  planCode: z.enum(["STARTER", "PROFESSIONAL", "SMART"]).optional(),
+  planCode: planCodeSchema.optional(),
   kvkkAccepted: z.literal(true, { error: "KVKK aydınlatma metni onaylanmalı" }),
 });
 const forgotSchema = z.object({ email: z.string().email().max(200) });

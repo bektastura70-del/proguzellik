@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
-import { BillingCycle, PlanCode, Prisma } from "@prisma/client";
+import { BillingCycle, Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { TenantInfo } from "../common/decorators";
@@ -77,7 +77,7 @@ export class SubscriptionsService {
   }
 
   /** Paket satın alma/değiştirme (test sağlayıcısıyla). */
-  async checkout(t: TenantInfo, b: { planCode: PlanCode; billingCycle: BillingCycle; paymentToken: string }) {
+  async checkout(t: TenantInfo, b: { planCode: string; billingCycle: BillingCycle; paymentToken: string }) {
     // Gerçek, doğrulanmış tahsilat yapamayan sağlayıcıyla (canlıda test sağlayıcısı) abonelik asla açılmaz.
     if (!this.payments.acceptsPayments) {
       throw new ServiceUnavailableException({ message: "Online ödeme henüz aktif değil. Paket için bizimle iletişime geçin.", code: "ONLINE_PAYMENT_DISABLED" });

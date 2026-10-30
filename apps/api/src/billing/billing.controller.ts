@@ -2,10 +2,11 @@ import { Body, Controller, Get, HttpCode, Post } from "@nestjs/common";
 import { z } from "zod";
 import { AllowInactive, CurrentTenant, Public, Roles, TenantInfo } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
+import { planCodeSchema } from "./plans";
 import { SubscriptionsService } from "./subscriptions.service";
 
 const checkoutSchema = z.object({
-  planCode: z.enum(["STARTER", "PROFESSIONAL", "SMART"]),
+  planCode: planCodeSchema,
   billingCycle: z.enum(["MONTHLY", "YEARLY"]),
   paymentToken: z.string().min(3).max(200),
 });

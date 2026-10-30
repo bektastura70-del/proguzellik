@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Logo } from "@/components/logo";
 import { InviteBadge, NewTenantDialog, TenantDetailDialog } from "@/components/platform/tenant-admin";
+import { PlansCard, SubscriptionsCard } from "@/components/platform/plan-admin";
 import { UsersCard } from "@/components/platform/user-admin";
 import { Alert, Badge, Button, Card, CardHeader, Dialog, Field, Input, Select, Spinner, Stat, Table, Td, statusTone, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -11,7 +12,6 @@ import { dateTr, STATUS_TR, tl } from "@/lib/format";
 
 type Stats = { tenants: { total: number; byStatus: Record<string, number> }; byPlan: Record<string, number>; signupsLast30Days: number; appointmentsLast30Days: number; mrr: string; activeSubscriptions: number; manualSubscriptions: { total: number; complimentary: number } };
 type TenantRow = { id: string; name: string; slug: string; status: string; planCode: string; trialEndsAt: string | null; createdAt: string; plan: { name: string; maxStaff: number }; _count: { customers: number; staff: number; memberships: number }; owner: { email: string; fullName: string } | null; openInvite: { email: string; status: string; expiresAt: string | null } | null };
-type Plan = { code: string; name: string; maxStaff: number; monthlyPrice: string; yearlyPrice: string; isActive: boolean };
 
 export default function PlatformPage() {
   const toast = useToast();
@@ -19,12 +19,10 @@ export default function PlatformPage() {
   const [search, setSearch] = useState("");
   const stats = useApi<Stats>("/platform/stats");
   const tenants = useApi<TenantRow[]>(`/platform/tenants?${new URLSearchParams({ ...(status ? { status } : {}), ...(search ? { search } : {}) })}`);
-  const plans = useApi<Plan[]>("/platform/plans");
   const allTenants = useApi<TenantRow[]>("/platform/tenants");
   const [detail, setDetail] = useState<string | null>(null);
-  const [tab, setTab] = useState<"tenants" | "users">("tenants");
+  const [tab, setTab] = useState<"tenants" | "subscriptions" | "users">("tenants");
   const [creating, setCreating] = useState(false);
-  const [planEdit, setPlanEdit] = useState<Plan | null>(null);
   const jobs = useApi<{ id: string; runKey: string; status: string; startedAt: string; finishedAt: string | null; result: Record<string, unknown> | null; error: string | null }[]>("/platform/jobs");
 
   if (stats.error?.status === 403) {
@@ -50,11 +48,12 @@ export default function PlatformPage() {
         </div>
       )}
       <div role="tablist" aria-label="Yönetim bölümleri" className="mt-6 inline-flex rounded-xl border border-sand-200 bg-white p-1 text-sm">
-        {([["tenants", "İşletmeler ve paketler"], ["users", "Kullanıcılar"]] as const).map(([k, label]) => (
+        {([["tenants", "İşletmeler ve paketler"], ["subscriptions", "Abonelikler"], ["users", "Kullanıcılar"]] as const).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} className={`rounded-lg px-4 py-1.5 ${tab === k ? "bg-brand-600 text-white" : "text-neutral-600 hover:bg-sand-100"}`} onClick={() => setTab(k)}>{label}</button>
         ))}
       </div>
       {tab === "users" && <UsersCard tenants={allTenants.data ?? []} />}
+      {tab === "subscriptions" && <SubscriptionsCard onOpenTenant={setDetail} />}
       {tab === "tenants" && (<>
       <Card className="mt-6">
         <CardHeader
@@ -85,14 +84,7 @@ export default function PlatformPage() {
           ))}
         </Table>
       </Card>
-      <Card className="mt-6">
-        <CardHeader title="Paketler ve fiyatlar" />
-        <Table head={["Paket", "Personel sınırı", "Aylık", "Yıllık", ""]}>
-          {plans.data?.map((p) => (
-            <tr key={p.code}><Td className="font-medium">{p.name}</Td><Td>{p.maxStaff}</Td><Td>{tl(p.monthlyPrice)}</Td><Td>{tl(p.yearlyPrice)}</Td><Td><Button size="sm" variant="ghost" onClick={() => setPlanEdit(p)}>Düzenle</Button></Td></tr>
-          ))}
-        </Table>
-      </Card>
+      <PlansCard />
       <Card className="mt-6">
         <CardHeader
           title="Günlük abonelik görevi"
@@ -119,25 +111,6 @@ export default function PlatformPage() {
       </>)}
       {creating && <NewTenantDialog onClose={() => setCreating(false)} onCreated={() => { setCreating(false); tenants.reload(); stats.reload(); }} />}
       {detail && <TenantDetailDialog id={detail} onClose={() => setDetail(null)} onChanged={() => { tenants.reload(); stats.reload(); allTenants.reload(); }} />}
-      {planEdit && (
-        <Dialog open onClose={() => setPlanEdit(null)} title={`${planEdit.name} paketi`}>
-          <form className="space-y-4" onSubmit={async (e) => {
-            e.preventDefault();
-            const f = new FormData(e.currentTarget);
-            try {
-              await api(`/platform/plans/${planEdit.code}`, { method: "PATCH", body: { maxStaff: Number(f.get("maxStaff")), monthlyPrice: Number(f.get("monthlyPrice")), yearlyPrice: Number(f.get("yearlyPrice")) } });
-              toast("Paket güncellendi"); setPlanEdit(null); plans.reload();
-            } catch (err) { toast((err as Error).message, "red"); }
-          }}>
-            <Field label="Personel sınırı"><Input name="maxStaff" type="number" min={1} defaultValue={planEdit.maxStaff} /></Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Aylık (₺)"><Input name="monthlyPrice" type="number" step="0.01" defaultValue={Number(planEdit.monthlyPrice)} /></Field>
-              <Field label="Yıllık (₺)"><Input name="yearlyPrice" type="number" step="0.01" defaultValue={Number(planEdit.yearlyPrice)} /></Field>
-            </div>
-            <Button className="w-full">Kaydet</Button>
-          </form>
-        </Dialog>
-      )}
     </div>
   );
 }
