@@ -35,7 +35,8 @@ describe("SaaS sahibi: paketler, deneme süresi ve abonelik izleme", () => {
     it("yeni paket oluşturulur; kod büyük harfe çevrilir, özellikler tekilleşir, denetim kaydı yazılır", async () => {
       const r = await admin.post("/platform/plans").send(plan).expect(201);
       expect(r.body).toMatchObject({ code: "KURUMSAL_PLUS", maxStaff: 40, monthlyPrice: "2500", isActive: true });
-      expect(r.body.features).toEqual(["CRM", "APPOINTMENTS", "REPORTS"]);
+      // Tekilleşir; temel özellikler (müşteri, randevu, kasa, paket) her pakette eklenir
+      expect(r.body.features).toEqual(["CRM", "APPOINTMENTS", "FINANCE", "PACKAGES", "REPORTS"]);
       await admin.post("/platform/plans").send(plan).expect(409);
       expect(await su.auditLog.count({ where: { action: "platform.plan_created" } })).toBe(1);
     });
@@ -51,7 +52,7 @@ describe("SaaS sahibi: paketler, deneme süresi ve abonelik izleme", () => {
 
     it("fiyat, limit ve özellikler düzenlenir; önceki/sonraki değer kaydedilir", async () => {
       const r = await admin.patch("/platform/plans/KURUMSAL_PLUS").send({ monthlyPrice: 2750.5, features: ["CRM", "STOCK"], sortOrder: 9 }).expect(200);
-      expect(r.body).toMatchObject({ monthlyPrice: "2750.5", features: ["CRM", "STOCK"], sortOrder: 9 });
+      expect(r.body).toMatchObject({ monthlyPrice: "2750.5", features: ["CRM", "APPOINTMENTS", "FINANCE", "PACKAGES", "STOCK"], sortOrder: 9 });
       const log = await su.auditLog.findFirstOrThrow({ where: { action: "platform.plan_updated" }, orderBy: { createdAt: "desc" } });
       expect(log.metadata).toMatchObject({ code: "KURUMSAL_PLUS", changes: { monthlyPrice: { to: 2750.5 } } });
     });

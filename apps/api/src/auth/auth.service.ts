@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcryptjs";
 import { AuditService } from "../audit/audit.service";
@@ -13,6 +13,23 @@ const LOCK_MINUTES = 15;
 const TRIAL_DAYS = 14;
 const RESET_MINUTES = 30;
 const VERIFY_HOURS = 48;
+/** Ücretsiz deneme doğrulama bağlantısının geçerlilik süresi (saat) */
+export const SIGNUP_HOURS = 24;
+/** Kayıtta gösterilen metinlerin sürümü: metin değişince güncellenir, onay kaydında saklanır. */
+export const KVKK_NOTICE_VERSION = "/kvkk@2026-10-30";
+export const TERMS_VERSION = "/kullanim-kosullari@2026-10-30";
+export const MARKETING_VERSION = "kayit-formu-ticari-ileti@2026-10-30";
+
+export interface TrialSignupInput { businessName: string; fullName: string; email: string; password: string; phone: string; planCode?: string; marketingConsent?: boolean }
+
+/** Türkiye telefonu: 0 / 90 / +90 öneklerini kaldırır, 10 haneyi +90 ile döndürür. */
+export function normalizePhone(raw: string) {
+  let d = raw.replace(/\D/g, "");
+  if (d.length === 12 && d.startsWith("90")) d = d.slice(2);
+  else if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
+  if (!/^[2-5]\d{9}$/.test(d)) throw new BadRequestException("Geçerli bir telefon numarası girin (ör. 0532 123 45 67)");
+  return `+90${d}`;
+}
 const RECOVERY_CODES = 10;
 
 import { BCRYPT_ROUNDS, passwordSchema } from "./password";
@@ -349,37 +366,94 @@ export class AuthService {
 
   /* ------------------------- Yeni işletme ------------------------- */
 
-  async registerBusiness(
-    input: { businessName: string; fullName: string; email: string; password: string; phone?: string; planCode?: string },
-    meta: ClientMeta,
-  ) {
-    const email = input.email.toLowerCase();
-    if (await this.db.user.findUnique({ where: { email } })) throw new ConflictException("Bu e-posta ile kayıtlı bir hesap var");
-    let slug = slugify(input.businessName) || "isletme";
-    if (await this.db.tenant.findUnique({ where: { slug } })) slug = `${slug}-${Math.random().toString(36).slice(2, 7)}`;
+  /**
+   * 1. adım: ücretsiz deneme başvurusu. Hiçbir kullanıcı/işletme oluşturulmaz; yalnızca doğrulama bekleyen başvuru kaydedilir.
+   * - E-posta gönderilemiyorsa (canlıda SMTP yok) hiçbir şey yazılmadan 503 döner.
+   * - Hesabı olan e-postaya aynı yanıt verilir (hesap varlığı sızdırılmaz); sahibine bilgi e-postası gider.
+   * - Aynı e-postayla yeni başvuru öncekinin bağlantısını geçersiz kılar.
+   */
+  async requestTrial(input: TrialSignupInput, meta: ClientMeta) {
+    if (!this.email.deliveryConfigured) {
+      throw new ServiceUnavailableException({ message: "Şu anda e-posta doğrulaması gönderilemediği için yeni kayıt alınamıyor. Lütfen daha sonra tekrar deneyin veya info@proguzellik.com adresine yazın.", code: "EMAIL_NOT_CONFIGURED" });
+    }
+    const email = input.email.trim().toLowerCase();
+    const phone = normalizePhone(input.phone);
     const planCode = input.planCode ?? "PROFESSIONAL";
     const plan = await this.db.plan.findUnique({ where: { code: planCode } });
     if (!plan || !plan.isActive) throw new BadRequestException("Seçilen paket bulunamadı");
-    const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
-    const result = await this.db.$transaction(async (tx) => {
+    const accepted = { status: "VERIFICATION_SENT" as const, email, expiresInHours: SIGNUP_HOURS };
+
+    const existing = await this.db.user.findUnique({ where: { email } });
+    if (existing) {
+      await bcrypt.hash(input.password, BCRYPT_ROUNDS); // yanıt süresi farkından hesap varlığı anlaşılmasın
+      await this.email.send(email, { name: "signup_exists", vars: { fullName: existing.fullName, link: `${appUrl(loadEnv())}/giris` } }, { dedupeKey: `signup-exists:${existing.id}:${new Date().toISOString().slice(0, 13)}` });
+      await this.audit.logPlatform({ action: "auth.signup_existing_email", actorId: existing.id, ip: meta.ip });
+      return accepted;
+    }
+    await this.assertPhoneFree(phone);
+    const pendingSamePhone = await this.db.signupRequest.count({ where: { phone, email: { not: email }, expiresAt: { gt: new Date() } } });
+    if (pendingSamePhone >= 3) throw new HttpException("Bu telefon numarasıyla çok sayıda bekleyen başvuru var. E-postanızdaki doğrulama bağlantısını kullanın.", HttpStatus.TOO_MANY_REQUESTS);
+
+    const token = randomToken();
+    const data = {
+      businessName: input.businessName.trim(), fullName: input.fullName.trim(), phone, planCode,
+      passwordHash: await bcrypt.hash(input.password, BCRYPT_ROUNDS),
+      kvkkNoticeVersion: KVKK_NOTICE_VERSION, termsVersion: TERMS_VERSION, marketingConsent: input.marketingConsent === true,
+      tokenHash: sha256(token), expiresAt: new Date(Date.now() + SIGNUP_HOURS * 3_600_000),
+      ip: meta.ip ?? null, userAgent: meta.userAgent?.slice(0, 300) ?? null,
+    };
+    const req = await this.db.signupRequest.upsert({ where: { email }, create: { email, ...data }, update: { ...data, createdAt: new Date() } });
+    const sent = await this.email.send(email, { name: "trial_verify", vars: { fullName: data.fullName, salon: data.businessName, hours: SIGNUP_HOURS, link: `${appUrl(loadEnv())}/ucretsiz-deneme/dogrula?token=${token}` } });
+    if ("failed" in sent) {
+      await this.db.signupRequest.deleteMany({ where: { id: req.id, tokenHash: data.tokenHash } });
+      throw new ServiceUnavailableException({ message: "Doğrulama e-postası gönderilemedi. E-posta adresinizi kontrol edip tekrar deneyin.", code: sent.code });
+    }
+    await this.audit.logPlatform({ action: "auth.signup_requested", ip: meta.ip, metadata: { plan: planCode, marketingConsent: data.marketingConsent } });
+    return accepted;
+  }
+
+  /** Açık (deneme/ödeme bekleyen/askıda) bir işletmede kullanılan telefonla yeni deneme açılmaz. */
+  private async assertPhoneFree(phone: string, tx: Pick<PrismaService["platform"], "tenant"> = this.db) {
+    const t = await tx.tenant.findFirst({ where: { phone, status: { in: ["TRIAL", "PAST_DUE", "SUSPENDED"] } }, select: { id: true } });
+    if (t) throw new ConflictException("Bu telefon numarasıyla açık bir deneme hesabı var. Mevcut hesabınızla giriş yapın ya da info@proguzellik.com adresine yazın.");
+  }
+
+  /**
+   * 2. adım: e-posta doğrulanır; kullanıcı, işletme ve 14 günlük deneme bu anda oluşturulur, oturum açılır.
+   * Bağlantı tek kullanımlıktır; eşzamanlı isteklerde yalnızca biri hesap açar.
+   */
+  async confirmTrial(token: string, meta: ClientMeta) {
+    const tokenHash = sha256(token);
+    const pending = await this.db.signupRequest.findUnique({ where: { tokenHash } });
+    if (!pending || pending.expiresAt <= new Date()) throw new BadRequestException("Doğrulama bağlantısı geçersiz veya süresi dolmuş. Kayıt formundan yeniden başvurun.");
+    const userId = await this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${"signup:" + pending.email}))::text`;
+      const claimed = await tx.signupRequest.deleteMany({ where: { id: pending.id, tokenHash } });
+      if (claimed.count !== 1) throw new BadRequestException("Doğrulama bağlantısı zaten kullanıldı. Giriş yapabilirsiniz.");
+      if (await tx.user.findUnique({ where: { email: pending.email }, select: { id: true } })) throw new ConflictException("Bu e-posta ile kayıtlı bir hesap var; giriş yapın.");
+      await this.assertPhoneFree(pending.phone, tx);
+      const plan = await tx.plan.findUnique({ where: { code: pending.planCode } });
+      const planCode = plan?.isActive ? plan.code : "PROFESSIONAL";
+      let slug = slugify(pending.businessName) || "isletme";
+      if (await tx.tenant.findUnique({ where: { slug } })) slug = `${slug}-${randomToken().slice(0, 6).toLowerCase().replace(/[^a-z0-9]/g, "x")}`;
+      const now = new Date();
       const tenant = await tx.tenant.create({
-        data: {
-          name: input.businessName,
-          slug,
-          status: "TRIAL",
-          planCode,
-          trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 86_400_000),
-          phone: input.phone,
-          email,
-        },
+        data: { name: pending.businessName, slug, status: "TRIAL", planCode, trialEndsAt: new Date(now.getTime() + TRIAL_DAYS * 86_400_000), phone: pending.phone, email: pending.email },
       });
-      const user = await tx.user.create({ data: { email, passwordHash, fullName: input.fullName, phone: input.phone } });
+      const user = await tx.user.create({ data: { email: pending.email, passwordHash: pending.passwordHash, fullName: pending.fullName, phone: pending.phone, emailVerifiedAt: now } });
       await tx.membership.create({ data: { tenantId: tenant.id, userId: user.id, role: "OWNER" } });
-      await tx.auditLog.create({ data: { tenantId: tenant.id, actorId: user.id, action: "tenant.registered" } });
-      return { tenant, user };
+      const consent = { userId: user.id, ip: meta.ip ?? pending.ip, userAgent: meta.userAgent?.slice(0, 300) ?? pending.userAgent };
+      await tx.userConsent.createMany({
+        data: [
+          { ...consent, type: "KVKK_NOTICE", granted: true, version: pending.kvkkNoticeVersion },
+          { ...consent, type: "TERMS", granted: true, version: pending.termsVersion },
+          { ...consent, type: "MARKETING", granted: pending.marketingConsent, version: MARKETING_VERSION },
+        ],
+      });
+      await tx.auditLog.create({ data: { tenantId: tenant.id, actorId: user.id, ip: meta.ip, action: "tenant.registered", metadata: { via: "trial_signup", plan: planCode, trialEndsAt: tenant.trialEndsAt!.toISOString(), requestedAt: pending.createdAt.toISOString() } } });
+      return user.id;
     });
-    await this.sendVerification(result.user.id);
-    return this.completeLogin(result.user.id, meta, false);
+    return this.completeLogin(userId, meta, false);
   }
 
   /* ------------------------- İşletme daveti ------------------------- */

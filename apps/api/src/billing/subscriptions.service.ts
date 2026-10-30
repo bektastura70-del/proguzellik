@@ -48,6 +48,15 @@ export class SubscriptionsService {
     return this.prisma.platform.plan.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } });
   }
 
+  async publicSite() {
+    const c = await this.prisma.platform.platformCompany.findUnique({ where: { id: 1 }, select: { legalName: true, address: true, email: true, phone: true, vatRate: true, pricesIncludeVat: true } });
+    return {
+      company: { legalName: c?.legalName ?? null, address: c?.address ?? null, phone: c?.phone ?? null, email: c?.email ?? loadEnv().SUPPORT_EMAIL },
+      // KDV bilgisi yalnızca şirket ayarlarında hem oran hem dahil/hariç seçildiyse gösterilir.
+      vat: c?.vatRate != null && c.pricesIncludeVat != null ? { rate: c.vatRate.toString(), included: c.pricesIncludeVat } : null,
+    };
+  }
+
   async current(t: TenantInfo) {
     return this.prisma.withTenant(t, async (tx) => {
       const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: t.tenantId }, include: { plan: true } });
@@ -60,7 +69,10 @@ export class SubscriptionsService {
         tenant.status === "TRIAL" && tenant.trialEndsAt ? Math.max(0, Math.ceil((tenant.trialEndsAt.getTime() - Date.now()) / DAY)) : null;
       const env = loadEnv();
       const graceEndsAt = tenant.pastDueSince ? new Date(tenant.pastDueSince.getTime() + env.BILLING_GRACE_DAYS * DAY) : null;
-      const savedMethod = await this.prisma.platform.savedPaymentMethod.findFirst({ where: { tenantId: t.tenantId }, select: { label: true, provider: true, createdAt: true } });
+      const [savedMethod, company] = await Promise.all([
+        this.prisma.platform.savedPaymentMethod.findFirst({ where: { tenantId: t.tenantId }, select: { label: true, provider: true, createdAt: true } }),
+        this.prisma.platform.platformCompany.findUnique({ where: { id: 1 }, select: { email: true, phone: true } }),
+      ]);
       return {
         status: tenant.status,
         plan: tenant.plan,
@@ -74,6 +86,8 @@ export class SubscriptionsService {
         payments,
         /** false: online ödeme kapalı (canlıda gerçek sağlayıcı yok); paket SaaS sahibi tarafından tanımlanır. */
         onlinePayment: this.payments.acceptsPayments,
+        /** Abonelik için iletişim (online ödeme kapalıyken paket SaaS sahibince tanımlanır) */
+        contact: { email: company?.email ?? env.SUPPORT_EMAIL, phone: company?.phone ?? null },
       };
     });
   }

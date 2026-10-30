@@ -4,6 +4,8 @@ export type EmailTemplate =
   | { name: "password_reset"; vars: { fullName: string; link: string; minutes: number } }
   | { name: "password_changed"; vars: { fullName: string } }
   | { name: "email_verify"; vars: { fullName: string; link: string } }
+  | { name: "trial_verify"; vars: { fullName: string; salon: string; link: string; hours: number } }
+  | { name: "signup_exists"; vars: { fullName: string; link: string } }
   | { name: "mfa_enabled"; vars: { fullName: string } }
   | { name: "mfa_reset"; vars: { fullName: string } }
   | { name: "tenant_invite"; vars: { fullName: string; salon: string; link: string; days: number; role?: string } }
@@ -29,6 +31,8 @@ export const TEMPLATE_META: Record<TemplateName, { label: string; vars: string[]
   password_reset: { label: "Parola sıfırlama", vars: ["fullName", "minutes"], secret: true, editable: false },
   password_changed: { label: "Parola değişti", vars: ["fullName"], secret: false, editable: false },
   email_verify: { label: "E-posta doğrulama", vars: ["fullName"], secret: true, editable: false },
+  trial_verify: { label: "Ücretsiz deneme: e-posta doğrulama", vars: ["fullName", "salon", "hours"], secret: true, editable: false },
+  signup_exists: { label: "Kayıt denemesi: hesap zaten var", vars: ["fullName"], secret: false, editable: false },
   mfa_enabled: { label: "2FA açıldı", vars: ["fullName"], secret: false, editable: false },
   mfa_reset: { label: "2FA sıfırlandı", vars: ["fullName"], secret: false, editable: false },
   tenant_invite: { label: "Kullanıcı daveti", vars: ["fullName", "salon", "days", "role"], secret: true, editable: false },
@@ -81,6 +85,16 @@ export function render(t: EmailTemplate, override?: TemplateOverride | null): { 
       subject = "E-posta adresinizi doğrulayın";
       paras = [`Merhaba ${esc(t.vars.fullName)},`, "ProGüzellik hesabınızı güvenle kullanabilmek için e-posta adresinizi doğrulayın."];
       cta = { label: "E-postamı doğrula", link: t.vars.link };
+      break;
+    case "trial_verify":
+      subject = "Ücretsiz denemenizi başlatmak için e-postanızı doğrulayın";
+      paras = [`Merhaba ${esc(t.vars.fullName)},`, `${esc(t.vars.salon)} için ProGüzellik ücretsiz deneme başvurunuzu aldık. Hesabınız ve 14 günlük deneme süreniz e-posta adresinizi doğruladığınızda başlar.`, `Bağlantı ${t.vars.hours} saat geçerlidir ve bir kez kullanılabilir. Bu başvuruyu siz yapmadıysanız e-postayı dikkate almayın; hesap açılmaz.`];
+      cta = { label: "E-postamı doğrula ve denemeyi başlat", link: t.vars.link };
+      break;
+    case "signup_exists":
+      subject = "ProGüzellik hesabınız zaten var";
+      paras = [`Merhaba ${esc(t.vars.fullName)},`, "Bu e-posta adresiyle yeni bir ücretsiz deneme başvurusu yapıldı; ancak adına kayıtlı bir hesap zaten var. Yeni hesap açılmadı.", "Parolanızı hatırlamıyorsanız giriş sayfasındaki “Parolamı unuttum” bağlantısını kullanın. Bu başvuruyu siz yapmadıysanız bir işlem yapmanız gerekmez."];
+      cta = { label: "Giriş yap", link: t.vars.link };
       break;
     case "tenant_invite":
       subject = `${t.vars.salon} – ProGüzellik davetiniz`;

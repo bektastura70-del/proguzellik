@@ -78,7 +78,9 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     try {
       const lifecycle = await this.subs.runLifecycle(now);
       const pay = await this.reminders.sendOverdue(now);
-      const result = { ...lifecycle, paymentReminders: pay.paymentReminders, errors: [...lifecycle.errors, ...pay.paymentReminderErrors] };
+      // Doğrulanmamış, süresi dolmuş deneme başvuruları saklanmaz (veri minimizasyonu)
+      const expiredSignups = (await db.signupRequest.deleteMany({ where: { expiresAt: { lt: now } } })).count;
+      const result = { ...lifecycle, paymentReminders: pay.paymentReminders, expiredSignups, errors: [...lifecycle.errors, ...pay.paymentReminderErrors] };
       await db.jobRun.update({
         where: { id: run.id },
         data: { status: result.errors.length ? "PARTIAL" : "SUCCESS", finishedAt: new Date(), result: result as unknown as Prisma.InputJsonValue },

@@ -158,3 +158,29 @@ export async function addMember(
   await request(app.getHttpServer()).post("/auth/accept-invite").send({ token, password: TEST_PASSWORD, kvkkAccepted: true }).expect(200);
   return res;
 }
+
+/** Rastgele, geçerli bir cep telefonu (her kayıt için farklı) */
+export const testPhone = () => `05${String(Math.floor(Math.random() * 1e9)).padStart(9, "0")}`;
+
+/** Ücretsiz deneme e-postasındaki doğrulama belirteci (test e-posta sağlayıcısından) */
+export function trialToken(app: INestApplication, email: string) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { MockEmailProvider } = require("../src/email/email.provider");
+  const mail = [...app.get(MockEmailProvider).outbox].reverse().find((m: { to: string; subject: string }) => m.to === email.toLowerCase() && m.subject.startsWith("Ücretsiz denemenizi"));
+  return /dogrula\?token=([A-Za-z0-9_-]+)/.exec(mail?.text ?? "")?.[1];
+}
+
+/**
+ * Ücretsiz deneme kaydı: başvuru (202) + e-postadaki bağlantıyla doğrulama (200).
+ * Dönen gövde girişle aynıdır (accessToken, user).
+ */
+export async function registerTrial(
+  app: INestApplication,
+  body: { businessName: string; fullName: string; email: string; password?: string; phone?: string; planCode?: string; marketingConsent?: boolean },
+) {
+  const http = request(app.getHttpServer());
+  await http.post("/auth/register").send({ password: TEST_PASSWORD, phone: testPhone(), kvkkAccepted: true, termsAccepted: true, ...body }).expect(202);
+  const token = trialToken(app, body.email);
+  if (!token) throw new Error("Deneme doğrulama e-postası bulunamadı");
+  return request(app.getHttpServer()).post("/auth/register/confirm").send({ token }).expect(200);
+}

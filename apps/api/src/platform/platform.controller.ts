@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { AuditService } from "../audit/audit.service";
 import { RateLimitService } from "../auth/rate-limit.service";
-import { PLAN_FEATURES, planCodeSchema } from "../billing/plans";
+import { PLAN_FEATURES, planCodeSchema, PLAN_CORE_FEATURES } from "../billing/plans";
 import { SubscriptionsService } from "../billing/subscriptions.service";
 import { JobsService } from "../jobs/jobs.service";
 import { AuthUser, CurrentUser, PlatformAdmin } from "../common/decorators";
@@ -40,7 +40,11 @@ const tenantUpdate = z.object({
   trialEndsAt: z.string().datetime({ offset: true }).optional(),
 });
 const money = (max: number) => z.number().min(0).max(max).multipleOf(0.01, "En fazla 2 ondalık basamak");
-const features = z.array(z.enum(PLAN_FEATURES)).max(PLAN_FEATURES.length).transform((f) => [...new Set(f)]);
+const features = z
+  .array(z.enum(PLAN_FEATURES))
+  .max(PLAN_FEATURES.length)
+  // Temel özellikler her pakette vardır; sıra PLAN_FEATURES ile aynı tutulur.
+  .transform((f) => PLAN_FEATURES.filter((k) => f.includes(k) || (PLAN_CORE_FEATURES as readonly string[]).includes(k)));
 const planUpdate = z.object({
   name: z.string().trim().min(2).max(60).optional(),
   maxStaff: z.number().int().min(1).max(500).optional(),
@@ -56,7 +60,7 @@ const planCreate = z.object({
   maxStaff: z.number().int().min(1).max(500),
   monthlyPrice: money(1_000_000),
   yearlyPrice: money(10_000_000),
-  features: features.default([]),
+  features: features.default([...PLAN_CORE_FEATURES]),
   sortOrder: z.number().int().min(0).max(1000).default(100),
   isActive: z.boolean().default(true),
 });

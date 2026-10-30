@@ -44,6 +44,8 @@ const schema = z.object({
   TRUST_PROXY: z.enum(["0", "1"]).default("1"),
   // Yeni işletme kaydı. Tanımsızsa: canlıda (NODE_ENV=production) kapalı, diğer ortamlarda açık.
   REGISTRATION_ENABLED: z.enum(["0", "1"]).optional(),
+  /** İşletmelerin abonelik/ödeme için yazacağı kurumsal adres (şirket ayarlarında e-posta girilmişse o kullanılır) */
+  SUPPORT_EMAIL: z.string().email().default("info@proguzellik.com"),
 });
 
 export type Env = z.infer<typeof schema>;

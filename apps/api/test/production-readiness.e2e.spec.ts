@@ -6,7 +6,7 @@ import { createPlatformOwner, OwnerSetupError } from "../src/cli/create-owner.li
 import { parseArgs } from "../src/cli/create-owner";
 import { planMigrate } from "../src/cli/migrate";
 import { loadEnv, productionIssues, registrationEnabled } from "../src/config/env";
-import { createApp, createTenantWithUser, owner, resetDb } from "./helpers";
+import { createApp, createTenantWithUser, owner, registerTrial, resetDb } from "./helpers";
 
 const validRegistration = {
   businessName: "Kapalı Kayıt Salonu",
@@ -71,7 +71,7 @@ describe("Canlıya hazırlık", () => {
       it("açıkken kayıt çalışır", async () => {
         env.REGISTRATION_ENABLED = "1";
         expect((await http().get("/auth/registration").expect(200)).body).toEqual({ enabled: true });
-        await http().post("/auth/register").send(validRegistration).expect(201);
+        await registerTrial(app, validRegistration);
         expect(await su.user.findUnique({ where: { email: validRegistration.email } })).not.toBeNull();
       });
     });

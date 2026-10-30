@@ -21,6 +21,13 @@ export class BillingController {
     return this.subs.plans();
   }
 
+  /** Tanıtım sitesi için yalnızca SaaS sahibinin girdiği herkese açık bilgiler (girilmeyen alan null döner). */
+  @Public()
+  @Get("public/site")
+  site() {
+    return this.subs.publicSite();
+  }
+
   @Get("subscription")
   @AllowInactive()
   @Roles("OWNER", "MANAGER")

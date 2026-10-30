@@ -1,6 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { api, createApp, createTenantWithUser, login, owner, resetDb, TEST_PASSWORD, addMember } from "./helpers";
+import { api, createApp, createTenantWithUser, login, owner, resetDb, TEST_PASSWORD, addMember, registerTrial } from "./helpers";
 
 describe("Giriş, kayıt, roller ve işletme erişimi (API)", () => {
   const su = owner();
@@ -65,16 +65,7 @@ describe("Giriş, kayıt, roller ve işletme erişimi (API)", () => {
   });
 
   it("yeni işletme kaydı 14 günlük deneme ile başlar", async () => {
-    const res = await request(app.getHttpServer())
-      .post("/auth/register")
-      .send({
-        businessName: "Işıl Güzellik Stüdyosu",
-        fullName: "Test Sahip",
-        email: "yeni@test.local",
-        password: "GucluParola2026",
-        kvkkAccepted: true,
-      })
-      .expect(201);
+    const res = await registerTrial(app, { businessName: "Işıl Güzellik Stüdyosu", fullName: "Test Sahip", email: "yeni@test.local" });
     const m = res.body.user.memberships[0];
     expect(m.role).toBe("OWNER");
     expect(m.tenant.status).toBe("TRIAL");
@@ -84,15 +75,14 @@ describe("Giriş, kayıt, roller ve işletme erişimi (API)", () => {
     expect(days).toBeLessThanOrEqual(14);
   });
 
-  it("zayıf parola ve KVKK onaysız kayıt reddedilir", async () => {
-    await request(app.getHttpServer())
-      .post("/auth/register")
-      .send({ businessName: "X Salon", fullName: "X Y", email: "zayif@test.local", password: "123", kvkkAccepted: true })
-      .expect(400);
-    await request(app.getHttpServer())
-      .post("/auth/register")
-      .send({ businessName: "X Salon", fullName: "X Y", email: "kvkk@test.local", password: "GucluParola2026" })
-      .expect(400);
+  it("zayıf parola, telefonsuz ve KVKK/koşul onaysız kayıt reddedilir", async () => {
+    const ok = { businessName: "X Salon", fullName: "X Y", password: "GucluParola2026", phone: "0532 111 22 33", kvkkAccepted: true, termsAccepted: true };
+    const http = () => request(app.getHttpServer()).post("/auth/register");
+    await http().send({ ...ok, email: "zayif@test.local", password: "123" }).expect(400);
+    await http().send({ ...ok, email: "kvkk@test.local", kvkkAccepted: undefined }).expect(400);
+    await http().send({ ...ok, email: "kosul@test.local", termsAccepted: undefined }).expect(400);
+    await http().send({ ...ok, email: "tel@test.local", phone: undefined }).expect(400);
+    await http().send({ ...ok, email: "tel2@test.local", phone: "123456789012" }).expect(400);
   });
 
   it("X-Tenant-Id olmadan işletme uç noktası 400 döner", async () => {

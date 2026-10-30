@@ -2,7 +2,7 @@ import { INestApplication } from "@nestjs/common";
 import * as bcrypt from "bcryptjs";
 import request from "supertest";
 import { PrismaClient } from "@prisma/client";
-import { api, createApp, createTenantWithUser, enableMfa, login, owner, resetDb, TEST_PASSWORD } from "./helpers";
+import { api, createApp, createTenantWithUser, enableMfa, login, owner, registerTrial, resetDb, TEST_PASSWORD } from "./helpers";
 
 describe("Abonelik paketleri, deneme süresi ve SaaS sahibi paneli", () => {
   const su = owner();
@@ -158,10 +158,7 @@ describe("Abonelik paketleri, deneme süresi ve SaaS sahibi paneli", () => {
   });
 
   it("kayıtta paket seçilebilir", async () => {
-    const r = await request(app.getHttpServer())
-      .post("/auth/register")
-      .send({ businessName: "Akıllı Salon", fullName: "Test", email: "akilli@test.local", password: "GucluParola2026", planCode: "SMART", kvkkAccepted: true })
-      .expect(201);
+    const r = await registerTrial(app, { businessName: "Akıllı Salon", fullName: "Test", email: "akilli@test.local", planCode: "SMART" });
     expect(r.body.user.memberships[0].tenant).toMatchObject({ planCode: "SMART", status: "TRIAL" });
   });
 });

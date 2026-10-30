@@ -20,9 +20,11 @@ const registerSchema = z.object({
   fullName: z.string().trim().min(2).max(120),
   email: z.string().email().max(200),
   password: passwordSchema,
-  phone: z.string().trim().max(30).optional(),
+  phone: z.string({ error: "Telefon numarası gerekli" }).trim().min(10, "Telefon numarası gerekli").max(30),
   planCode: planCodeSchema.optional(),
-  kvkkAccepted: z.literal(true, { error: "KVKK aydınlatma metni onaylanmalı" }),
+  kvkkAccepted: z.literal(true, { error: "KVKK Aydınlatma Metni'ni okuduğunuzu onaylayın" }),
+  termsAccepted: z.literal(true, { error: "Kullanım Koşulları'nı kabul edin" }),
+  marketingConsent: z.boolean().optional(),
 });
 const forgotSchema = z.object({ email: z.string().email().max(200) });
 const tokenSchema = z.string().min(20).max(200);
@@ -74,14 +76,26 @@ export class AuthController {
     return { enabled: registrationEnabled(loadEnv()) };
   }
 
+  /** Ücretsiz deneme başvurusu: hesap e-posta doğrulanınca açılır (202). */
   @Public()
   @Post("register")
-  register(@Body() raw: unknown, @Req() req: Request) {
+  @HttpCode(202)
+  async register(@Body() raw: unknown, @Req() req: Request) {
     // Kayıt kapalıyken gövde doğrulanmadan reddedilir (gövde ne olursa olsun 403).
     if (!registrationEnabled(loadEnv())) throw new ForbiddenException("Yeni işletme kaydı şu anda kapalı");
-    const body = new ZodPipe(registerSchema).transform(raw);
     this.rateLimit.hit(`register:${req.ip}`, 10, 60 * 60_000);
-    return this.auth.registerBusiness(body, meta(req));
+    const body = new ZodPipe(registerSchema).transform(raw);
+    this.rateLimit.hit(`register-email:${body.email.toLowerCase()}`, 3, 60 * 60_000);
+    return this.auth.requestTrial(body, meta(req));
+  }
+
+  @Public()
+  @Post("register/confirm")
+  @HttpCode(200)
+  confirmRegistration(@Body(new ZodPipe(verifySchema)) body: z.infer<typeof verifySchema>, @Req() req: Request) {
+    if (!registrationEnabled(loadEnv())) throw new ForbiddenException("Yeni işletme kaydı şu anda kapalı");
+    this.rateLimit.hit(`register-confirm:${req.ip}`, 20, 60 * 60_000);
+    return this.auth.confirmTrial(body.token, meta(req));
   }
 
   /** Belirteç URL'de değil gövdede gönderilir (erişim günlüklerine düşmesin). */

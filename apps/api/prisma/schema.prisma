@@ -86,6 +86,7 @@ model User {
   sessions      Session[]
   authTokens    AuthToken[]
   recoveryCodes RecoveryCode[]
+  consents      UserConsent[]
 }
 
 model Membership {
@@ -935,4 +936,54 @@ model PlatformInvoiceLine {
   sortOrder   Int     @default(0)
 
   invoice PlatformInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+/// Doğrulanmamış ücretsiz deneme başvurusu. E-posta doğrulanınca kullanıcı + işletme oluşturulur ve kayıt silinir.
+/// Parola yalnızca bcrypt özeti olarak, doğrulama belirteci yalnızca SHA-256 özeti olarak tutulur.
+model SignupRequest {
+  id                String   @id @default(uuid()) @db.Uuid
+  email             String   @unique
+  businessName      String
+  fullName          String
+  /// Normalleştirilmiş telefon (+90XXXXXXXXXX)
+  phone             String
+  passwordHash      String
+  planCode          String
+  kvkkNoticeVersion String
+  termsVersion      String
+  marketingConsent  Boolean  @default(false)
+  tokenHash         String   @unique
+  expiresAt         DateTime
+  ip                String?
+  userAgent         String?
+  createdAt         DateTime @default(now())
+
+  @@index([phone])
+  @@index([expiresAt])
+}
+
+enum ConsentType {
+  /// KVKK aydınlatma metninin okunduğu (bilgilendirme; açık rıza değildir)
+  KVKK_NOTICE
+  /// Kullanım koşullarının kabulü
+  TERMS
+  /// Ticari elektronik ileti onayı (isteğe bağlı)
+  MARKETING
+}
+
+/// Kullanıcı onay/bildirim kayıtları: değiştirilmez, yalnızca eklenir.
+model UserConsent {
+  id        String      @id @default(uuid()) @db.Uuid
+  userId    String      @db.Uuid
+  type      ConsentType
+  granted   Boolean
+  /// Onaylanan metnin sürümü/yolu (ör. /kvkk@2026-10-30)
+  version   String
+  ip        String?
+  userAgent String?
+  createdAt DateTime    @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, createdAt])
 }

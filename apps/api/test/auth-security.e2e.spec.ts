@@ -3,7 +3,7 @@ import { JwtService } from "@nestjs/jwt";
 import request from "supertest";
 import { MockEmailProvider } from "../src/email/email.provider";
 import { currentStep, totp } from "../src/security/crypto";
-import { api, createApp, createTenantWithUser, enableMfa, freshTotp, login, loginWithMfa, owner, resetDb, TEST_PASSWORD, addMember } from "./helpers";
+import { api, createApp, createTenantWithUser, enableMfa, freshTotp, login, loginWithMfa, owner, resetDb, TEST_PASSWORD, addMember, registerTrial } from "./helpers";
 
 const linkToken = (text: string) => /token=([A-Za-z0-9_-]+)/.exec(text)?.[1] ?? "";
 
@@ -60,7 +60,7 @@ describe("Kimlik güvenliği: oturumlar, parola sıfırlama, e-posta doğrulama,
 
     it("başka bir kullanıcının oturumu kapatılamaz; oturumsuz (sid'siz) token reddedilir", async () => {
       const ta = await login(app, "a@test.local");
-      const tb = (await http().post("/auth/register").send({ businessName: "Salon B", fullName: "Bb", email: "b@test.local", password: "GucluParola2026", kvkkAccepted: true }).expect(201)).body.accessToken;
+      const tb = (await registerTrial(app, { businessName: "Salon B", fullName: "Bb", email: "b@test.local" })).body.accessToken;
       const sidA = (app.get(JwtService).decode(ta) as { sid: string }).sid;
       await http().delete(`/auth/sessions/${sidA}`).set("Authorization", `Bearer ${tb}`).expect(404);
       const legacy = await app.get(JwtService).signAsync({ sub: A.user.id });
@@ -118,13 +118,20 @@ describe("Kimlik güvenliği: oturumlar, parola sıfırlama, e-posta doğrulama,
   });
 
   describe("e-posta doğrulama", () => {
-    it("kayıtta doğrulama e-postası gider; doğrulanmadan ödeme yapılamaz; doğrulama tek kullanımlıktır", async () => {
-      const reg = await http().post("/auth/register").send({ businessName: "Yeni Salon", fullName: "Yeni Sahip", email: "yeni@test.local", password: "GucluParola2026", kvkkAccepted: true }).expect(201);
-      expect(reg.body.user.emailVerified).toBe(false);
-      const tenantId = reg.body.user.memberships[0].tenant.id;
-      const t = api(app, reg.body.accessToken, tenantId);
+    // Deneme kaydında e-posta hesap açılmadan doğrulanır; bu akış doğrulanmamış eski/davetli hesaplar içindir.
+    const unverified = async (email: string, name: string) => {
+      const t = await createTenantWithUser(su, { name, email, status: "TRIAL" });
+      await su.user.update({ where: { id: t.user.id }, data: { emailVerifiedAt: null } });
+      return t;
+    };
+
+    it("doğrulanmamış hesap ödeme yapamaz; doğrulama tek kullanımlıktır", async () => {
+      const u = await unverified("yeni@test.local", "Yeni Salon");
+      const t = api(app, await login(app, "yeni@test.local"), u.tenant.id);
+      expect((await t.get("/auth/me").expect(200)).body.emailVerified).toBe(false);
       const blocked = await t.post("/subscription/checkout").send({ planCode: "STARTER", billingCycle: "MONTHLY", paymentToken: "tok_test" }).expect(403);
       expect(blocked.body.code).toBe("EMAIL_NOT_VERIFIED");
+      await t.post("/auth/resend-verification").expect(200);
       const mail = outbox.filter((m) => m.to === "yeni@test.local" && m.subject === "E-posta adresinizi doğrulayın").at(-1)!;
       const token = linkToken(mail.text);
       await http().post("/auth/verify-email").send({ token }).expect(200);
@@ -135,9 +142,10 @@ describe("Kimlik güvenliği: oturumlar, parola sıfırlama, e-posta doğrulama,
     });
 
     it("doğrulama e-postası tekrar istenebilir; eski bağlantı geçersiz olur", async () => {
-      await http().post("/auth/register").send({ businessName: "Ikinci", fullName: "İki", email: "iki@test.local", password: "GucluParola2026", kvkkAccepted: true }).expect(201);
+      await unverified("iki@test.local", "Ikinci");
+      const tok = await login(app, "iki@test.local");
+      await http().post("/auth/resend-verification").set("Authorization", `Bearer ${tok}`).expect(200);
       const first = linkToken(outbox.filter((m) => m.to === "iki@test.local").at(-1)!.text);
-      const tok = await login(app, "iki@test.local", "GucluParola2026");
       await http().post("/auth/resend-verification").set("Authorization", `Bearer ${tok}`).expect(200);
       const second = linkToken(outbox.filter((m) => m.to === "iki@test.local").at(-1)!.text);
       expect(second).not.toBe(first);
