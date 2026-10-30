@@ -19,6 +19,16 @@ W=""; K=""
 cleanup() { [[ -n "$W" && -d "$W" ]] && { find "$W" -type f -exec shred -u {} + 2>/dev/null; rm -rf "$W"; }; [[ -n "$K" && -e "$K" ]] && shred -u "$K" 2>/dev/null; return 0; }
 trap cleanup EXIT
 
+if [[ "${1:-}" == "--new-key" ]]; then
+  [[ -s "$OFF/rclone/rclone.conf" ]] || die "--new-key için önce Drive bağlantısı gerekli"
+  if rc lsf "$REMOTE/db" --include '*.age' </dev/null 2>/dev/null | grep -q .; then
+    die "Drive'da gerçek yedek var; eski anahtar olmadan bunlar açılamaz. Anahtar değişimi elle değerlendirilmeli."
+  fi
+  log "Yeni anahtar: eski açık anahtar ve eski anahtarla şifrelenmiş TEST dosyaları (gerçek veri değil) kaldırılıyor"
+  rc delete "$REMOTE/test" </dev/null >/dev/null 2>&1 || true
+  rm -f "$OFF/age-recipient.txt"
+fi
+
 log "1/4 rclone imajı: $RCLONE_IMAGE"
 docker image inspect "$RCLONE_IMAGE" >/dev/null 2>&1 || docker pull -q "$RCLONE_IMAGE" >/dev/null
 
@@ -117,15 +127,26 @@ else
   ( umask 077; age-keygen -o "$K" 2>/dev/null )
   age-keygen -y "$K" > "$OFF/age-recipient.txt"; chmod 644 "$OFF/age-recipient.txt"
   echo
-  echo "================ ÖZEL ANAHTAR (yalnız bir kez gösterilir) ================"
-  grep '^AGE-SECRET-KEY-' "$K"
-  echo "=========================================================================="
-  echo "Parola yöneticinize 'ProGüzellik Drive yedek anahtarı' olarak kaydedin."
-  echo "Bu anahtar olmadan Drive'daki yedekler AÇILAMAZ. Sohbete yapıştırmayın."
-  read -r -p "Kaydettiyseniz 'kaydettim' yazın: " ok
-  [[ "$ok" == "kaydettim" ]] || { rm -f "$OFF/age-recipient.txt"; die "Onay yok; açık anahtar silindi, yeniden çalıştırın"; }
+  SECRET=$(grep '^AGE-SECRET-KEY-' "$K")
+  for try in 1 2 3; do
+    echo
+    echo "================ ÖZEL ANAHTAR (sunucuda saklanmaz) ================"
+    printf '%s\n' "$SECRET"
+    echo "===================================================================="
+    echo "Parola yöneticinize 'ProGüzellik Drive yedek anahtarı' olarak kaydedin."
+    echo "Bu anahtar olmadan Drive'daki yedekler AÇILAMAZ. Sohbete yapıştırmayın."
+    read -r -p "Kaydettiyseniz Enter'a basın: " _
+    clear 2>/dev/null || true
+    # Doğrulama: anahtarı kaydettiğiniz yerden kopyalayıp yapıştırın (gizli). Eşleşmezse yeniden gösterilir.
+    read -r -s -p "Kontrol: kaydettiğiniz anahtarı yapıştırın (gizli): " back; echo
+    if [[ "$back" == "$SECRET" ]]; then unset back; break; fi
+    unset back
+    echo "Eşleşmedi ($try/3). Anahtar yeniden gösterilecek."
+    [[ $try -eq 3 ]] && { unset SECRET; rm -f "$OFF/age-recipient.txt"; die "Anahtar doğrulanamadı; açık anahtar silindi, yeniden çalıştırın"; }
+  done
+  unset SECRET
+  log "Anahtar doğrulandı"
   shred -u "$K"; K=""
-  clear 2>/dev/null || true
   log "Özel anahtar sunucudan silindi"
 fi
 [[ -f "$OFF/KVKK_ONAY" ]] && log "KVKK onayı: VAR" || log "KVKK onayı: YOK — gece görevi gerçek veriyi YÜKLEMEZ"
