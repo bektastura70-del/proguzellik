@@ -37,6 +37,7 @@ else
         echo "$k=$(openssl rand -hex 32)"
       done
       echo "REGISTRATION_ENABLED=0"
+      echo "PRICING_PUBLIC=0"
       echo "COMPOSE_FILE=docker-compose.yml"
       echo "EDGE_NETWORK=edge_proxy"
     } > "$ENV_FILE.tmp"
@@ -84,6 +85,7 @@ check "Web /giris 200" "webjs 'fetch(\"http://127.0.0.1:3000/giris\").then(r=>pr
 check "Herkese açık kayıt kapalı (API)" "webjs 'fetch(\"http://api:4000/auth/registration\").then(r=>r.json()).then(j=>process.exit(j.enabled===false?0:1)).catch(()=>process.exit(1))'"
 check "Kayıt isteği 403 (veri oluşmaz)" "webjs 'fetch(\"http://127.0.0.1:3000/api/auth/register\",{method:\"POST\",headers:{\"content-type\":\"application/json\"},body:\"{}\"}).then(r=>process.exit(r.status===403?0:1)).catch(()=>process.exit(1))'"
 check "/kayit sayfası kapalı mesajı" "webjs 'fetch(\"http://127.0.0.1:3000/kayit\").then(r=>r.text()).then(t=>process.exit(t.includes(\"registration-closed\")?0:1)).catch(()=>process.exit(1))'"
+check "Fiyatlar herkese açık yanıtta yok (PRICING_PUBLIC=0)" "webjs 'fetch(\"http://api:4000/plans\").then(r=>r.json()).then(p=>process.exit(p.length>0&&p.every(x=>x.monthlyPrice===null&&x.yearlyPrice===null)?0:1)).catch(()=>process.exit(1))'"
 check "Demo/test verisi yok (kullanıcı ve işletme 0)" "[[ \$(q 'SELECT (SELECT count(*) FROM \"User\")+(SELECT count(*) FROM \"Tenant\")') == 0 ]]"
 check "Paketler migration ile geldi (3)" "[[ \$(q 'SELECT count(*) FROM \"Plan\"') == 3 ]]"
 check "API'de migration sahibi (DATABASE_URL) yok" "! docker exec proguzellik-prod-api sh -c 'env | grep -q ^DATABASE_URL='"

@@ -3,7 +3,7 @@ import { BillingCycle, Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { TenantInfo } from "../common/decorators";
-import { appUrl, loadEnv } from "../config/env";
+import { appUrl, loadEnv, pricingPublic } from "../config/env";
 import { EmailService } from "../email/email.service";
 import { PrismaService, Tx } from "../prisma/prisma.service";
 import { StaffLimitPolicy } from "../staff/staff.service";
@@ -44,8 +44,11 @@ export class SubscriptionsService {
     private readonly email: EmailService,
   ) {}
 
-  plans() {
-    return this.prisma.platform.plan.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } });
+  /** Herkese açık paket listesi. Fiyatlar açıklanmadıysa (canlıda PRICING_PUBLIC≠1) tutarlar null döner. */
+  async plans() {
+    const plans = await this.prisma.platform.plan.findMany({ where: { isActive: true }, orderBy: { sortOrder: "asc" } });
+    if (pricingPublic(loadEnv())) return plans;
+    return plans.map((p) => ({ ...p, monthlyPrice: null, yearlyPrice: null }));
   }
 
   async publicSite() {
@@ -53,6 +56,7 @@ export class SubscriptionsService {
     return {
       company: { legalName: c?.legalName ?? null, address: c?.address ?? null, phone: c?.phone ?? null, email: c?.email ?? loadEnv().SUPPORT_EMAIL },
       // KDV bilgisi yalnızca şirket ayarlarında hem oran hem dahil/hariç seçildiyse gösterilir.
+      pricesAnnounced: pricingPublic(loadEnv()),
       vat: c?.vatRate != null && c.pricesIncludeVat != null ? { rate: c.vatRate.toString(), included: c.pricesIncludeVat } : null,
     };
   }
@@ -85,7 +89,7 @@ export class SubscriptionsService {
         savedMethod,
         payments,
         /** false: online ödeme kapalı (canlıda gerçek sağlayıcı yok); paket SaaS sahibi tarafından tanımlanır. */
-        onlinePayment: this.payments.acceptsPayments,
+        onlinePayment: this.payments.acceptsPayments && pricingPublic(env),
         /** Abonelik için iletişim (online ödeme kapalıyken paket SaaS sahibince tanımlanır) */
         contact: { email: company?.email ?? env.SUPPORT_EMAIL, phone: company?.phone ?? null },
       };
@@ -95,6 +99,9 @@ export class SubscriptionsService {
   /** Paket satın alma/değiştirme (test sağlayıcısıyla). */
   async checkout(t: TenantInfo, b: { planCode: string; billingCycle: BillingCycle; paymentToken: string }) {
     // Gerçek, doğrulanmış tahsilat yapamayan sağlayıcıyla (canlıda test sağlayıcısı) abonelik asla açılmaz.
+    if (!pricingPublic(loadEnv())) {
+      throw new ServiceUnavailableException({ message: "Paket fiyatları henüz açıklanmadı. Paket için bizimle iletişime geçin.", code: "PRICING_NOT_ANNOUNCED" });
+    }
     if (!this.payments.acceptsPayments) {
       throw new ServiceUnavailableException({ message: "Online ödeme henüz aktif değil. Paket için bizimle iletişime geçin.", code: "ONLINE_PAYMENT_DISABLED" });
     }
@@ -298,7 +305,10 @@ export class SubscriptionsService {
     let providerRef = existing?.providerRef ?? undefined;
     let error: string | undefined;
     if (!existing) {
-      if (!this.payments.acceptsPayments) {
+      if (!pricingPublic(env)) {
+        // Fiyatlar açıklanmadan onaysız tutarla tahsilat yapılmaz.
+        error = "Paket fiyatları henüz açıklanmadı";
+      } else if (!this.payments.acceptsPayments) {
         // Canlıda test sağlayıcısıyla/ödeme kapalıyken yenileme "ödendi" sayılmaz.
         error = "Online ödeme aktif değil";
       } else if (!method) {

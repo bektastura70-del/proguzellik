@@ -6,7 +6,7 @@ import { Alert, Badge, Button, Card, CardBody, CardHeader, Dialog, Field, Input,
 import { api, useApi } from "@/lib/api";
 import { dateTr, STATUS_TR, tl } from "@/lib/format";
 
-type Plan = { code: string; name: string; maxStaff: number; monthlyPrice: string; yearlyPrice: string; features: string[] };
+type Plan = { code: string; name: string; maxStaff: number; monthlyPrice: string | null; yearlyPrice: string | null; features: string[] };
 type Sub = {
   status: string; trialDaysLeft: number | null; plan: Plan; usage: { activeStaff: number; maxStaff: number };
   graceEndsAt: string | null; limitExceeded: boolean; savedMethod: { label: string | null } | null;
@@ -64,8 +64,14 @@ export default function SubscriptionPage() {
               <CardBody>
                 <div className="font-semibold">{p.name}</div>
                 <div className="text-sm text-neutral-500">{p.maxStaff} personel</div>
-                <div className="mt-3 text-xl font-semibold">{tl(p.monthlyPrice)}<span className="text-sm font-normal text-neutral-500">/ay</span></div>
-                <div className="text-xs text-neutral-500">veya {tl(p.yearlyPrice)}/yıl</div>
+                {p.monthlyPrice != null ? (
+                  <>
+                    <div className="mt-3 text-xl font-semibold">{tl(p.monthlyPrice)}<span className="text-sm font-normal text-neutral-500">/ay + KDV</span></div>
+                    <div className="text-xs text-neutral-500">veya {tl(p.yearlyPrice!)}/yıl + KDV</div>
+                  </>
+                ) : (
+                  <div className="mt-3 text-sm text-neutral-500">Fiyatlar yakında açıklanacak</div>
+                )}
                 {can("OWNER") && s.onlinePayment && <Button className="mt-4 w-full" size="sm" variant={p.code === s.plan.code ? "outline" : "default"} onClick={() => setBuy(p)}>{p.code === s.plan.code && s.status === "ACTIVE" ? "Yenile" : "Seç"}</Button>}
               </CardBody>
             </Card>
@@ -93,7 +99,7 @@ export default function SubscriptionPage() {
             <Alert tone="amber"><b>Test modu:</b> gerçek ödeme alınmaz. Gerçek sağlayıcı (iyzico, PayTR vb.) entegre edildiğinde kart bilgisi yalnızca sağlayıcının güvenli formunda girilir.</Alert>
             {err && <Alert>{err}</Alert>}
             <Field label="Ödeme dönemi">
-              <Select name="cycle"><option value="MONTHLY">Aylık · {tl(buy.monthlyPrice)}</option><option value="YEARLY">Yıllık · {tl(buy.yearlyPrice)}</option></Select>
+              <Select name="cycle"><option value="MONTHLY">Aylık · {tl(buy.monthlyPrice!)}</option><option value="YEARLY">Yıllık · {tl(buy.yearlyPrice!)}</option></Select>
             </Field>
             <Field label="Test ödeme belirteci" hint='"tok_fail" başarısız ödemeyi dener.'><Input name="token" defaultValue="tok_test" required /></Field>
             <Button className="w-full">Test ödemesiyle etkinleştir</Button>

@@ -44,6 +44,8 @@ const schema = z.object({
   TRUST_PROXY: z.enum(["0", "1"]).default("1"),
   // Yeni işletme kaydı. Tanımsızsa: canlıda (NODE_ENV=production) kapalı, diğer ortamlarda açık.
   REGISTRATION_ENABLED: z.enum(["0", "1"]).optional(),
+  /** Paket fiyatları herkese açık mı? Canlıda yalnızca PRICING_PUBLIC=1 ile gösterilir ve satışta kullanılır. */
+  PRICING_PUBLIC: z.enum(["0", "1"]).optional(),
   /** İşletmelerin abonelik/ödeme için yazacağı kurumsal adres (şirket ayarlarında e-posta girilmişse o kullanılır) */
   SUPPORT_EMAIL: z.string().email().default("info@proguzellik.com"),
 });
@@ -66,6 +68,10 @@ export function loadEnv(): Env {
   cached = parsed.data;
   return cached;
 }
+
+/** Paket fiyatları açıklandı mı? Canlıda yalnızca PRICING_PUBLIC=1 ile; kapalıyken fiyatlar herkese açık yanıtlarda null döner ve satın alma yapılamaz. */
+export const pricingPublic = (env: Pick<Env, "PRICING_PUBLIC" | "NODE_ENV">) =>
+  env.PRICING_PUBLIC ? env.PRICING_PUBLIC === "1" : env.NODE_ENV !== "production";
 
 /** Herkese açık işletme kaydı açık mı? Canlıda yalnızca REGISTRATION_ENABLED=1 ile açılır. */
 export const registrationEnabled = (env: Pick<Env, "REGISTRATION_ENABLED" | "NODE_ENV">) =>
@@ -104,6 +110,7 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
   if (env.PAYMENT_MODE === "mock") warn("PAYMENT_MODE=mock: canlıda online ödeme kapalı; abonelikler yalnızca SaaS sahibi panelinden manuel tanımlanır");
   if (env.AI_MODE === "anthropic" && !raw.ANTHROPIC_API_KEY) err("AI_MODE=anthropic için ANTHROPIC_API_KEY gerekli");
   if (env.JOBS_ENABLED !== "1") warn("JOBS_ENABLED=0: günlük abonelik görevi bu süreçte çalışmaz (başka bir süreçte çalıştığından emin olun)");
+  if (env.PRICING_PUBLIC === "1") warn("PRICING_PUBLIC=1: paket fiyatları herkese açık ve satışta kullanılır");
   if (env.REGISTRATION_ENABLED === "1") warn("REGISTRATION_ENABLED=1: herkese açık işletme kaydı açık");
   if (raw.DISABLE_RATE_LIMIT === "1") err("DISABLE_RATE_LIMIT canlıda kullanılamaz");
   return issues;

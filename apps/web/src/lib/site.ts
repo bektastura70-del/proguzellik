@@ -1,7 +1,7 @@
 import { API_URL } from "@/lib/server-api";
 
-export type SitePlan = { code: string; name: string; maxStaff: number; monthlyPrice: string; yearlyPrice: string; features: string[]; sortOrder: number };
-export type SiteInfo = { company: { legalName: string | null; address: string | null; phone: string | null; email: string }; vat: { rate: string; included: boolean } | null };
+export type SitePlan = { code: string; name: string; maxStaff: number; monthlyPrice: string | null; yearlyPrice: string | null; features: string[]; sortOrder: number };
+export type SiteInfo = { company: { legalName: string | null; address: string | null; phone: string | null; email: string }; pricesAnnounced?: boolean; vat: { rate: string; included: boolean } | null };
 
 /** Paketler veritabanından gelir (SaaS sahibi panelinden yönetilir); burada fiyat yazılmaz. */
 export async function getPlans(): Promise<SitePlan[]> {
@@ -20,7 +20,7 @@ export async function getSiteInfo(): Promise<SiteInfo> {
   } catch {
     /* API'ye ulaşılamazsa yalnızca kurumsal e-posta gösterilir */
   }
-  return { company: { legalName: null, address: null, phone: null, email: "info@proguzellik.com" }, vat: null };
+  return { company: { legalName: null, address: null, phone: null, email: "info@proguzellik.com" }, pricesAnnounced: false, vat: null };
 }
 
 export const SITE_URL = (process.env.SITE_URL ?? "https://proguzellik.com").replace(/\/$/, "");

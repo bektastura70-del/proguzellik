@@ -32,8 +32,19 @@ test.describe("Tanıtım sitesi", () => {
     });
   }
 
-  test("fiyatlar veritabanındaki paketlerden gelir", async ({ page }) => {
-    const plans = (await (await page.request.get("/api/p/plans")).json()) as { name: string; maxStaff: number }[];
+  test("fiyatlar veritabanındaki paketlerden gelir; açıklanmadıysa hiçbir tutar gösterilmez", async ({ page }) => {
+    const plans = (await (await page.request.get("/api/p/plans")).json()) as { name: string; maxStaff: number; monthlyPrice: string | null }[];
+    const announced = plans.every((p) => p.monthlyPrice !== null);
+    for (const path of ["/fiyatlar", "/"]) {
+      await page.goto(path);
+      if (announced) {
+        await expect(page.getByText("Fiyatlar Yakında Açıklanacak")).toHaveCount(0);
+        await expect(page.getByText("Fiyatlara KDV dahil değildir.").or(page.getByText(/KDV (dahildir|dahil değildir)/)).first()).toBeVisible();
+      } else {
+        await expect(page.getByRole("heading", { name: "Fiyatlar Yakında Açıklanacak" })).toBeVisible();
+        await expect(page.locator("main")).not.toContainText(/₺|\bTL\b|\/ ay/);
+      }
+    }
     await page.goto("/fiyatlar");
     for (const p of plans) {
       const card = page.getByRole("article").filter({ has: page.getByRole("heading", { name: p.name, exact: true }) });

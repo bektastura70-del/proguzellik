@@ -22,6 +22,8 @@ export const apiEnv: Record<string, string> = {
   MFA_ENCRYPTION_KEY: "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
   APP_URL: `http://localhost:${WEB_PORT}`,
   EMAIL_MODE: "mock",
+  // Fiyat gizleme testi: PRICING_PUBLIC=0 pnpm test:e2e site
+  ...(process.env.PRICING_PUBLIC ? { PRICING_PUBLIC: process.env.PRICING_PUBLIC } : {}),
   TRUST_PROXY: "0",
 };
 
