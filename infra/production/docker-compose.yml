@@ -85,8 +85,15 @@ services:
       TRUST_PROXY: "1"
       # Başlangıçta kapalı: herkese açık işletme kaydı yok
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-0}
-      # Entegrasyonlar pasif: gerçek servise bağlanılmaz (api'nin internet çıkışı da yoktur)
-      EMAIL_MODE: mock
+      # E-posta varsayılan olarak kapalı (mock: canlıda hiçbir e-posta "gönderildi" sayılmaz).
+      # Açmak için .env'de EMAIL_MODE=smtp + SMTP_URL ve COMPOSE_FILE'a docker-compose.egress.yml eklenir.
+      EMAIL_MODE: ${EMAIL_MODE:-mock}
+      SMTP_URL: ${SMTP_URL:-}
+      EMAIL_FROM: ${EMAIL_FROM:-ProGüzellik <info@proguzellik.com>}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-info@proguzellik.com}
+      # e-Fatura/e-Arşiv entegratörü yok: kesim engelli, yalnızca taslak/harici kayıt
+      EINVOICE_PROVIDER: none
+      # Diğer entegrasyonlar pasif: gerçek servise bağlanılmaz
       WHATSAPP_MODE: mock
       PAYMENT_MODE: mock
       AI_MODE: mock
@@ -137,6 +144,8 @@ services:
       API_URL: http://api:4000
       TRUST_PROXY: "1"
       HOSTNAME: 0.0.0.0
+      # Kanonik adres (site haritası, robots, Open Graph)
+      SITE_URL: ${PUBLIC_URL:?PUBLIC_URL gerekli}
     # Ortak vekil ağına (edge_proxy) yalnızca docker-compose.edge.yml ile bağlanır (Caddy adımında).
     networks: [internal]
     read_only: true

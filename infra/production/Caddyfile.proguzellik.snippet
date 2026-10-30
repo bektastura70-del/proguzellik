@@ -18,8 +18,9 @@ proguzellik.com {
 		Strict-Transport-Security "max-age=31536000"
 		-Server
 	}
-	# Kayıt API'de zaten kapalı; vekilde de ikinci katman olarak engellenir (kayıt açılınca kaldırılır).
-	@register path /api/auth/register /api/p/auth/register
+	# Kayıt API'de zaten kapalı; vekilde de ikinci katman olarak engellenir.
+	# Ücretsiz deneme açılacağı zaman (REGISTRATION_ENABLED=1 ve SMTP çalışır) bu iki satır kaldırılır.
+	@register path /api/auth/register /api/auth/register/* /api/p/auth/register /api/p/auth/register/*
 	respond @register 403
 	reverse_proxy proguzellik-web:3000
 }

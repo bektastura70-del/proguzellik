@@ -1,0 +1,18 @@
+# Dış SMTP sunucusuna erişim: yalnızca api ve worker servislerine giden (egress) ağ ekler.
+# Gelen bağlantı yoktur (port yayınlanmaz). Yalnızca EMAIL_MODE=smtp iken kullanılır.
+# Etkinleştirme (.env):  COMPOSE_FILE=docker-compose.yml:docker-compose.edge.yml:docker-compose.egress.yml
+# ardından:              docker compose up -d --no-deps api worker
+# Not: SMTP_URL'deki sunucuya 465/587 portundan çıkış VPS güvenlik duvarında açık olmalıdır.
+services:
+  api:
+    networks:
+      internal: {}
+      egress: {}
+  worker:
+    networks:
+      internal: {}
+      egress: {}
+
+networks:
+  egress:
+    name: proguzellik_prod_egress

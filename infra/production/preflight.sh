@@ -44,7 +44,17 @@ if [[ -f "$ENV_FILE" ]]; then
     [[ "$v" =~ ^[0-9a-f]{64}$ ]] && ok "$k biçimi uygun" || bad "$k boş ya da 64 karakter hex değil (openssl rand -hex 32)"
   done
   [[ "$(env_get PUBLIC_URL)" == https://* ]] && ok "PUBLIC_URL https" || bad "PUBLIC_URL https ile başlamalı"
-  [[ "$(env_get REGISTRATION_ENABLED)" == "1" ]] && warn "REGISTRATION_ENABLED=1: kayıt açık" || ok "İşletme kaydı kapalı"
+  if [[ "$(env_get EMAIL_MODE)" == "smtp" ]]; then
+    [[ -n "$(env_get SMTP_URL)" ]] && ok "SMTP_URL tanımlı" || bad "EMAIL_MODE=smtp ama SMTP_URL boş"
+    [[ "$(env_get COMPOSE_FILE)" == *docker-compose.egress.yml* ]] && ok "SMTP için çıkış ağı etkin" || bad "EMAIL_MODE=smtp ama COMPOSE_FILE'da docker-compose.egress.yml yok (api SMTP'ye ulaşamaz)"
+  else
+    warn "EMAIL_MODE=mock: davet, doğrulama ve parola sıfırlama e-postaları GÖNDERİLMEZ"
+  fi
+  if [[ "$(env_get REGISTRATION_ENABLED)" == "1" ]]; then
+    [[ "$(env_get EMAIL_MODE)" == "smtp" ]] && warn "REGISTRATION_ENABLED=1: ücretsiz deneme kaydı açık" || bad "REGISTRATION_ENABLED=1 ama e-posta kapalı: başvurular doğrulanamaz"
+  else
+    ok "İşletme kaydı kapalı"
+  fi
   [[ -n "$(env_get APP_VERSION)" ]] && ok "APP_VERSION tanımlı" || bad "APP_VERSION boş"
 else
   bad ".env yok: $ENV_FILE"
