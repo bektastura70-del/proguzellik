@@ -49,7 +49,7 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
         <Logo />
         <p className="mt-6 text-neutral-600">Hesabınıza bağlı bir işletme yok.</p>
         {me.isPlatformAdmin && (
-          <Link href="/yonetim" className="mt-4 inline-block text-brand-700 underline">SaaS yönetim paneline git</Link>
+          <Link href="/platform" className="mt-4 inline-block text-brand-700 underline">SaaS yönetim paneline git</Link>
         )}
         <button onClick={logout} className="mt-4 block w-full text-sm text-neutral-500 underline">Çıkış yap</button>
       </div>
@@ -81,7 +81,7 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
         );
       })}
       {me.isPlatformAdmin && (
-        <Link href="/yonetim" className="mt-4 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-brand-100/90 hover:bg-white/10">
+        <Link href="/platform" className="mt-4 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-brand-100/90 hover:bg-white/10">
           <Shield className="size-[18px]" /> SaaS yönetimi
         </Link>
       )}

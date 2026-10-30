@@ -7,6 +7,8 @@ import { dateTr, STATUS_TR, tl } from "@/lib/format";
 
 export type Plan = { code: string; name: string; maxStaff: number; monthlyPrice: string; yearlyPrice: string; features: string[]; isActive: boolean; sortOrder: number };
 
+/** Her pakette bulunan temel özellikler (API'deki PLAN_CORE_FEATURES ile aynı). */
+export const CORE_FEATURES = ["CRM", "APPOINTMENTS", "FINANCE", "PACKAGES"];
 /** Paket özellikleri (API'deki PLAN_FEATURES ile aynı). */
 export const FEATURE_TR: Record<string, string> = {
   CRM: "Müşteri yönetimi",
@@ -90,7 +92,9 @@ export function PlansCard() {
             <fieldset>
               <legend className="mb-2 text-sm font-medium">Özellikler</legend>
               <div className="grid grid-cols-2 gap-2 text-sm">
-                {Object.entries(FEATURE_TR).map(([k, v]) => (
+                {Object.entries(FEATURE_TR).map(([k, v]) => CORE_FEATURES.includes(k) ? (
+                  <label key={k} className="flex items-center gap-2 text-neutral-500"><input type="checkbox" name="features" value={k} checked disabled readOnly />{v} <span className="text-xs">(her pakette)</span></label>
+                ) : (
                   <label key={k} className="flex items-center gap-2"><input type="checkbox" name="features" value={k} defaultChecked={edit !== "new" && edit.features.includes(k)} />{v}</label>
                 ))}
               </div>

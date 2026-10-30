@@ -74,7 +74,7 @@ export function EmailCenter({ tenants }: { tenants: { id: string; name: string }
         )}
       </Card>
 
-      <Card>
+      <Card role="region" aria-label="E-posta şablonları">
         <CardHeader title="E-posta şablonları" description="Güvenlik e-postaları (parola sıfırlama, doğrulama, davet, 2FA) değiştirilemez. Diğerlerinde {değişken} yer tutucuları kullanılabilir." />
         {!tpls.data ? <CardBody><Spinner /></CardBody> : (
           <Table head={["Şablon", "Konu", "Durum", ""]}>

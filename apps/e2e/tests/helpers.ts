@@ -16,7 +16,7 @@ export async function login(page: Page, email: string, password = PASSWORD) {
   await page.getByLabel("E-posta").fill(email);
   await page.getByLabel("Parola").fill(password);
   await page.getByRole("button", { name: "Giriş yap" }).click();
-  await page.waitForURL(/\/(panel|yonetim)/);
+  await page.waitForURL(/\/(panel|platform)/);
 }
 
 /** Toast mesajını doğrular (sahte başarı değil: ardından veri ayrıca kontrol edilir). */
@@ -41,3 +41,18 @@ export async function apiGet<T>(page: Page, path: string): Promise<T> {
 }
 
 export const uniq = (p: string) => `${p} ${Date.now().toString(36).slice(-5)}`;
+
+/** Ücretsiz deneme formunu doldurup gönderir; "E-postanızı kontrol edin" ekranını bekler. */
+export async function submitTrialForm(page: Page, o: { business: string; name: string; email: string; password: string }) {
+  await page.goto("/ucretsiz-deneme");
+  await page.getByLabel("İşletme adı").fill(o.business);
+  await page.getByLabel("Yetkili adı soyadı").fill(o.name);
+  await page.getByLabel("Telefon").fill(`05${String(Math.floor(Math.random() * 1e9)).padStart(9, "0")}`);
+  await page.getByLabel("E-posta").fill(o.email);
+  await page.getByLabel("Parola", { exact: true }).fill(o.password);
+  await page.getByLabel("Parola (tekrar)").fill(o.password);
+  await page.getByLabel(/KVKK Aydınlatma Metni/).check();
+  await page.getByLabel(/Kullanım Koşulları/).check();
+  await page.getByRole("button", { name: "Ücretsiz denemeyi başlat" }).click();
+  await expect(page.getByRole("heading", { name: "E-postanızı kontrol edin" })).toBeVisible();
+}

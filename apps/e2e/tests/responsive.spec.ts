@@ -36,7 +36,7 @@ test.describe("Ekran düzeni (taşma yok, menü çalışır)", () => {
 });
 
 test.describe("Herkese açık sayfalar", () => {
-  for (const path of ["/", "/giris", "/kayit", "/kvkk", "/r/isilti-guzellik"]) {
+  for (const path of ["/", "/ozellikler", "/ozellikler/randevu-musteri", "/fiyatlar", "/sss", "/iletisim", "/giris", "/ucretsiz-deneme", "/kvkk", "/r/isilti-guzellik"]) {
     test(`sayfa ${path}`, async ({ page }) => {
       await page.goto(path);
       await page.waitForLoadState("networkidle");

@@ -25,6 +25,13 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  async redirects() {
+    // Eski SaaS sahibi adresi; tek alan adında yönetim /platform altındadır.
+    return [
+      { source: "/yonetim", destination: "/platform", permanent: true },
+      { source: "/yonetim/:path*", destination: "/platform/:path*", permanent: true },
+    ];
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

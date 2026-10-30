@@ -10,4 +10,4 @@ export function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/panel/:path*", "/yonetim/:path*", "/parola-degistir", "/guvenlik"] };
+export const config = { matcher: ["/panel/:path*", "/platform/:path*", "/parola-degistir", "/guvenlik"] };

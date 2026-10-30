@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { authFile, expectToast, uniq } from "./helpers";
+import { authFile, expectToast, submitTrialForm, uniq } from "./helpers";
 import { lastEmail, resetTotpReplay, sql, totp } from "./totp";
 
-const linkFrom = (body: string) => /(\/[a-z-]+\?token=[A-Za-z0-9_-]+)/.exec(body)?.[1] ?? "";
+const linkFrom = (body: string) => /(\/[a-z/-]+\?token=[A-Za-z0-9_-]+)/.exec(body)?.[1] ?? "";
 
 test.describe.serial("Hesap güvenliği: e-posta doğrulama, parola sıfırlama, 2FA, oturumlar", () => {
   const email = `${uniq("guvenlik").replace(" ", "-")}@proguzellik.local`;
@@ -11,26 +11,20 @@ test.describe.serial("Hesap güvenliği: e-posta doğrulama, parola sıfırlama,
   let secret = "";
   let recovery: string[] = [];
 
-  test("kayıt → doğrulama e-postası → bağlantıyla e-posta doğrulanır", async ({ page }) => {
-    await page.goto("/kayit");
-    await page.getByLabel("Salon adı").fill(uniq("Güvenli Salon"));
-    await page.getByLabel("Adınız soyadınız").fill("Güvenlik Testçisi");
-    await page.getByLabel("E-posta").fill(email);
-    await page.getByLabel("Parola", { exact: true }).fill(pass1);
-    await page.getByLabel("Parola (tekrar)").fill(pass1);
-    await page.getByRole("checkbox").check();
-    await page.getByRole("button", { name: "Ücretsiz denemeyi başlat" }).click();
-    await expect(page).toHaveURL(/\/panel/);
-    await expect(page.getByText("E-posta adresiniz henüz doğrulanmadı.")).toBeVisible();
-    const body = lastEmail(email, "E-posta adresinizi doğrulayın");
-    expect(body).toContain("/eposta-dogrula?token=");
+  test("deneme kaydı → doğrulama e-postası → bağlantıyla hesap açılır; bağlantı tek kullanımlık", async ({ page, browser }) => {
+    await submitTrialForm(page, { business: uniq("Güvenli Salon"), name: "Güvenlik Testçisi", email, password: pass1 });
+    const body = lastEmail(email, "Ücretsiz denemenizi başlatmak için e-postanızı doğrulayın");
+    expect(body).toContain("/ucretsiz-deneme/dogrula?token=");
     await page.goto(linkFrom(body));
-    await expect(page.getByText("E-posta adresiniz doğrulandı.")).toBeVisible();
-    await page.goto(linkFrom(body));
-    await expect(page.getByText(/geçersiz veya süresi dolmuş/)).toBeVisible();
-    await page.goto("/panel");
+    await page.getByRole("button", { name: "E-postamı doğrula ve denemeyi başlat" }).click();
     await expect(page.getByRole("heading", { name: /Merhaba/ })).toBeVisible();
     await expect(page.getByText("E-posta adresiniz henüz doğrulanmadı.")).toHaveCount(0);
+    const other = await browser.newContext();
+    const op = await other.newPage();
+    await op.goto(linkFrom(body));
+    await op.getByRole("button", { name: "E-postamı doğrula ve denemeyi başlat" }).click();
+    await expect(op.getByText(/geçersiz veya süresi dolmuş|zaten kullanıldı/)).toBeVisible();
+    await other.close();
   });
 
   test("parolamı unuttum → e-postadaki bağlantı → yeni parola; eski oturum kapanır", async ({ page, browser }) => {
@@ -202,7 +196,7 @@ test.describe("Oturum güvenliği", () => {
 test.describe("SaaS paneli: günlük görev", () => {
   test.use({ storageState: authFile("platform") });
   test("görev elle tetiklenir, kaydı görünür; aynı gün ikinci kez atlanır", async ({ page }) => {
-    await page.goto("/yonetim");
+    await page.goto("/platform");
     await page.getByRole("button", { name: "Şimdi çalıştır" }).click();
     await expectToast(page, /Görev çalıştırıldı|Atlandı/);
     await page.getByRole("button", { name: "Şimdi çalıştır" }).click();

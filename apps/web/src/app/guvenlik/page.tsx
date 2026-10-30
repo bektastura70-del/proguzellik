@@ -37,7 +37,7 @@ function SecurityInner() {
 
   if (!me.data) return <Spinner />;
   const m = me.data;
-  const home = m.memberships.length ? "/panel" : m.isPlatformAdmin ? "/yonetim" : "/panel";
+  const home = m.isPlatformAdmin ? "/platform" : "/panel";
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">

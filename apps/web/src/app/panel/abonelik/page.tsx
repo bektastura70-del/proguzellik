@@ -13,6 +13,7 @@ type Sub = {
   subscription: { billingCycle: string; currentPeriodEnd: string; cancelAtPeriodEnd: boolean; status: string; source: "PROVIDER" | "MANUAL"; isComplimentary: boolean } | null;
   payments: { id: string; amount: string; status: string; description: string; createdAt: string; provider: string }[];
   onlinePayment: boolean;
+  contact: { email: string; phone: string | null };
 };
 
 export default function SubscriptionPage() {
@@ -56,7 +57,7 @@ export default function SubscriptionPage() {
         </Card>
         <div className="grid gap-4 sm:grid-cols-3 lg:col-span-2">
           {!s.onlinePayment && (
-            <div className="sm:col-span-3"><Alert tone="amber">Online ödeme henüz aktif değil. Paket satın almak, değiştirmek veya yenilemek için bizimle iletişime geçin.</Alert></div>
+            <div className="sm:col-span-3"><Alert tone="amber">Online ödeme henüz aktif değil. Paket satın almak, değiştirmek veya yenilemek için <a className="font-medium underline" href={`mailto:${s.contact.email}?subject=${encodeURIComponent("Abonelik talebi")}`}>{s.contact.email}</a>{s.contact.phone ? ` ya da ${s.contact.phone}` : ""} üzerinden bize ulaşın; paketiniz onaylandığında hesabınıza tanımlanır. Verileriniz silinmez.</Alert></div>
           )}
           {plans.data?.map((p) => (
             <Card key={p.code} className={p.code === s.plan.code ? "border-brand-400" : ""}>

@@ -21,7 +21,7 @@ function LoginForm() {
   function go(user: LoginUser) {
     if (user?.mustChangePassword) return router.push("/parola-degistir");
     const back = params.get("donus");
-    const dest = back?.startsWith("/") && !back.startsWith("//") ? back : user?.memberships?.length ? "/panel" : user?.isPlatformAdmin ? "/yonetim" : "/panel";
+    const dest = back?.startsWith("/") && !back.startsWith("//") ? back : user?.isPlatformAdmin ? "/platform" : "/panel";
     router.push(dest);
   }
 
@@ -106,7 +106,7 @@ export default function LoginPage() {
           <LoginForm />
         </Suspense>
         <p className="mt-6 text-center text-sm text-neutral-500">
-          Hesabınız yok mu? <Link href="/kayit" className="font-medium text-brand-700">14 gün ücretsiz deneyin</Link>
+          Hesabınız yok mu? <Link href="/ucretsiz-deneme" className="font-medium text-brand-700">14 gün ücretsiz deneyin</Link>
         </p>
       </div>
     </div>

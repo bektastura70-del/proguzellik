@@ -6,8 +6,8 @@ test.describe("Oturum ve erişim", () => {
   test("oturumsuz kullanıcı panele ve yönetime giremez", async ({ page }) => {
     await page.goto("/panel/kasa");
     await expect(page).toHaveURL(/\/giris\?donus=%2Fpanel%2Fkasa/);
-    await page.goto("/yonetim");
-    await expect(page).toHaveURL(/\/giris/);
+    await page.goto("/platform");
+    await expect(page).toHaveURL(/\/giris\?donus=%2Fplatform/);
     const res = await page.request.get("/api/p/customers");
     expect(res.status()).toBe(401);
   });

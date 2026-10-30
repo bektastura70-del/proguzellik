@@ -4,6 +4,7 @@ import { ToastProvider } from "@/components/ui";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL((process.env.SITE_URL ?? "https://proguzellik.com").replace(/\/$/, "")),
   title: { default: "ProGüzellik — Güzellik salonu yönetimi", template: "%s · ProGüzellik" },
   description: "Randevu, müşteri, kasa, paket ve stok yönetimi tek yerde. Güzellik salonları için Türkçe bulut yazılım.",
   applicationName: "ProGüzellik",

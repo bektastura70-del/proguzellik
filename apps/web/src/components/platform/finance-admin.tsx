@@ -115,7 +115,7 @@ export function LedgerDialog({ tenantId, onClose }: { tenantId: string; onClose:
     try {
       const inv = await api<{ id: string }>("/platform/invoices", { method: "POST", body: { tenantId, accrualId } });
       toast("Fatura taslağı oluşturuldu");
-      window.open(`/yonetim/fatura/${inv.id}`, "_blank");
+      window.open(`/platform/fatura/${inv.id}`, "_blank");
       l.reload();
     } catch (e) { setErr((e as Error).message); }
   };
@@ -180,7 +180,7 @@ export function LedgerDialog({ tenantId, onClose }: { tenantId: string; onClose:
               <tr key={e.id}>
                 <Td className="whitespace-nowrap">{day(e.occurredAt)}</Td>
                 <Td>{TYPE_TR[e.type]}{e.method && <div className="text-xs text-neutral-500">{METHOD_TR[e.method]}{e.reference ? ` · ${e.reference}` : ""}</div>}</Td>
-                <Td>{e.description}{e.dueDate && <div className="text-xs text-neutral-500">Vade: {day(e.dueDate)}</div>}{e.invoice && <div className="text-xs"><Link className="text-brand-700" href={`/yonetim/fatura/${e.invoice.id}`} target="_blank">{e.invoice.officialNumber ?? e.invoice.draftNo}</Link></div>}</Td>
+                <Td>{e.description}{e.dueDate && <div className="text-xs text-neutral-500">Vade: {day(e.dueDate)}</div>}{e.invoice && <div className="text-xs"><Link className="text-brand-700" href={`/platform/fatura/${e.invoice.id}`} target="_blank">{e.invoice.officialNumber ?? e.invoice.draftNo}</Link></div>}</Td>
                 <Td className={`whitespace-nowrap ${e.type === "PAYMENT" || e.type === "ACCRUAL_CANCEL" ? "text-green-700" : ""}`}>{e.type === "PAYMENT" || e.type === "ACCRUAL_CANCEL" ? "−" : "+"}{tl(e.amount)}</Td>
                 <Td>{e.state ? <Badge tone={STATE_TR[e.state][1]}>{STATE_TR[e.state][0]}</Badge> : e.type === "PAYMENT" && Number(e.refunded) > 0 ? <Badge tone="amber">{tl(e.refunded)} iade</Badge> : null}{e.open && Number(e.open) > 0 && <div className="text-xs text-neutral-500">Kalan {tl(e.open)}</div>}</Td>
                 <Td className="whitespace-nowrap">{tl(e.runningBalance)}</Td>
@@ -266,7 +266,7 @@ function RevenueReport() {
             <Select aria-label="Rapor yılı" className="h-9 w-28" value={year} onChange={(e) => setYear(Number(e.target.value))}>{[thisYear - 2, thisYear - 1, thisYear, thisYear + 1].map((y) => <option key={y} value={y}>{y}</option>)}</Select>
             <Select aria-label="Rapor dönemi" className="h-9 w-28" value={gran} onChange={(e) => setGran(e.target.value as "month" | "year")}><option value="month">Aylık</option><option value="year">Yıllık</option></Select>
             <Button size="sm" variant="outline" className="h-9" onClick={() => downloadCsv(`/platform/finance/report.csv?year=${year}&granularity=${gran}`, `gelir-raporu-${year}.csv`).catch((e) => toast((e as Error).message, "red"))}>CSV</Button>
-            <Link className="inline-flex h-9 items-center rounded-lg border border-sand-200 px-3 text-sm" href={`/yonetim/rapor?yil=${year}&donem=${gran}`} target="_blank">Yazdır / PDF</Link>
+            <Link className="inline-flex h-9 items-center rounded-lg border border-sand-200 px-3 text-sm" href={`/platform/rapor?yil=${year}&donem=${gran}`} target="_blank">Yazdır / PDF</Link>
           </div>
         }
       />
@@ -294,7 +294,7 @@ function InvoicesCard() {
             <Td>{tl(i.grossTotal)}</Td>
             <Td><Badge tone={INVOICE_STATUS_TR[i.status][1]}>{INVOICE_STATUS_TR[i.status][0]}</Badge></Td>
             <Td>{day(i.createdAt)}</Td>
-            <Td><Link className="text-sm text-brand-700" href={`/yonetim/fatura/${i.id}`} target="_blank">Aç</Link></Td>
+            <Td><Link className="text-sm text-brand-700" href={`/platform/fatura/${i.id}`} target="_blank">Aç</Link></Td>
           </tr>
         ))}
       </Table>

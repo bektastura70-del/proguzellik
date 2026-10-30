@@ -8,7 +8,7 @@ for (const key of Object.keys(USERS) as UserKey[]) {
     await login(page, USERS[key]);
     if (key === "platform") {
       // SaaS yöneticisi için 2FA zorunlu: panel güvenlik sayfasına yönlendirir; arayüzden etkinleştirilir.
-      // Giriş sonrası /yonetim açılır; API 2FA kurulumu istediği için güvenlik sayfasına yönlendirilir.
+      // Giriş sonrası /platform açılır; API 2FA kurulumu istediği için güvenlik sayfasına yönlendirilir.
       await page.waitForURL(/\/guvenlik\?zorunlu=1/);
       await expect(page.getByText(/iki adımlı doğrulama zorunlu/)).toBeVisible();
       await page.getByRole("button", { name: /2FA'yı etkinleştir/ }).click();
@@ -23,7 +23,7 @@ for (const key of Object.keys(USERS) as UserKey[]) {
       await dlg.getByRole("button", { name: "Kaydettim" }).click();
       const fs = await import("node:fs");
       fs.writeFileSync(".auth/platform-secret.txt", secret);
-      await page.goto("/yonetim");
+      await page.goto("/platform");
       await expect(page.getByText("MRR (aylık gelir)")).toBeVisible();
     }
     await page.context().storageState({ path: authFile(key) });

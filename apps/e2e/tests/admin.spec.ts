@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { PASSWORD } from "../env";
-import { apiGet, authFile, expectToast, login, uniq } from "./helpers";
+import { apiGet, authFile, expectToast, login, submitTrialForm, uniq } from "./helpers";
 import { lastEmail, sql } from "./totp";
 
 test.describe("İşletme sahibi modülleri", () => {
@@ -94,7 +94,9 @@ test.describe("İşletme sahibi modülleri", () => {
   test("abonelik: test ödemesi başarısızlığı ve başarılı aktivasyon", async ({ page }) => {
     await page.goto("/panel/abonelik");
     await expect(page.getByText(/Deneme süresinden/)).toBeVisible();
-    await page.getByRole("button", { name: "Yenile" }).or(page.getByRole("button", { name: "Seç" })).last().click();
+    // Paket açıkça seçilir: testte oluşturulan (özellikleri kısıtlı) paketler demo salona atanmasın
+    const smart = page.locator("div").filter({ has: page.getByText("Akıllı", { exact: true }) }).filter({ has: page.getByRole("button", { name: /^(Seç|Yenile)$/ }) }).last();
+    await smart.getByRole("button", { name: /^(Seç|Yenile)$/ }).click();
     const dlg = page.getByRole("dialog");
     await expect(dlg.getByText(/gerçek ödeme alınmaz/)).toBeVisible();
     await dlg.getByLabel(/Test ödeme belirteci/).fill("tok_fail");
@@ -114,7 +116,7 @@ test.describe("SaaS sahibi paneli", () => {
   test.use({ storageState: authFile("platform") });
 
   test("istatistikler, işletme listesi, pasife alma ve geri açma", async ({ page, browser }) => {
-    await page.goto("/yonetim");
+    await page.goto("/platform");
     await expect(page.getByText("MRR (aylık gelir)")).toBeVisible();
     const row = page.getByRole("row").filter({ hasText: "Örnek Kuaför" });
     await expect(row).toContainText("kuafor@proguzellik.local");
@@ -142,7 +144,7 @@ test.describe("SaaS sahibi paneli", () => {
   test("yeni güzellik merkezi oluşturulur, sahip daveti kabul eder ve yalnızca kendi işletmesini görür", async ({ page, browser }) => {
     const name = uniq("Davetli Salon");
     const email = `${uniq("davet").replace(" ", "-")}@ornek.test`;
-    await page.goto("/yonetim");
+    await page.goto("/platform");
     await page.getByRole("button", { name: "Yeni işletme" }).click();
     const dlg = page.getByRole("dialog");
     await dlg.getByLabel("İşletme adı").fill(name);
@@ -194,7 +196,7 @@ test.describe("SaaS sahibi paneli", () => {
   });
 
   test("paket fiyatı güncellenir", async ({ page }) => {
-    await page.goto("/yonetim");
+    await page.goto("/platform");
     const row = page.getByRole("row").filter({ hasText: "Başlangıç" }).filter({ has: page.getByRole("button", { name: "Düzenle" }) });
     await row.getByRole("button", { name: "Düzenle" }).click();
     await page.getByRole("dialog").getByLabel("Aylık (₺)").fill("549");
@@ -205,7 +207,7 @@ test.describe("SaaS sahibi paneli", () => {
 
   test("yeni paket oluşturulur, deneme süresi uzatılır, abonelikler sekmesinde izlenir", async ({ page }) => {
     const code = `E2E_${Date.now().toString(36).toUpperCase()}`;
-    await page.goto("/yonetim");
+    await page.goto("/platform");
     await page.getByRole("button", { name: "Yeni paket" }).click();
     const pd = page.getByRole("dialog");
     await pd.getByLabel("Paket kodu").fill(code);
@@ -250,7 +252,7 @@ test.describe("SaaS sahibi paneli", () => {
     expect(created.status()).toBe(201);
     const tenantId = (await created.json()).tenant?.id ?? (await created.json()).id;
 
-    await page.goto("/yonetim");
+    await page.goto("/platform");
     await page.getByRole("tab", { name: "Şirket ayarları" }).click();
     await expect(page.getByText(/SMTP yapılandırılmadı|SMTP yapılandırıldı/)).toBeVisible();
     await expect(page.getByText(/Yetkili entegratör bağlı değil/)).toBeVisible();
@@ -301,9 +303,10 @@ test.describe("SaaS sahibi paneli", () => {
     const created = await page.request.post("/api/p/platform/tenants", { data: { name, ownerName: "Eposta Sahip", ownerEmail: email, planCode: "STARTER", trialDays: 14 } });
     expect(created.status()).toBe(201);
 
-    await page.goto("/yonetim");
+    await page.goto("/platform");
     await page.getByRole("tab", { name: "E-postalar" }).click();
-    const tpl = page.getByRole("row").filter({ hasText: "Ödeme hatırlatması" });
+    const templates = page.getByRole("region", { name: "E-posta şablonları" });
+    const tpl = templates.getByRole("row").filter({ hasText: "Ödeme hatırlatması" });
     await tpl.getByRole("button", { name: "Düzenle" }).click();
     const dlg = page.getByRole("dialog");
     await dlg.getByLabel("Konu").fill("Hatırlatma: {salon} {yok}");
@@ -319,7 +322,7 @@ test.describe("SaaS sahibi paneli", () => {
     await dlg.getByRole("button", { name: "Varsayılana dön" }).click();
     await expectToast(page, "Varsayılan metne dönüldü");
     await expect(tpl).toContainText("Varsayılan");
-    await expect(page.getByRole("row").filter({ hasText: "Parola sıfırlama" })).toContainText("Sabit");
+    await expect(templates.getByRole("row").filter({ hasText: "Parola sıfırlama" })).toContainText("Sabit");
 
     await page.getByRole("button", { name: "Bilgilendirme gönder" }).click();
     await expect(dlg.getByText(/İYS onayı/)).toBeVisible();
@@ -348,7 +351,7 @@ test.describe("SaaS sahibi paneli", () => {
       data: { name, ownerName: "Manuel Sahip", ownerEmail: `${uniq("manuel").replace(" ", "-")}@ornek.test`, planCode: "STARTER", trialDays: 14 },
     });
     expect(created.status()).toBe(201);
-    await page.goto("/yonetim");
+    await page.goto("/platform");
     await page.getByLabel("İşletme ara").fill(name.split(" ").pop()!);
     const row = page.getByRole("row").filter({ hasText: name });
     await row.getByRole("button", { name: "Yönet" }).click();
@@ -391,7 +394,7 @@ test.describe("SaaS sahibi paneli", () => {
     const tenantId = (await created.json()).tenant.id as string;
 
     // İşletme detayından personel daveti
-    await page.goto("/yonetim");
+    await page.goto("/platform");
     await page.getByLabel("İşletme ara").fill(name.split(" ").pop()!);
     await page.getByRole("row").filter({ hasText: name }).getByRole("button", { name: "Yönet" }).click();
     const dlg = page.getByRole("dialog");
@@ -444,26 +447,32 @@ test.describe("SaaS sahibi paneli", () => {
     await ctx.close();
   });
 
-  test("işletme sahibi /yonetim sayfasına erişemez", async ({ browser }) => {
+  test("işletme sahibi /platform sayfasına erişemez; eski /yonetim adresi yönlendirilir", async ({ browser }) => {
     const ctx = await browser.newContext({ storageState: authFile("owner") });
     const p = await ctx.newPage();
-    await p.goto("/yonetim");
-    await expect(p.getByText("Bu sayfa yalnızca platform yöneticilerine açıktır.")).toBeVisible();
+    await p.goto("/platform");
+    await expect(p).toHaveURL(/\/panel$/);
+    await p.goto("/yonetim/fatura/00000000-0000-0000-0000-000000000000");
+    await expect(p).toHaveURL(/\/panel$/);
+    expect((await p.request.get("/api/p/platform/stats")).status()).toBe(403);
     await ctx.close();
   });
 });
 
-test("yeni işletme kaydı: 14 günlük deneme ile panel açılır", async ({ page }) => {
+test("ücretsiz deneme: başvuru → e-posta doğrulama → 14 günlük deneme ile panel açılır", async ({ page }) => {
   const email = `${uniq("kayit").replace(" ", "-")}@proguzellik.local`;
-  await page.goto("/kayit");
-  await page.getByLabel("Salon adı").fill(uniq("E2E Salon"));
-  await page.getByLabel("Adınız soyadınız").fill("Test Sahip");
-  await page.getByLabel("E-posta").fill(email);
-  await page.getByLabel("Parola", { exact: true }).fill(PASSWORD);
-  await page.getByLabel("Parola (tekrar)").fill(PASSWORD);
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Ücretsiz denemeyi başlat" }).click();
+  await page.goto("/kayit?paket=STARTER");
+  await expect(page).toHaveURL(/\/ucretsiz-deneme\?paket=STARTER/);
+  await expect(page.getByLabel("Paket")).toHaveValue("STARTER");
+  await submitTrialForm(page, { business: uniq("E2E Salon"), name: "Test Sahip", email, password: PASSWORD });
+  // Doğrulamadan önce hesap yoktur
+  expect(sql(`SELECT count(*) FROM "User" WHERE email='${email}'`)).toBe("0");
+  const body = lastEmail(email, "Ücretsiz denemenizi başlatmak için e-postanızı doğrulayın");
+  const link = /(\/ucretsiz-deneme\/dogrula\?token=[A-Za-z0-9_-]+)/.exec(body)?.[1] ?? "";
+  await page.goto(link);
+  await page.getByRole("button", { name: "E-postamı doğrula ve denemeyi başlat" }).click();
   await expect(page).toHaveURL(/\/panel/);
   await expect(page.getByText(/Deneme sürenizin bitmesine/)).toContainText("14 gün");
+  await expect(page.getByText("E-posta adresiniz henüz doğrulanmadı.")).toHaveCount(0);
   await login(page, email);
 });
