@@ -242,6 +242,59 @@ test.describe("SaaS sahibi paneli", () => {
     await expect(page.getByRole("heading", { name: "Abonelikler" })).toBeVisible();
   });
 
+  test("finans: şirket ayarı, cari hesap, kısmi tahsilat, fatura taslağı ve entegratörsüz kesim engeli", async ({ page }) => {
+    const name = uniq("Finans Salon");
+    const created = await page.request.post("/api/p/platform/tenants", {
+      data: { name, ownerName: "Finans Sahip", ownerEmail: `${uniq("finans").replace(" ", "-")}@ornek.test`, planCode: "STARTER", trialDays: 14 },
+    });
+    expect(created.status()).toBe(201);
+    const tenantId = (await created.json()).tenant?.id ?? (await created.json()).id;
+
+    await page.goto("/yonetim");
+    await page.getByRole("tab", { name: "Şirket ayarları" }).click();
+    await expect(page.getByText(/SMTP yapılandırılmadı|SMTP yapılandırıldı/)).toBeVisible();
+    await expect(page.getByText(/Yetkili entegratör bağlı değil/)).toBeVisible();
+    await page.getByLabel("Şirket unvanı").fill("E2E Yazılım A.Ş.");
+    await page.getByLabel("VKN").fill("1234567890");
+    await page.getByLabel("Vergi dairesi").fill("Kadıköy");
+    await page.getByLabel("Adres").fill("İstanbul");
+    await page.getByLabel("KDV oranı (%)").fill("20");
+    await page.getByLabel("Paket fiyatları").selectOption("1");
+    await page.getByRole("button", { name: "Kaydet" }).click();
+    await expectToast(page, "Şirket ayarları kaydedildi");
+
+    await page.getByRole("tab", { name: "Finans" }).click();
+    await page.getByLabel("Cari hesap aç").selectOption({ label: name });
+    await page.getByRole("button", { name: "Cari hesabı aç" }).click();
+    const dlg = page.getByRole("dialog");
+    await dlg.getByRole("button", { name: "Tahakkuk ekle" }).click();
+    await dlg.getByLabel("Tutar (₺)").fill("1200");
+    await dlg.getByLabel("Açıklama").fill("Kasım aboneliği");
+    await dlg.getByRole("button", { name: "Kaydet" }).click();
+    await expectToast(page, "Kayıt eklendi");
+    const accRow = dlg.getByRole("row").filter({ hasText: "Kasım aboneliği" }).first();
+    await accRow.getByRole("button", { name: "Tahsilat" }).click();
+    await dlg.getByLabel("Tutar (₺)").fill("500");
+    await dlg.getByRole("button", { name: "Kaydet" }).click();
+    await expectToast(page, "Kayıt eklendi");
+    await expect(dlg.getByRole("row").filter({ hasText: "Kısmi tahsil" })).toContainText("Kalan ₺700,00");
+
+    await dlg.getByRole("button", { name: "Düzenle" }).click();
+    await dlg.getByLabel("Unvan").fill(`${name} Ltd.`);
+    await dlg.getByRole("button", { name: "Kaydet" }).click();
+    await expectToast(page, "Fatura bilgileri kaydedildi");
+    const popup = page.waitForEvent("popup");
+    await dlg.getByRole("row").filter({ hasText: "Kısmi tahsil" }).getByRole("button", { name: "Fatura taslağı" }).click();
+    const inv = await popup;
+    await expect(inv.getByText("TASLAK – Bu belge resmî fatura değildir, mali değeri yoktur.")).toBeVisible();
+    await expect(inv.getByText("₺1.000,00").first()).toBeVisible();
+    await inv.getByRole("button", { name: "e-Fatura/e-Arşiv olarak düzenle" }).click();
+    await expect(inv.getByText(/entegratörü yapılandırılmadı; resmî fatura kesilmedi/)).toBeVisible();
+    await expect(inv.getByText("Taslak (mali değeri yok)")).toBeVisible();
+    await inv.close();
+    void tenantId;
+  });
+
   test("manuel abonelik: ücretsiz oluşturma, süre uzatma ve dönem sonu iptali; tahsilattan ayrı listelenir", async ({ page }) => {
     const name = uniq("Manuel Salon");
     const created = await page.request.post("/api/p/platform/tenants", {

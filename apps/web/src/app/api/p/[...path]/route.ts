@@ -23,7 +23,10 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
     cache: "no-store",
   });
   const text = await res.text();
-  return new NextResponse(text, { status: res.status, headers: { "Content-Type": res.headers.get("content-type") ?? "application/json" } });
+  const out: Record<string, string> = { "Content-Type": res.headers.get("content-type") ?? "application/json" };
+  const disposition = res.headers.get("content-disposition");
+  if (disposition) out["Content-Disposition"] = disposition;
+  return new NextResponse(text, { status: res.status, headers: out });
 }
 
 export { proxy as GET, proxy as POST, proxy as PATCH, proxy as PUT, proxy as DELETE };

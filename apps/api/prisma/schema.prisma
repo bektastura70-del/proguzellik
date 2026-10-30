@@ -47,15 +47,18 @@ model Tenant {
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
-  memberships   Membership[]
-  invites       TenantInvite[]
-  auditLogs     AuditLog[]
-  customers     Customer[]
-  categories    ServiceCategory[]
-  services      Service[]
-  staff         StaffMember[]
-  plan          Plan              @relation(fields: [planCode], references: [code])
-  subscriptions Subscription[]
+  memberships    Membership[]
+  invites        TenantInvite[]
+  auditLogs      AuditLog[]
+  customers      Customer[]
+  categories     ServiceCategory[]
+  services       Service[]
+  staff          StaffMember[]
+  plan           Plan                  @relation(fields: [planCode], references: [code])
+  subscriptions  Subscription[]
+  billingProfile TenantBillingProfile?
+  ledgerEntries  PlatformLedgerEntry[]
+  invoices       PlatformInvoice[]
 }
 
 model User {
@@ -553,10 +556,11 @@ model Subscription {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
-  tenant   Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  plan     Plan                  @relation(fields: [planCode], references: [code])
-  payments SubscriptionPayment[]
-  grants   SubscriptionGrant[]
+  tenant        Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan          Plan                  @relation(fields: [planCode], references: [code])
+  payments      SubscriptionPayment[]
+  grants        SubscriptionGrant[]
+  ledgerEntries PlatformLedgerEntry[]
 
   @@unique([tenantId, id])
   @@index([tenantId])
@@ -768,4 +772,150 @@ model TenantInvite {
 
   @@index([tenantId, status])
   @@index([email])
+}
+
+// ---------------------------------------------------------------------
+// SaaS sahibi muhasebesi (işletmelerin kendi kasasından tamamen ayrı).
+// Tablolar yalnızca platform rolüne açıktır; işletme rolü erişemez.
+// ---------------------------------------------------------------------
+
+/// SaaS sahibinin şirket bilgileri (tek satır, id = 1). Bilgiler girilene kadar boştur.
+model PlatformCompany {
+  id               Int      @id @default(1)
+  legalName        String?
+  address          String?
+  /// Vergi kimlik numarası (VKN)
+  taxNumber        String?
+  taxOffice        String?
+  iban             String?
+  email            String?
+  phone            String?
+  website          String?
+  /// KDV oranı (%). Girilmeden fatura taslağı oluşturulamaz; varsayılan oran yoktur.
+  vatRate          Decimal? @db.Decimal(5, 2)
+  /// Paket fiyatları KDV dahil mi? Girilmeden fatura taslağı oluşturulamaz.
+  pricesIncludeVat Boolean?
+  paymentTermDays  Int      @default(7)
+  invoiceNote      String?
+  updatedAt        DateTime @updatedAt
+  updatedById      String?  @db.Uuid
+}
+
+/// İşletmenin fatura bilgileri (SaaS sahibinin müşterisi olarak).
+model TenantBillingProfile {
+  tenantId  String   @id @db.Uuid
+  legalName String
+  /// VKN (10 hane) ya da TCKN (11 hane)
+  taxNumber String?
+  taxOffice String?
+  address   String?
+  email     String?
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+enum LedgerEntryType {
+  /// Tahakkuk: işletmenin borcu artar
+  ACCRUAL
+  /// Tahakkuk iptali: tahsil edilmemiş kısım düşülür
+  ACCRUAL_CANCEL
+  /// Tahsilat: borç azalır
+  PAYMENT
+  /// İade: tahsil edilen tutar geri ödenir
+  REFUND
+}
+
+enum LedgerPaymentMethod {
+  BANK_TRANSFER
+  CARD
+  CASH
+  OTHER
+}
+
+/// Kiracı cari hesabı. Yalnızca eklenebilir; düzeltme ters kayıtla yapılır.
+model PlatformLedgerEntry {
+  id             String               @id @default(uuid()) @db.Uuid
+  tenantId       String               @db.Uuid
+  type           LedgerEntryType
+  amount         Decimal              @db.Decimal(12, 2)
+  description    String
+  occurredAt     DateTime
+  dueDate        DateTime?
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  subscriptionId String?              @db.Uuid
+  /// PAYMENT: kapatılan tahakkuk; REFUND: iade edilen tahsilat; ACCRUAL_CANCEL: iptal edilen tahakkuk
+  relatedEntryId String?              @db.Uuid
+  method         LedgerPaymentMethod?
+  reference      String?
+  requestId      String               @unique
+  actorId        String               @db.Uuid
+  createdAt      DateTime             @default(now())
+
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  subscription Subscription?         @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  related      PlatformLedgerEntry?  @relation("LedgerRelated", fields: [relatedEntryId], references: [id], onDelete: Restrict)
+  dependents   PlatformLedgerEntry[] @relation("LedgerRelated")
+  invoice      PlatformInvoice?
+
+  @@index([tenantId, occurredAt])
+  @@index([relatedEntryId])
+}
+
+enum PlatformInvoiceStatus {
+  /// Taslak: mali değeri yoktur
+  DRAFT
+  /// Başka bir sistemde kesilmiş faturanın kaydı (resmî numara elle girilir)
+  RECORDED
+  /// Yetkili e-Fatura/e-Arşiv entegratörü üzerinden düzenlendi
+  ISSUED
+  CANCELLED
+}
+
+model PlatformInvoice {
+  id               String                @id @default(uuid()) @db.Uuid
+  tenantId         String                @db.Uuid
+  status           PlatformInvoiceStatus @default(DRAFT)
+  /// Taslak numarası (TASLAK-2026-000001); resmî fatura numarası değildir
+  draftNo          String                @unique
+  officialNumber   String?               @unique
+  issueDate        DateTime?
+  seller           Json
+  buyer            Json
+  currency         String                @default("TRY")
+  vatRate          Decimal               @db.Decimal(5, 2)
+  pricesIncludeVat Boolean
+  netTotal         Decimal               @db.Decimal(12, 2)
+  vatTotal         Decimal               @db.Decimal(12, 2)
+  grossTotal       Decimal               @db.Decimal(12, 2)
+  note             String?
+  accrualId        String?               @unique @db.Uuid
+  provider         String?
+  providerRef      String?
+  cancelledAt      DateTime?
+  cancelReason     String?
+  createdById      String                @db.Uuid
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  tenant  Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  accrual PlatformLedgerEntry?  @relation(fields: [accrualId], references: [id], onDelete: Restrict)
+  lines   PlatformInvoiceLine[]
+
+  @@index([tenantId, createdAt])
+}
+
+model PlatformInvoiceLine {
+  id          String  @id @default(uuid()) @db.Uuid
+  invoiceId   String  @db.Uuid
+  description String
+  quantity    Decimal @db.Decimal(12, 3)
+  unitPrice   Decimal @db.Decimal(12, 2)
+  netAmount   Decimal @db.Decimal(12, 2)
+  vatAmount   Decimal @db.Decimal(12, 2)
+  grossAmount Decimal @db.Decimal(12, 2)
+  sortOrder   Int     @default(0)
+
+  invoice PlatformInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 }

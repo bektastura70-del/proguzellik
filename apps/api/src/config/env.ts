@@ -35,6 +35,8 @@ const schema = z.object({
   APP_URL: z.string().optional(),
   // Ödeme: yalnızca test sağlayıcısı uygulanmıştır; canlıda (NODE_ENV=production) online ödeme her zaman kapalıdır.
   PAYMENT_MODE: z.enum(["mock"]).default("mock"),
+  // e-Fatura/e-Arşiv: yetkili entegratör bağlanana kadar "none" (fatura yalnızca taslak/kayıt olarak tutulur).
+  EINVOICE_PROVIDER: z.enum(["none"]).default("none"),
   // Zamanlanmış görevler
   JOBS_ENABLED: z.enum(["0", "1"]).default("1"),
   JOBS_CRON: z.string().default("0 3 * * *"),
