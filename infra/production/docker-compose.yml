@@ -142,7 +142,7 @@ services:
       api: { condition: service_healthy }
     environment:
       NODE_ENV: production
-      API_URL: http://api:4000
+      API_URL: http://proguzellik-prod-api:4000
       TRUST_PROXY: "1"
       HOSTNAME: 0.0.0.0
       # Kanonik adres (site haritası, robots, Open Graph)
