@@ -24,6 +24,7 @@ const NAV: Item[] = [
   { href: "/panel/kasa", label: "Kasa", icon: Wallet, roles: ["OWNER", "MANAGER", "RECEPTION"] },
   { href: "/panel/stok", label: "Stok", icon: Boxes, feature: "STOCK" },
   { href: "/panel/raporlar", label: "Raporlar", icon: BarChart3, roles: ["OWNER", "MANAGER"], feature: "REPORTS" },
+  { href: "/panel/mesajlar", label: "Mesajlar", icon: MessageCircle, roles: ["OWNER", "MANAGER", "RECEPTION"], feature: "WHATSAPP" },
   { href: "/panel/kampanyalar", label: "Kampanyalar", icon: Megaphone, roles: ["OWNER", "MANAGER", "RECEPTION"] },
   { href: "/panel/kanallar", label: "WhatsApp & Instagram", icon: Link2, roles: ["OWNER", "MANAGER"], feature: "WHATSAPP" },
   { href: "/panel/bildirimler", label: "Bildirimler", icon: Bell, roles: ["OWNER", "MANAGER", "RECEPTION"], feature: "WHATSAPP" },

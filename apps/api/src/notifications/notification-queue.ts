@@ -4,6 +4,8 @@ import IORedis from "ioredis";
 import { loadEnv } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 import { waCreds } from "../messaging/channels.service";
+import { recordTemplateInConversation } from "../messaging/inbox.service";
+import { renderTemplate } from "../messaging/templates";
 import { MetaDisabledError, MetaGateway } from "../messaging/meta.gateway";
 import { WhatsAppNotConfiguredError, WhatsAppProvider } from "./whatsapp.provider";
 
@@ -30,8 +32,8 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
    */
   private async send(tenantId: string, to: string, template: string, params: string[]) {
     const conn = await this.prisma.platform.channelConnection.findUnique({ where: { tenantId_channel: { tenantId, channel: "WHATSAPP" } } });
-    if (conn?.status === "CONNECTED") return this.meta.sendWhatsAppTemplate(waCreds(conn), to, template, params);
-    return this.provider.sendTemplate({ to, template: template as never, params });
+    if (conn?.status === "CONNECTED") return { ...(await this.meta.sendWhatsAppTemplate(waCreds(conn), to, template, params)), conn };
+    return { ...(await this.provider.sendTemplate({ to, template: template as never, params })), conn: null };
   }
 
   private connect() {
@@ -105,11 +107,17 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
     }
     const payload = n.payload as { params: string[] };
     try {
-      const { messageId } = await this.send(n.tenantId, n.recipient, n.template, payload.params);
+      const { messageId, conn } = await this.send(n.tenantId, n.recipient, n.template, payload.params);
       await db.notification.update({
         where: { id: n.id },
         data: { status: "SENT", providerMessageId: messageId, sentAt: new Date(), attempts: { increment: 1 }, error: null },
       });
+      if (conn) {
+        // Müşteri bu mesaja yanıt verirse gelen kutusunda ve yapay zekâda bağlam olsun.
+        await this.prisma
+          .withTenant({ tenantId: n.tenantId, userId: "" }, (tx) => recordTemplateInConversation(tx, conn, n.recipient, renderTemplate(n.template, payload.params), messageId, n.customerId))
+          .catch((e) => this.logger.warn(`Konuşmaya kaydedilemedi: ${(e as Error).message}`));
+      }
       return "sent";
     } catch (e) {
       if (e instanceof WhatsAppNotConfiguredError || e instanceof MetaDisabledError) {
