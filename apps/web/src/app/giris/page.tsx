@@ -46,7 +46,8 @@ function LoginForm() {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const v = (new FormData(e.currentTarget).get("code") as string).trim();
+    const f = new FormData(e.currentTarget);
+    const v = String(f.get(useRecovery ? "recoveryCode" : "otp") ?? "").trim();
     const res = await fetch("/api/auth/mfa", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -63,11 +64,12 @@ function LoginForm() {
 
   if (mfaToken) {
     return (
-      <form onSubmit={submitMfa} className="space-y-4">
+      // Ayrı key: React parola formunun alanlarını (e-posta değeri dahil) buraya taşımasın, kod alanı boş açılsın.
+      <form key="mfa" onSubmit={submitMfa} className="space-y-4">
         {error && <Alert>{error}</Alert>}
         <p className="text-sm text-neutral-600">{useRecovery ? "Kurtarma kodlarınızdan birini girin. Her kod yalnızca bir kez kullanılabilir." : "Kimlik doğrulama uygulamanızdaki 6 haneli kodu girin."}</p>
         <Field label={useRecovery ? "Kurtarma kodu" : "Doğrulama kodu"}>
-          <Input name="code" required autoFocus autoComplete="one-time-code" inputMode={useRecovery ? "text" : "numeric"} placeholder={useRecovery ? "xxxx-xxxx-xx" : "123456"} maxLength={useRecovery ? 20 : 7} />
+          <Input key={useRecovery ? "recovery" : "otp"} id={useRecovery ? "mfa-recovery-code" : "mfa-code"} name={useRecovery ? "recoveryCode" : "otp"} type="text" defaultValue="" required autoFocus autoComplete="one-time-code" autoCapitalize="off" spellCheck={false} inputMode={useRecovery ? "text" : "numeric"} placeholder={useRecovery ? "xxxx-xxxx-xx" : "123456"} maxLength={useRecovery ? 20 : 7} />
         </Field>
         <Button className="w-full" size="lg" disabled={busy}>{busy ? "Doğrulanıyor…" : "Doğrula ve giriş yap"}</Button>
         <button type="button" className="w-full text-center text-sm text-brand-700" onClick={() => { setUseRecovery(!useRecovery); setError(null); }}>
@@ -78,14 +80,14 @@ function LoginForm() {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4">
+    <form key="login" onSubmit={submit} className="space-y-4">
       {info && <Alert tone="green">{info}</Alert>}
       {error && <Alert>{error}</Alert>}
       <Field label="E-posta">
-        <Input name="email" type="email" autoComplete="email" required />
+        <Input id="login-email" name="email" type="email" autoComplete="email" required />
       </Field>
       <Field label="Parola">
-        <Input name="password" type="password" autoComplete="current-password" required />
+        <Input id="login-password" name="password" type="password" autoComplete="current-password" required />
       </Field>
       <div className="-mt-2 text-right text-sm">
         <Link href="/sifremi-unuttum" className="text-brand-700">Parolamı unuttum</Link>
