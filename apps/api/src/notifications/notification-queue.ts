@@ -3,6 +3,8 @@ import { Job, Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { loadEnv } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
+import { waCreds } from "../messaging/channels.service";
+import { MetaDisabledError, MetaGateway } from "../messaging/meta.gateway";
 import { WhatsAppNotConfiguredError, WhatsAppProvider } from "./whatsapp.provider";
 
 export const QUEUE_NAME = "notifications";
@@ -19,7 +21,18 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly provider: WhatsAppProvider,
+    private readonly meta: MetaGateway,
   ) {}
+
+  /**
+   * İşletmenin kendi doğrulanmış WhatsApp numarası varsa mesaj oradan gider;
+   * yoksa (eski) platform geneli sağlayıcı kullanılır.
+   */
+  private async send(tenantId: string, to: string, template: string, params: string[]) {
+    const conn = await this.prisma.platform.channelConnection.findUnique({ where: { tenantId_channel: { tenantId, channel: "WHATSAPP" } } });
+    if (conn?.status === "CONNECTED") return this.meta.sendWhatsAppTemplate(waCreds(conn), to, template, params);
+    return this.provider.sendTemplate({ to, template: template as never, params });
+  }
 
   private connect() {
     const c = new IORedis(loadEnv().REDIS_URL, { maxRetriesPerRequest: null });
@@ -71,16 +84,24 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
         return "skipped";
       }
     }
+    if (n.kind === "MARKETING") {
+      // Ticari ileti: rıza gönderim anında yeniden kontrol edilir (geri çekilmiş olabilir).
+      const c = n.customerId ? await db.customer.findUnique({ where: { id: n.customerId }, select: { marketingConsent: true, anonymizedAt: true } }) : null;
+      if (!c?.marketingConsent || c.anonymizedAt) {
+        await db.notification.update({ where: { id: n.id }, data: { status: "SKIPPED", error: "Ticari ileti izni yok" } });
+        return "skipped";
+      }
+    }
     const payload = n.payload as { params: string[] };
     try {
-      const { messageId } = await this.provider.sendTemplate({ to: n.recipient, template: n.template as never, params: payload.params });
+      const { messageId } = await this.send(n.tenantId, n.recipient, n.template, payload.params);
       await db.notification.update({
         where: { id: n.id },
         data: { status: "SENT", providerMessageId: messageId, sentAt: new Date(), attempts: { increment: 1 }, error: null },
       });
       return "sent";
     } catch (e) {
-      if (e instanceof WhatsAppNotConfiguredError) {
+      if (e instanceof WhatsAppNotConfiguredError || e instanceof MetaDisabledError) {
         await db.notification.update({ where: { id: n.id }, data: { status: "SKIPPED", attempts: { increment: 1 }, error: e.message } });
         return "not_configured";
       }

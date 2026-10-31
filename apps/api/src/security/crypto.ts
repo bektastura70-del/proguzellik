@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, hkdfSync, randomBytes, timingSafeEqual } from "node:crypto";
 
 export const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 
@@ -12,6 +12,14 @@ export function safeEqual(a: string, b: string) {
 }
 
 /* --------------------------- AES-256-GCM --------------------------- */
+/**
+ * Ana anahtardan amaca özel alt anahtar türetir (HKDF-SHA256). Böylece örneğin kanal erişim anahtarları,
+ * 2FA sırlarıyla aynı anahtarla şifrelenmez ve canlıda yeni bir gizli değer gerekmez.
+ */
+export function deriveKeyHex(masterHex: string, label: string) {
+  return Buffer.from(hkdfSync("sha256", key(masterHex), Buffer.alloc(0), `proguzellik:${label}`, 32)).toString("hex");
+}
+
 function key(hex: string) {
   const k = Buffer.from(hex, "hex");
   if (k.length !== 32) throw new Error("MFA_ENCRYPTION_KEY 64 karakterlik hex (32 bayt) olmalı");

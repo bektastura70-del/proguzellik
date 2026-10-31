@@ -41,6 +41,8 @@ model Tenant {
   email                String?
   address              String?
   timezone             String        @default("Europe/Istanbul")
+  /// Süreli paket bitimine kaç gün kala müşteriye hatırlatma planlanır (WhatsApp)
+  packageReminderDays  Int           @default(7)
   suspendedAt          DateTime?
   suspendedReason      String?
   suspendedFromStatus  TenantStatus?
@@ -184,18 +186,20 @@ model ServiceCategory {
 }
 
 model Service {
-  id             String   @id @default(uuid()) @db.Uuid
-  tenantId       String   @db.Uuid
-  categoryId     String?  @db.Uuid
-  name           String
-  description    String?
-  durationMin    Int
-  price          Decimal  @db.Decimal(12, 2)
-  color          String?
-  isActive       Boolean  @default(true)
-  onlineBookable Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @db.Uuid
+  categoryId      String?  @db.Uuid
+  name            String
+  description     String?
+  durationMin     Int
+  price           Decimal  @db.Decimal(12, 2)
+  color           String?
+  isActive        Boolean  @default(true)
+  onlineBookable  Boolean  @default(true)
+  /// Tamamlanan randevudan kaç gün sonra "tekrar randevu" hatırlatması yapılır (boşsa yapılmaz)
+  rebookAfterDays Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   category         ServiceCategory?    @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
@@ -281,6 +285,8 @@ enum AppointmentStatus {
 enum BookingSource {
   PANEL
   ONLINE
+  WHATSAPP
+  INSTAGRAM
 }
 
 model Appointment {
@@ -704,9 +710,16 @@ model Notification {
   error             String?
   attempts          Int                @default(0)
   sentAt            DateTime?
+  /// SERVICE: hizmet bildirimi (randevu, paket) · MARKETING: ticari ileti (yalnızca açık rızalı müşteriye)
+  kind              String             @default("SERVICE")
+  /// Aynı bildirimin iki kez planlanmasını önler (ör. paket:<id>:<bitiş>)
+  dedupeKey         String?
+  customerId        String?            @db.Uuid
+  campaignId        String?            @db.Uuid
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
+  @@unique([tenantId, dedupeKey])
   @@index([tenantId, createdAt])
   @@index([tenantId, appointmentId])
 }
@@ -1053,4 +1066,144 @@ model UserConsent {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, type, createdAt])
+}
+
+// ---------------------------------------------------------------------
+// Mesajlaşma kanalları (işletmenin kendi WhatsApp / Instagram hesabı),
+// gelen kutusu ve kampanyalar
+// ---------------------------------------------------------------------
+enum ChannelType {
+  WHATSAPP
+  INSTAGRAM
+}
+
+enum ChannelStatus {
+  /// Bilgiler girildi, Meta ile doğrulanmadı
+  DRAFT
+  /// Meta API ile doğrulandı
+  CONNECTED
+  /// Son doğrulama/gönderim hatalı
+  ERROR
+  /// İşletme bağlantıyı kapattı
+  DISABLED
+}
+
+model ChannelConnection {
+  id                String        @id @default(uuid()) @db.Uuid
+  tenantId          String        @db.Uuid
+  channel           ChannelType
+  status            ChannelStatus @default(DRAFT)
+  /// WhatsApp: phone_number_id · Instagram: profesyonel hesap kimliği (IG ID)
+  externalId        String
+  /// WhatsApp Business hesap kimliği (WABA ID), şablon durumu için
+  businessAccountId String?
+  /// Doğrulamada Meta'dan okunan numara veya @kullanıcı adı
+  displayName       String?
+  /// AES-256-GCM ile şifreli erişim anahtarı; API yanıtlarında asla dönmez
+  accessTokenEnc    String
+  tokenLast4        String
+  /// Meta uygulama gizli anahtarı (webhook imzası), şifreli
+  appSecretEnc      String
+  /// Webhook doğrulama belirteci (Meta panelinde girilir); şifreli
+  verifyTokenEnc    String
+  verifiedAt        DateTime?
+  webhookVerifiedAt DateTime?
+  lastWebhookAt     DateTime?
+  lastError         String?
+  /// Gelen mesajlara yapay zekâ otomatik yanıt verir mi?
+  aiAutoReply       Boolean       @default(false)
+  /// Müşteri mesajlarının yapay zekâ sağlayıcısına (yurt dışı) aktarımı için işletme onayı
+  aiDataConsentAt   DateTime?
+  aiDataConsentBy   String?       @db.Uuid
+  createdById       String?       @db.Uuid
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  conversations Conversation[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, channel])
+  @@index([channel, externalId])
+}
+
+enum ConversationMode {
+  /// Yapay zekâ yanıtlar
+  AI
+  /// Personel devraldı; yapay zekâ yanıt vermez
+  HUMAN
+}
+
+model Conversation {
+  id             String           @id @default(uuid()) @db.Uuid
+  tenantId       String           @db.Uuid
+  connectionId   String           @db.Uuid
+  channel        ChannelType
+  /// WhatsApp: telefon (wa_id) · Instagram: kapsamlı kullanıcı kimliği (IGSID)
+  externalUserId String
+  displayName    String?
+  customerId     String?          @db.Uuid
+  mode           ConversationMode @default(AI)
+  handoffReason  String?
+  /// Meta 24 saat kuralı: serbest metin yalnızca son gelen mesajdan sonraki 24 saatte
+  lastInboundAt  DateTime?
+  lastMessageAt  DateTime         @default(now())
+  unread         Int              @default(0)
+  /// Sohbet motorunun ara durumu (onay bekleyen randevu vb.)
+  state          Json?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  connection ChannelConnection     @relation(fields: [tenantId, connectionId], references: [tenantId, id], onDelete: Cascade)
+  messages   ConversationMessage[]
+
+  @@unique([tenantId, id])
+  @@unique([connectionId, externalUserId])
+  @@index([tenantId, lastMessageAt])
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+enum MessageAuthor {
+  CUSTOMER
+  AI
+  STAFF
+  SYSTEM
+}
+
+model ConversationMessage {
+  id                String             @id @default(uuid()) @db.Uuid
+  tenantId          String             @db.Uuid
+  conversationId    String             @db.Uuid
+  direction         MessageDirection
+  author            MessageAuthor
+  text              String
+  /// Meta mesaj kimliği (wamid / mid); tekrar gelen webhook'lar bununla elenir
+  providerMessageId String?            @unique
+  status            NotificationStatus @default(QUEUED)
+  error             String?
+  staffUserId       String?            @db.Uuid
+  createdAt         DateTime           @default(now())
+
+  conversation Conversation @relation(fields: [tenantId, conversationId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, conversationId, createdAt])
+}
+
+model Campaign {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  title       String
+  /// Müşteriye anlatılacak metin (yapay zekâ yalnızca bunu kullanır)
+  description String
+  startsAt    DateTime?
+  endsAt      DateTime?
+  isActive    Boolean   @default(true)
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId, isActive])
 }

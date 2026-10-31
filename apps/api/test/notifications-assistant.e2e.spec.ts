@@ -2,6 +2,7 @@ import { INestApplication } from "@nestjs/common";
 import { createHmac } from "node:crypto";
 import request from "supertest";
 import { AnthropicAiProvider, MockAiProvider } from "../src/assistant/ai.provider";
+import { DisabledMetaGateway } from "../src/messaging/meta.gateway";
 import { NotificationQueue } from "../src/notifications/notification-queue";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { CloudWhatsAppProvider, DisabledWhatsAppProvider, MockWhatsAppProvider } from "../src/notifications/whatsapp.provider";
@@ -91,7 +92,7 @@ describe("WhatsApp bildirim altyapısı (BullMQ + test sağlayıcısı) ve yapay
   });
 
   it("canlıda WhatsApp bağlı değilse mesaj 'gönderildi' sayılmaz; atlandı olarak işaretlenir", async () => {
-    const q = new NotificationQueue(app.get(PrismaService), new DisabledWhatsAppProvider());
+    const q = new NotificationQueue(app.get(PrismaService), new DisabledWhatsAppProvider(), new DisabledMetaGateway());
     const n = await su.notification.create({
       data: { tenantId: A.tenant.id, recipient: "05550000002", template: "randevu_onay", payload: { params: ["a", "b", "c", "d", "e"] } },
     });

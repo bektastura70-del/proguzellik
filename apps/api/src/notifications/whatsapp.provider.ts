@@ -2,7 +2,9 @@ import { Injectable, Logger } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { loadEnv } from "../config/env";
 
-export type TemplateName = "randevu_onay" | "randevu_hatirlatma" | "randevu_iptal";
+import { TemplateName, renderTemplate } from "../messaging/templates";
+export { renderTemplate };
+export type { TemplateName };
 
 export interface TemplateMessage {
   to: string;
@@ -14,18 +16,6 @@ export interface TemplateMessage {
 export abstract class WhatsAppProvider {
   abstract readonly name: string;
   abstract sendTemplate(msg: TemplateMessage): Promise<{ messageId: string }>;
-}
-
-/** Türkçe önizleme metinleri (Meta'da onaylanacak şablonların karşılığı). */
-export function renderTemplate(template: TemplateName, p: string[]): string {
-  switch (template) {
-    case "randevu_onay":
-      return `Merhaba ${p[0]}, ${p[1]} randevunuz oluşturuldu: ${p[2]} – ${p[3]} ${p[4]}. Görüşmek üzere!`;
-    case "randevu_hatirlatma":
-      return `Merhaba ${p[0]}, yarın ${p[3]} ${p[4]} saatinde ${p[1]} – ${p[2]} randevunuz var.`;
-    case "randevu_iptal":
-      return `Merhaba ${p[0]}, ${p[1]} – ${p[2]} (${p[3]} ${p[4]}) randevunuz iptal edildi.`;
-  }
 }
 
 /** WhatsApp bağlı değil: mesaj gönderilmez ve "gönderildi" sayılmaz. */
