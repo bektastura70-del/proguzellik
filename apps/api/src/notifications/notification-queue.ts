@@ -84,6 +84,17 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
         return "skipped";
       }
     }
+    if (n.template === "paket_hatirlatma" && n.dedupeKey) {
+      // Planlandıktan sonra paket kullanıldı/iptal edildi ya da randevu alındıysa gönderilmez.
+      const pkg = await db.customerPackage.findUnique({
+        where: { id: n.dedupeKey.split(":")[1] },
+        select: { status: true, appointments: { where: { status: { in: ["BOOKED", "CONFIRMED"] }, startsAt: { gt: new Date() } }, select: { id: true } } },
+      });
+      if (!pkg || pkg.status !== "ACTIVE" || pkg.appointments.length > 0) {
+        await db.notification.update({ where: { id: n.id }, data: { status: "SKIPPED", error: "Paket artık hatırlatma gerektirmiyor" } });
+        return "skipped";
+      }
+    }
     if (n.kind === "MARKETING") {
       // Ticari ileti: rıza gönderim anında yeniden kontrol edilir (geri çekilmiş olabilir).
       const c = n.customerId ? await db.customer.findUnique({ where: { id: n.customerId }, select: { marketingConsent: true, anonymizedAt: true } }) : null;

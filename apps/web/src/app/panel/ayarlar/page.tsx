@@ -7,7 +7,7 @@ import { Alert, Badge, Button, Card, CardBody, CardHeader, Dialog, Field, Input,
 import { api, useApi } from "@/lib/api";
 import { ROLE_TR } from "@/lib/format";
 
-type Settings = { name: string; slug: string; phone: string | null; email: string | null; address: string | null; timezone: string; onlineBookingEnabled: boolean; requireMfa: boolean };
+type Settings = { name: string; slug: string; phone: string | null; email: string | null; address: string | null; timezone: string; onlineBookingEnabled: boolean; requireMfa: boolean; packageReminderDays: number };
 type TeamInvite = { id: string; email: string; fullName: string; role: string; status: "PENDING_DELIVERY" | "SENT"; expiresAt: string | null; sentAt: string | null };
 type InviteResult = { delivered: boolean; reason?: string };
 type Member = { id: string; role: string; isActive: boolean; user: { id: string; fullName: string; email: string } };
@@ -38,7 +38,7 @@ export default function SettingsPage() {
               e.preventDefault();
               const f = new FormData(e.currentTarget);
               try {
-                await api("/settings", { method: "PATCH", body: { name: f.get("name"), phone: (f.get("phone") as string) || undefined, email: (f.get("email") as string) || undefined, address: (f.get("address") as string) || undefined, onlineBookingEnabled: f.get("online") === "on" } });
+                await api("/settings", { method: "PATCH", body: { name: f.get("name"), phone: (f.get("phone") as string) || undefined, email: (f.get("email") as string) || undefined, address: (f.get("address") as string) || undefined, onlineBookingEnabled: f.get("online") === "on", packageReminderDays: Number(f.get("packageReminderDays")) || undefined } });
                 toast("Ayarlar kaydedildi"); settings.reload();
               } catch (err) { toast((err as Error).message, "red"); }
             }}>
@@ -50,6 +50,7 @@ export default function SettingsPage() {
               <Field label="Adres"><Input name="address" defaultValue={s.address ?? ""} /></Field>
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="online" defaultChecked={s.onlineBookingEnabled} className="accent-brand-600" /> Online randevu sayfası açık</label>
               <p className="text-xs text-neutral-500">Online randevu adresi: /r/{s.slug}</p>
+              <Field label="Paket bitiş hatırlatması (gün önce)" hint="WhatsApp bağlıysa süreli paketi bitmek üzere olan ve seansı kalan müşteriye mesaj planlanır."><Input name="packageReminderDays" type="number" min={1} max={60} defaultValue={s.packageReminderDays} /></Field>
               <Button>Kaydet</Button>
             </form>
           </CardBody>

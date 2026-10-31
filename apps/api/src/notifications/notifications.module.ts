@@ -3,6 +3,7 @@ import { loadEnv } from "../config/env";
 import { NotificationQueue } from "./notification-queue";
 import { NotificationHooks } from "./notification.hooks";
 import { NotificationsController } from "./notifications.controller";
+import { RetentionService } from "./retention.service";
 import { CloudWhatsAppProvider, DisabledWhatsAppProvider, MockWhatsAppProvider, WhatsAppProvider } from "./whatsapp.provider";
 
 @Global()
@@ -22,7 +23,8 @@ import { CloudWhatsAppProvider, DisabledWhatsAppProvider, MockWhatsAppProvider, 
     },
     NotificationQueue,
     NotificationHooks,
+    RetentionService,
   ],
-  exports: [NotificationQueue, NotificationHooks, WhatsAppProvider, MockWhatsAppProvider],
+  exports: [NotificationQueue, NotificationHooks, RetentionService, WhatsAppProvider, MockWhatsAppProvider],
 })
 export class NotificationsModule {}

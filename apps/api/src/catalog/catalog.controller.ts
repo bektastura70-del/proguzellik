@@ -15,6 +15,7 @@ const serviceSchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   isActive: z.boolean().optional(),
   onlineBookable: z.boolean().optional(),
+  rebookAfterDays: z.number().int().min(1).max(365).nullable().optional(),
 });
 const listSchema = z.object({ includeInactive: z.enum(["true", "false"]).optional() });
 

@@ -20,11 +20,12 @@ const settingsSchema = z.object({
   }, "Geçersiz saat dilimi").optional(),
   onlineBookingEnabled: z.boolean().optional(),
   requireMfa: z.boolean().optional(),
+  packageReminderDays: z.number().int().min(1).max(60).optional(),
 });
 
 const PUBLIC_FIELDS = {
   id: true, name: true, slug: true, phone: true, email: true, address: true, timezone: true,
-  onlineBookingEnabled: true, requireMfa: true, status: true, planCode: true, trialEndsAt: true,
+  onlineBookingEnabled: true, requireMfa: true, packageReminderDays: true, status: true, planCode: true, trialEndsAt: true,
 } as const;
 
 @Controller("settings")

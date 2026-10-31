@@ -161,3 +161,5 @@ CREATE UNIQUE INDEX "ChannelConnection_connected_external_key" ON "ChannelConnec
 SELECT app_secure_tenant_table(t) FROM unnest(ARRAY['ChannelConnection', 'Conversation', 'ConversationMessage', 'Campaign']) AS t;
 -- Meta teslim durumları (webhook) giden mesaj kaydını günceller.
 GRANT UPDATE ("status", "error") ON "ConversationMessage" TO app_platform;
+-- İşletme, paket hatırlatma gün sayısını kendi ayarlarından değiştirebilir.
+GRANT UPDATE ("packageReminderDays") ON "Tenant" TO app_tenant;
