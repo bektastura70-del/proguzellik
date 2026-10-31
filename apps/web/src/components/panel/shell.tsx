@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  BarChart3, Bell, Boxes, CalendarDays, CreditCard, LayoutDashboard, LogOut, Menu, Package, Scissors, Settings, Sparkles, Users, UserSquare2, Wallet, X, Shield,
+  BarChart3, Bell, Boxes, MessageCircle, Link2, CalendarDays, CreditCard, LayoutDashboard, LogOut, Menu, Package, Scissors, Settings, Sparkles, Users, UserSquare2, Wallet, X, Shield,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -24,6 +24,7 @@ const NAV: Item[] = [
   { href: "/panel/kasa", label: "Kasa", icon: Wallet, roles: ["OWNER", "MANAGER", "RECEPTION"] },
   { href: "/panel/stok", label: "Stok", icon: Boxes, feature: "STOCK" },
   { href: "/panel/raporlar", label: "Raporlar", icon: BarChart3, roles: ["OWNER", "MANAGER"], feature: "REPORTS" },
+  { href: "/panel/kanallar", label: "WhatsApp & Instagram", icon: Link2, roles: ["OWNER", "MANAGER"], feature: "WHATSAPP" },
   { href: "/panel/bildirimler", label: "Bildirimler", icon: Bell, roles: ["OWNER", "MANAGER", "RECEPTION"], feature: "WHATSAPP" },
   { href: "/panel/asistan", label: "Asistan", icon: Sparkles, roles: ["OWNER", "MANAGER"], feature: "AI_ASSISTANT" },
   { href: "/panel/abonelik", label: "Abonelik", icon: CreditCard, roles: ["OWNER", "MANAGER"] },
