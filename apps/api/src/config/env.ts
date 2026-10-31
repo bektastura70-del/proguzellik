@@ -25,6 +25,8 @@ const schema = z.object({
   META_MODE: z.enum(["mock", "live"]).default("mock"),
   META_GRAPH_VERSION: z.string().default("v21.0"),
   INSTAGRAM_GRAPH_VERSION: z.string().default("v26.0"),
+  // Toplu kampanya (ticari ileti) gönderimi. Tanımsızsa canlıda kapalı: İYS entegrasyonu yok.
+  MARKETING_MESSAGES: z.enum(["0", "1"]).optional(),
   // Yapay zekâ asistanı: varsayılan "mock" (kural tabanlı). "anthropic" Claude API kullanır.
   AI_MODE: z.enum(["mock", "anthropic"]).default("mock"),
   AI_MODEL: z.string().default("claude-opus-5-5"),
@@ -122,6 +124,7 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
     for (const k of ["WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN"] as const) if (!env[k]) err(`${k} gerekli`);
   }
   if (env.PAYMENT_MODE === "mock") warn("PAYMENT_MODE=mock: canlıda online ödeme kapalı; abonelikler yalnızca SaaS sahibi panelinden manuel tanımlanır");
+  if (env.MARKETING_MESSAGES === "1") warn("MARKETING_MESSAGES=1: işletmeler toplu kampanya mesajı gönderebilir (İYS kaydı işletmelerin sorumluluğunda)");
   if (env.META_MODE === "mock") warn("META_MODE=mock: işletmelerin WhatsApp/Instagram bağlantıları doğrulanamaz, mesaj alınıp gönderilmez");
   if (env.META_MODE === "live" && env.AI_MODE === "mock") warn("META_MODE=live, AI_MODE=mock: gelen mesajlara yapay zekâ yanıt vermez, tümü personel gelen kutusuna düşer");
   if (env.AI_MODE === "anthropic" && !raw.ANTHROPIC_API_KEY) err("AI_MODE=anthropic için ANTHROPIC_API_KEY gerekli");

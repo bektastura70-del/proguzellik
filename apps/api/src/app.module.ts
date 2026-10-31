@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { MessagingModule } from "./messaging/messaging.module";
+import { CampaignsModule } from "./campaigns/campaigns.module";
 import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { HealthModule } from "./health/health.module";
@@ -23,6 +24,6 @@ import { EmailModule } from "./email/email.module";
 import { JobsModule } from "./jobs/jobs.module";
 
 @Module({
-  imports: [PrismaModule, AuditModule, EmailModule, AuthModule, HealthModule, UsersModule, CustomersModule, CatalogModule, StaffModule, AppointmentsModule, PackagesModule, FinanceModule, StockModule, ReportsModule, BillingModule, PlatformModule, SettingsModule, PublicBookingModule, NotificationsModule, MessagingModule, AssistantModule, JobsModule],
+  imports: [PrismaModule, AuditModule, EmailModule, AuthModule, HealthModule, UsersModule, CustomersModule, CatalogModule, StaffModule, AppointmentsModule, PackagesModule, FinanceModule, StockModule, ReportsModule, BillingModule, PlatformModule, SettingsModule, PublicBookingModule, NotificationsModule, MessagingModule, CampaignsModule, AssistantModule, JobsModule],
 })
 export class AppModule {}
