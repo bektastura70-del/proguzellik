@@ -65,10 +65,13 @@ export class InboxService {
           data: { tenantId: conn.tenantId, connectionId: conn.id, channel: conn.channel, externalUserId: m.externalUserId, displayName: m.name ?? null, customerId: customer?.id ?? null },
         });
       }
+      // Sıralama sunucunun alış saatine göre (Meta saniye hassasiyetinde gönderir); 24 saat penceresi ise
+      // müşterinin gönderdiği andan sayılır ve gelecekteki bir saate uzatılamaz.
+      const sentAt = new Date(Math.min(m.at.getTime(), Date.now()));
       let msg;
       try {
         msg = await tx.conversationMessage.create({
-          data: { tenantId: conn.tenantId, conversationId: conv.id, direction: "IN", author: "CUSTOMER", text: m.text.slice(0, 4000), providerMessageId: m.providerMessageId, status: "DELIVERED", createdAt: m.at },
+          data: { tenantId: conn.tenantId, conversationId: conv.id, direction: "IN", author: "CUSTOMER", text: m.text.slice(0, 4000), providerMessageId: m.providerMessageId, status: "DELIVERED" },
         });
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return null;
@@ -76,7 +79,7 @@ export class InboxService {
       }
       conv = await tx.conversation.update({
         where: { id: conv.id },
-        data: { lastInboundAt: m.at, lastMessageAt: m.at, unread: { increment: 1 }, ...(m.name ? { displayName: m.name } : {}) },
+        data: { lastInboundAt: sentAt, lastMessageAt: new Date(), unread: { increment: 1 }, ...(m.name ? { displayName: m.name } : {}) },
       });
       let optedOut = false;
       if (m.isText && OPT_OUT.test(m.text.trim()) && conv.customerId) {
