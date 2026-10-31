@@ -2,9 +2,9 @@
 
 import { Check, Copy, Instagram, MessageCircle } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useSession } from "@/components/panel/session";
-import { Alert, Badge, Button, Card, CardBody, CardHeader, Field, Input, PageHeader, Spinner, Table, Td, useToast } from "@/components/ui";
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Field, Input, Label, PageHeader, Spinner, Table, Td, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { dateTimeTr } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -41,15 +41,17 @@ function stepsFor(ch: Channel) {
 
 function CopyField({ label, value }: { label: string; value: string }) {
   const [done, setDone] = useState(false);
+  const id = useId();
   return (
-    <Field label={label}>
+    <div>
+      <Label htmlFor={id}>{label}</Label>
       <div className="flex gap-2">
-        <Input readOnly value={value} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
+        <Input id={id} readOnly value={value} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
         <Button type="button" variant="outline" aria-label={`${label} kopyala`} onClick={async () => {
           try { await navigator.clipboard.writeText(value); setDone(true); setTimeout(() => setDone(false), 1500); } catch { /* panoya erişim yok */ }
         }}>{done ? <Check className="size-4" /> : <Copy className="size-4" />}</Button>
       </div>
-    </Field>
+    </div>
   );
 }
 

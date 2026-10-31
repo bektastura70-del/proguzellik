@@ -89,7 +89,9 @@ function Thread({ id, onChange }: { id: string; onChange: () => void }) {
     const t = setInterval(() => void d.reload(), 8_000);
     return () => clearInterval(t);
   }, [d.reload]);
-  useEffect(() => end.current?.scrollIntoView({ block: "end" }), [d.data?.messages.length]);
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [d.data?.messages.length]);
 
   if (!d.data) return <Card className="p-6"><Spinner /></Card>;
   const c = d.data;
