@@ -4,6 +4,7 @@ import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { planCodeSchema } from "../billing/plans";
 import { priceForNewSale, upcomingPrice } from "../billing/plan-pricing";
+import { loadEnv, pricesHidden, pricingPublic } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 
 export interface PlanInput {
@@ -77,6 +78,15 @@ export class PlanAdminService {
     const list = [...new Set(ids.filter((x): x is string => !!x))];
     const users = list.length ? await this.db.user.findMany({ where: { id: { in: list } }, select: { id: true, email: true } }) : [];
     return new Map(users.map((u) => [u.id, u.email]));
+  }
+
+  /**
+   * Onaylı fiyatların dışarıda görünüp görünmediği (sunucu ayarı). SaaS sahibi panelinde uyarı için:
+   * PRICING_PUBLIC=0 iken onaylı fiyatlar da sitede ve işletme panelinde gizlidir.
+   */
+  pricingVisibility() {
+    const env = loadEnv();
+    return { pricesHidden: pricesHidden(env), onlineSales: pricingPublic(env) };
   }
 
   /** Paket listesi: güncel ve planlanan onaylı fiyat, taslak sayısı, kullanım. Eski fiyat sütunları dönmez. */

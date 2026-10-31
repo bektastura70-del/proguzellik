@@ -216,6 +216,8 @@ Akış: başvuru yalnızca `SignupRequest` olarak (parola özeti, KVKK/koşul s�
 ### Yeni sürüm
 1. `backup.sh` (yedek) → 2. `archive-image.sh <çalışan-sürüm>` (gece `docker image prune` önceki imajı silebilir) → 3. yeni imajları yükle → 4. `docker compose run --rm migrate node dist/cli/migrate.js status` ile bekleyenleri gör → 5. `.env`'de `APP_VERSION` güncelle → 6. `docker compose run --rm migrate` → 7. `docker compose up -d api web` → 8. duman testi.
 
+**Fiyat görünürlüğü (31.10.2026 sonrası sürümler):** `PRICING_PUBLIC` artık boş bırakılır; sitede ve işletme panelinde yalnız /platform'da parola + 2FA ile onaylanmış, başlangıç tarihi gelmiş fiyatlar görünür. `PRICING_PUBLIC=0` yalnız acil durumda tüm tutarları gizlemek içindir (SaaS sahibi panelinde uyarı çıkar). İlk kurulumdan kalan `PRICING_PUBLIC=0` satırı `.env`'den silinmeli ve güncel `docker-compose.yml` ile `up -d api worker web` yapılmalıdır (eski compose dosyası boş değeri 0 sayar).
+
 ### Geri dönüş (rollback)
 - **Uygulama:** `infra/production/rollback.sh <önceki-sürüm>` — imaj yoksa arşivden yükler (SHA-256 doğrulamalı), `APP_VERSION`'ı değiştirir (`.env` yedeği alınır), yalnızca api+web'i yeniden oluşturur ve sağlıklı olmasını bekler. Veritabanına dokunmaz.
 - **Veritabanı:** Migration'lar geri alınamaz. Yeni sürümün migration'ı eski sürümle uyumsuzsa: uygulamayı durdurun (`docker compose stop api web`), sürüm öncesi yedeği **yeni** veritabanına yükleyin (`PG_CONTAINER=proguzellik-prod-postgres PGUSER=proguzellik_owner infra/scripts/restore.sh <yedek> proguzellik_rb`), `set-db-role-passwords.sh` çalıştırın, `.env`'de `PG_DB=proguzellik_rb` yapıp önceki sürümle başlatın. Eski veritabanı inceleme için silinmeden kalır.

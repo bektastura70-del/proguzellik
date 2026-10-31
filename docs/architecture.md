@@ -48,4 +48,4 @@ NestJS'te tek global `AuthGuard`:
   yalnız "yenilemede uygula" seçilen sürüm, belirtilen tarihte ya da sonrasında **başlayan** ilk yenileme döneminden itibaren uygulanır. Devam eden dönem hiçbir zaman değişmez.
 - Tahsilat KDV dahil tutardır; ödeme kaydında KDV hariç tutar ve oran ayrıca saklanır. MRR kilitli fiyatlardan hesaplanır.
 - Tanıtım sitesi ve işletme paneli tutarı yalnız onaylı, yürürlükteki sürümden alır; onaylı fiyatı olmayan pakette "Fiyat yakında" yazar ve satın alma yapılamaz.
-  Eski `Plan.monthlyPrice/yearlyPrice` sütunları geriye dönük uyum için durur, hiçbir yanıtta dönmez. `PRICING_PUBLIC=0` acil durumda tüm tutarları gizler.
+  Eski `Plan.monthlyPrice/yearlyPrice` sütunları geriye dönük uyum için durur, hiçbir yanıtta dönmez. `PRICING_PUBLIC=0` acil durumda onaylı fiyatlar dahil tüm tutarları gizler (SaaS sahibi panelinde uyarı çıkar); normalde tanımsız/boş bırakılır.

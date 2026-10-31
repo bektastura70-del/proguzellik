@@ -45,10 +45,10 @@ const schema = z.object({
   // Yeni işletme kaydı. Tanımsızsa: canlıda (NODE_ENV=production) kapalı, diğer ortamlarda açık.
   REGISTRATION_ENABLED: z.enum(["0", "1"]).optional(),
   /**
-   * 1 = online satın alma ve otomatik yenileme açık (canlıda tanımsızsa kapalı). 0 = acil durum: tüm tutarlar gizlenir.
-   * Sitede tutar gösterimi ayrıca paket başına SaaS sahibinin onayladığı fiyat sürümüne bağlıdır.
+   * Tanımsız/boş (önerilen): SaaS sahibinin onayladığı fiyatlar sitede ve işletme panelinde görünür; canlıda online satın alma kapalı.
+   * 1 = ayrıca online satın alma ve otomatik yenileme açık. 0 = acil durum: onaylı olsa bile tüm tutarlar gizlenir.
    */
-  PRICING_PUBLIC: z.enum(["0", "1"]).optional(),
+  PRICING_PUBLIC: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["0", "1"]).optional()),
   /** İşletmelerin abonelik/ödeme için yazacağı kurumsal adres (şirket ayarlarında e-posta girilmişse o kullanılır) */
   SUPPORT_EMAIL: z.string().email().default("info@proguzellik.com"),
 });
@@ -120,6 +120,7 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
   if (env.AI_MODE === "anthropic" && !raw.ANTHROPIC_API_KEY) err("AI_MODE=anthropic için ANTHROPIC_API_KEY gerekli");
   if (env.JOBS_ENABLED !== "1") warn("JOBS_ENABLED=0: günlük abonelik görevi bu süreçte çalışmaz (başka bir süreçte çalıştığından emin olun)");
   if (env.PRICING_PUBLIC === "1") warn("PRICING_PUBLIC=1: paket fiyatları herkese açık ve satışta kullanılır");
+  if (env.PRICING_PUBLIC === "0") warn("PRICING_PUBLIC=0: onaylı paket fiyatları dahil tüm tutarlar sitede ve işletme panelinde gizli");
   if (env.REGISTRATION_ENABLED === "1") warn("REGISTRATION_ENABLED=1: herkese açık işletme kaydı açık");
   if (raw.DISABLE_RATE_LIMIT === "1") err("DISABLE_RATE_LIMIT canlıda kullanılamaz");
   return issues;

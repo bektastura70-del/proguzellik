@@ -190,10 +190,15 @@ describe("SaaS sahibi paket fiyat yönetimi", () => {
     it("PRICING_PUBLIC=0 acil durum anahtarı tüm tutarları gizler", async () => {
       const env = loadEnv();
       const before = env.PRICING_PUBLIC;
+      expect((await admin.get("/platform/pricing-visibility").expect(200)).body).toMatchObject({ pricesHidden: false });
       Object.assign(env, { PRICING_PUBLIC: "0" });
       try {
         const r = await http().get("/plans").expect(200);
         for (const p of r.body) expect(p.monthlyPrice).toBeNull();
+        // SaaS sahibi panelinde onaylı fiyat görünür, ama gizlendiği ayrıca bildirilir
+        expect((await admin.get("/platform/pricing-visibility").expect(200)).body).toEqual({ pricesHidden: true, onlineSales: false });
+        expect((await admin.get("/platform/plans").expect(200)).body.find((x: any) => x.code === "STARTER").currentPrice).not.toBeNull();
+        await a.get("/platform/pricing-visibility").expect(403);
       } finally {
         Object.assign(env, { PRICING_PUBLIC: before });
       }
@@ -272,6 +277,19 @@ describe("SaaS sahibi paket fiyat yönetimi", () => {
       expect(h.body.items.map((x: any) => [x.version, x.status])).toEqual([[3, "APPROVED"], [2, "APPROVED"], [1, "APPROVED"], [null, "CANCELLED"]]);
       expect(h.body.items.find((x: any) => x.version === 1).lockedSubscriptions).toBe(0);
       expect(h.body.items.find((x: any) => x.version === 2).lockedSubscriptions).toBe(1);
+    });
+
+    it("ileri tarihli fiyat yanlışlıkla onaylandıysa: başlangıcı boş yeni fiyat onaylanınca hemen yürürlüğe girer, ileri tarihli sürüm kendiliğinden iptal olur", async () => {
+      const at = new Date(Date.now() + 60 * DAY).toISOString();
+      const future = await admin.post("/platform/plans/SMART/prices").send({ monthlyPrice: 2000, yearlyPrice: 0, vatRate: 20, effectiveFrom: at, renewalPolicy: "KEEP_EXISTING" }).expect(201);
+      await approve("SMART", future.body.id).then((x) => expect(x.status).toBe(200));
+      expect((await admin.get("/platform/plans").expect(200)).body.find((x: any) => x.code === "SMART")).toMatchObject({ currentPrice: null, upcomingPrice: { monthlyPrice: "2000.00" } });
+      const now = await admin.post("/platform/plans/SMART/prices").send({ monthlyPrice: 2000, yearlyPrice: 0, vatRate: 20, renewalPolicy: "KEEP_EXISTING" }).expect(201);
+      await approve("SMART", now.body.id).then((x) => expect(x.status).toBe(200));
+      expect((await admin.get("/platform/plans").expect(200)).body.find((x: any) => x.code === "SMART")).toMatchObject({ currentPrice: { monthlyPrice: "2000.00" }, upcomingPrice: null });
+      expect((await http().get("/plans")).body.find((x: any) => x.code === "SMART").monthlyPrice).toBe("2000.00");
+      const h = (await admin.get("/platform/plans/SMART/prices").expect(200)).body.items;
+      expect(h.find((x: any) => x.id === future.body.id)).toMatchObject({ status: "CANCELLED", cancelReason: "Daha sonra onaylanan fiyat sürümüyle değiştirildi" });
     });
   });
 

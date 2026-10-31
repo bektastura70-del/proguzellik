@@ -407,6 +407,12 @@ export class PlatformController {
     return this.plansAdmin.list();
   }
 
+  /** Onaylı fiyatlar sitede/işletme panelinde görünüyor mu (PRICING_PUBLIC sunucu ayarı). */
+  @Get("pricing-visibility")
+  pricingVisibility() {
+    return this.plansAdmin.pricingVisibility();
+  }
+
   @Post("plans")
   createPlan(@CurrentUser() u: AuthUser, @Body(new ZodPipe(planCreate)) b: z.infer<typeof planCreate>) {
     const { code, name, description, maxStaff, maxCustomers, maxMonthlyAppointments, features: f, sortOrder, isActive, isPublic } = b;

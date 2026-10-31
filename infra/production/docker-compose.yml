@@ -85,7 +85,8 @@ services:
       TRUST_PROXY: "1"
       # Başlangıçta kapalı: herkese açık işletme kaydı yok
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-0}
-      PRICING_PUBLIC: ${PRICING_PUBLIC:-0}
+      # Boş: yalnız SaaS sahibinin onayladığı fiyatlar görünür (online satış kapalı). 0: acil durum, tüm tutarlar gizli.
+      PRICING_PUBLIC: ${PRICING_PUBLIC:-}
       # E-posta varsayılan olarak kapalı (mock: canlıda hiçbir e-posta "gönderildi" sayılmaz).
       # Açmak için .env'de EMAIL_MODE=smtp + SMTP_URL ve COMPOSE_FILE'a docker-compose.egress.yml eklenir.
       EMAIL_MODE: ${EMAIL_MODE:-mock}

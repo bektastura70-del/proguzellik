@@ -231,6 +231,12 @@ test.describe("SaaS sahibi paneli", () => {
     await form.getByLabel("Aylık (₺, KDV hariç)").fill("1250");
     await form.getByLabel("Yıllık (₺, KDV hariç)").fill("12500");
     await form.getByLabel("KDV oranı (%)").fill("20");
+    // İleri tarih seçilince açık uyarı; boş bırakılırsa onay anında yürürlüğe girer
+    const startField = form.getByLabel(/Başlangıç tarihi/);
+    await startField.fill("2099-12-31T10:00");
+    await expect(form.getByText(/İleri tarih seçtiniz/)).toBeVisible();
+    await startField.fill("");
+    await expect(form.getByText(/İleri tarih seçtiniz/)).toHaveCount(0);
     await form.getByRole("button", { name: "Taslak olarak kaydet" }).click();
     await expectToast(page, /Fiyat taslağı kaydedildi/);
     await expect(fd.locator('[data-price-status="DRAFT"]')).toContainText("₺1.250,00");
@@ -248,6 +254,7 @@ test.describe("SaaS sahibi paneli", () => {
     await fd.locator('[data-price-status="DRAFT"]').getByRole("button", { name: "Onayla" }).click();
     const ad = page.getByRole("dialog", { name: "Fiyatı onayla" });
     await expect(ad).toContainText("tanıtım sitesinde yayımlanır");
+    await expect(ad).toContainText("Onay anında yürürlüğe girer");
     await ad.getByLabel("Parolanız").fill(PASSWORD);
     await ad.getByLabel("2FA doğrulama kodu").fill("000000");
     await ad.getByRole("button", { name: "Onayla ve yayımla" }).click();

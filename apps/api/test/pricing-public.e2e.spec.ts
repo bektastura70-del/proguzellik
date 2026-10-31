@@ -1,6 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { loadEnv, pricingPublic, productionIssues } from "../src/config/env";
+import { loadEnv, pricesHidden, pricingPublic, productionIssues } from "../src/config/env";
 import { api, createApp, createTenantWithUser, login, owner, resetDb } from "./helpers";
 
 describe("Fiyatlar açıklanmadan gizlidir", () => {
@@ -10,6 +10,9 @@ describe("Fiyatlar açıklanmadan gizlidir", () => {
     expect(pricingPublic({ NODE_ENV: "production", PRICING_PUBLIC: "1" })).toBe(true);
     expect(pricingPublic({ NODE_ENV: "test", PRICING_PUBLIC: undefined })).toBe(true);
     expect(pricingPublic({ NODE_ENV: "test", PRICING_PUBLIC: "0" })).toBe(false);
+    expect(pricesHidden({ PRICING_PUBLIC: undefined })).toBe(false);
+    expect(pricesHidden({ PRICING_PUBLIC: "0" })).toBe(true);
+    expect(productionIssues({ ...loadEnv(), PRICING_PUBLIC: "0" }, {}).some((i) => /PRICING_PUBLIC=0/.test(i.message))).toBe(true);
     expect(productionIssues({ ...loadEnv(), PRICING_PUBLIC: "1" }, {}).some((i) => /PRICING_PUBLIC/.test(i.message))).toBe(true);
   });
 

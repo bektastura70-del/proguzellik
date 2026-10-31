@@ -63,17 +63,23 @@ function PriceCell({ p }: { p: Plan }) {
           <div className="font-medium">{tl(p.currentPrice.monthlyPrice)} <span className="text-xs font-normal text-neutral-500">/ ay</span></div>
           <div className="text-xs text-neutral-500">{Number(p.currentPrice.yearlyPrice) > 0 ? `${tl(p.currentPrice.yearlyPrice)} / yıl · ` : ""}KDV hariç, {pct(p.currentPrice.vatRate)} KDV</div>
         </>
+      ) : p.upcomingPrice ? (
+        <Badge tone="amber">Planlandı · bugün yürürlükte fiyat yok</Badge>
       ) : (
         <Badge tone="amber">Onaylı fiyat yok</Badge>
       )}
       {p.upcomingPrice && <div className="mt-1 text-xs text-brand-700">{dateTr(p.upcomingPrice.effectiveFrom, { day: "numeric", month: "short", year: "numeric" })} itibarıyla {tl(p.upcomingPrice.monthlyPrice)} / ay</div>}
+      {p.upcomingPrice && !p.currentPrice && <div className="mt-1 max-w-[16rem] text-xs text-neutral-500">Hemen geçerli olması için Fiyatlar&apos;dan başlangıç tarihi boş yeni bir fiyat onaylayın; ileri tarihli sürüm kendiliğinden iptal olur.</div>}
       {p.draftCount > 0 && <div className="mt-1 text-xs text-amber-700">{p.draftCount} taslak onay bekliyor</div>}
     </>
   );
 }
 
+type PricingVisibility = { pricesHidden: boolean; onlineSales: boolean };
+
 export function PlansCard() {
   const plans = usePlatformPlans();
+  const visibility = useApi<PricingVisibility>("/platform/pricing-visibility");
   const [edit, setEdit] = useState<Plan | "new" | null>(null);
   const [prices, setPrices] = useState<Plan | null>(null);
   return (
@@ -83,6 +89,14 @@ export function PlansCard() {
         description="Fiyatlar KDV hariçtir ve sürüm olarak yönetilir: taslak girilir, parola + 2FA ile onaylanır. Onaylı fiyatı olmayan paket sitede fiyatsız görünür. Fiyat değişikliği mevcut abonelikleri geriye dönük etkilemez."
         action={<Button size="sm" onClick={() => setEdit("new")}>Yeni paket</Button>}
       />
+      {visibility.data?.pricesHidden && (
+        <div className="px-5 pt-4" data-testid="prices-hidden">
+          <Alert tone="amber">
+            Fiyatlar şu an herkese kapalı: sunucuda PRICING_PUBLIC=0 acil durum ayarı açık. Onayladığınız fiyatlar burada görünür ama tanıtım sitesinde ve işletme panelinde
+            &quot;Fiyat yakında&quot; yazar. Yayımlamak için sunucudaki .env dosyasından PRICING_PUBLIC=0 satırını kaldırıp uygulamayı yeniden başlatın.
+          </Alert>
+        </div>
+      )}
       <Table head={["Paket", "Sınırlar", "Güncel fiyat", "Özellikler", "Durum", ""]}>
         {plans.data?.map((p) => (
           <tr key={p.code} data-plan={p.code}>
@@ -114,7 +128,7 @@ export function PlansCard() {
         ))}
       </Table>
       {edit && <PlanDialog edit={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); plans.reload(); }} />}
-      {prices && <PriceDialog plan={prices} onClose={() => { setPrices(null); plans.reload(); }} />}
+      {prices && <PriceDialog plan={prices} onChanged={plans.reload} onClose={() => { setPrices(null); plans.reload(); }} />}
     </Card>
   );
 }
@@ -170,7 +184,7 @@ function PlanDialog({ edit, onClose, onSaved }: { edit: Plan | "new"; onClose: (
         </fieldset>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="isActive" defaultChecked={isNew || edit.isActive} />Aktif (pasif paket hiçbir işletmeye yeni atanamaz)</label>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="isPublic" defaultChecked={!isNew && edit.isPublic} />Satışta (tanıtım sitesinde ve kayıtta görünür; kapalıysa gizli, yalnız siz atayabilirsiniz)</label>
-        {!isNew && !edit.currentPrice && <Alert tone="amber">Bu paketin onaylı fiyatı yok: satışta olsa bile sitede &quot;Fiyat yakında&quot; görünür ve satın alınamaz.</Alert>}
+        {!isNew && !edit.currentPrice && <Alert tone="amber">{edit.upcomingPrice ? "Bu paketin onaylı fiyatı henüz yürürlüğe girmedi" : "Bu paketin onaylı fiyatı yok"}: satışta olsa bile sitede &quot;Fiyat yakında&quot; görünür ve satın alınamaz.</Alert>}
         <Button className="w-full">Kaydet</Button>
       </form>
     </Dialog>
@@ -184,10 +198,11 @@ const PRICE_STATUS: Record<PriceRow["status"], { label: string; tone: "amber" | 
 };
 
 /** Fiyat geçmişi, yeni taslak, onay (parola + 2FA) ve iptal. */
-function PriceDialog({ plan, onClose }: { plan: Plan; onClose: () => void }) {
+function PriceDialog({ plan, onClose, onChanged }: { plan: Plan; onClose: () => void; onChanged: () => void }) {
   const toast = useToast();
   const history = useApi<PriceHistory>(`/platform/plans/${plan.code}/prices`);
   const [policy, setPolicy] = useState<RenewalPolicy>("KEEP_EXISTING");
+  const [futureFrom, setFutureFrom] = useState<string | null>(null);
   const [approving, setApproving] = useState<PriceRow | null>(null);
   const [cancelling, setCancelling] = useState<PriceRow | null>(null);
   const now = Date.now();
@@ -259,6 +274,7 @@ function PriceDialog({ plan, onClose }: { plan: Plan; onClose: () => void }) {
             toast("Fiyat taslağı kaydedildi. Yayına girmesi için onaylayın.");
             form.reset();
             setPolicy("KEEP_EXISTING");
+            setFutureFrom(null);
             history.reload();
           } catch (err) { toast((err as Error).message, "red"); }
         }}
@@ -270,7 +286,22 @@ function PriceDialog({ plan, onClose }: { plan: Plan; onClose: () => void }) {
           <Field label="Yıllık (₺, KDV hariç)" hint="0 = yıllık seçenek yok"><Input name="yearlyPrice" type="number" min={0} step="0.01" defaultValue={0} /></Field>
           <Field label="KDV oranı (%)" hint="Mali müşavirinizle teyit edin"><Input name="vatRate" type="number" min={0} max={100} step="0.01" required /></Field>
         </div>
-        <Field label="Yeni satışlarda geçerli olacağı tarih" hint="Boş = onay anı. Geçmiş tarih onay anına çekilir."><Input name="effectiveFrom" type="datetime-local" /></Field>
+        <Field label="Başlangıç tarihi (yeni satışlarda geçerli olacağı an)" hint="Boş bırakın = onaylandığı anda yürürlüğe girer (önerilen). Bitiş tarihi değildir; geçmiş tarih onay anına çekilir.">
+          <Input
+            name="effectiveFrom"
+            type="datetime-local"
+            onChange={(e) => {
+              const v = e.currentTarget.value;
+              setFutureFrom(v && new Date(v).getTime() > Date.now() + 60_000 ? v : null);
+            }}
+          />
+        </Field>
+        {futureFrom && (
+          <Alert tone="amber">
+            İleri tarih seçtiniz: bu fiyat {dt(new Date(futureFrom).toISOString())} tarihine kadar hiçbir yerde geçerli olmaz; o zamana dek paket sitede ve işletme panelinde
+            &quot;Fiyat yakında&quot; görünür. Hemen yayımlamak istiyorsanız tarihi boş bırakın.
+          </Alert>
+        )}
         <fieldset className="space-y-2 text-sm">
           <legend className="mb-1 font-medium">Mevcut aboneliklere etkisi</legend>
           <label className="flex items-start gap-2"><input type="radio" name="renewalPolicy" checked={policy === "KEEP_EXISTING"} onChange={() => setPolicy("KEEP_EXISTING")} />Mevcut abonelikler kilitli fiyatlarıyla devam etsin (yeni fiyat yalnız yeni aboneliklere)</label>
@@ -293,12 +324,15 @@ function PriceDialog({ plan, onClose }: { plan: Plan; onClose: () => void }) {
                 toast("Fiyat onaylandı");
                 setApproving(null);
                 history.reload();
+                onChanged();
               } catch (err) { toast((err as Error).message, "red"); }
             }}
           >
             <Alert tone="amber">
               {plan.name}: {tl(approving.monthlyPrice)} / ay{Number(approving.yearlyPrice) > 0 ? `, ${tl(approving.yearlyPrice)} / yıl` : ""} (KDV hariç, {pct(approving.vatRate)} KDV).
-              {" "}{POLICY_TR[approving.renewalPolicy]}. Onaydan sonra bu fiyat değiştirilemez{plan.isPublic && plan.isActive ? " ve tanıtım sitesinde yayımlanır" : ""}.
+              {" "}{POLICY_TR[approving.renewalPolicy]}.
+              {new Date(approving.effectiveFrom).getTime() > Date.now() ? ` Bu fiyat ${dt(approving.effectiveFrom)} tarihinde yürürlüğe girer; o zamana dek paket fiyatsız görünür.` : " Onay anında yürürlüğe girer."}
+              {" "}Onaydan sonra bu fiyat değiştirilemez{plan.isPublic && plan.isActive ? " ve tanıtım sitesinde yayımlanır" : ""}.
             </Alert>
             <Field label="Parolanız"><Input name="password" type="password" autoComplete="current-password" required /></Field>
             <Field label="2FA doğrulama kodu"><Input name="code" inputMode="numeric" pattern="\d{6}" maxLength={6} autoComplete="one-time-code" required /></Field>
@@ -318,6 +352,7 @@ function PriceDialog({ plan, onClose }: { plan: Plan; onClose: () => void }) {
                 toast("Fiyat sürümü iptal edildi");
                 setCancelling(null);
                 history.reload();
+                onChanged();
               } catch (err) { toast((err as Error).message, "red"); }
             }}
           >
