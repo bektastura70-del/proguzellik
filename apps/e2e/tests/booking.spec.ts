@@ -48,5 +48,5 @@ test("kapalı veya bilinmeyen işletme sayfası açık bilgi verir", async ({ pa
   const res = await page.goto("/r/olmayan-salon");
   expect(res?.status()).toBe(404);
   await expect(page.getByText("Bu işletme şu an online randevu almıyor.")).toBeVisible();
-  expect(await page.locator('meta[name="robots"]').getAttribute("content")).toMatch(/noindex/);
+  expect(await page.locator('meta[name="robots"][content*="noindex"]').count()).toBeGreaterThan(0);
 });
