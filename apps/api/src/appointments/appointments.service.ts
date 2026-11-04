@@ -18,7 +18,13 @@ export interface AppointmentInput {
   price?: number;
   ignoreSchedule?: boolean;
   customerPackageId?: string;
+  /** Müşteri portalı (PWA) rezervasyonu */
+  portalIdentityId?: string;
+  idempotencyKey?: string;
 }
+
+/** Olayı kim başlattı: bildirim metinleri ve alıcıları buna göre seçilir. */
+export type ActorKind = "STAFF" | "CUSTOMER";
 
 const TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> = {
   BOOKED: ["CONFIRMED", "COMPLETED", "CANCELLED", "NO_SHOW"],
@@ -30,8 +36,10 @@ const TRANSITIONS: Record<AppointmentStatus, AppointmentStatus[]> = {
 
 /** Randevu yaşam döngüsü olayları (bildirim, stok düşümü vb. modüller dinler). */
 export abstract class AppointmentHooks {
-  abstract onCreated(tx: Tx, appt: { id: string; tenantId: string }): Promise<void>;
-  abstract onStatusChanged(tx: Tx, appt: { id: string; tenantId: string; status: AppointmentStatus }, actorId?: string): Promise<void>;
+  abstract onCreated(tx: Tx, appt: { id: string; tenantId: string }, by?: ActorKind): Promise<void>;
+  abstract onStatusChanged(tx: Tx, appt: { id: string; tenantId: string; status: AppointmentStatus }, actorId?: string, by?: ActorKind): Promise<void>;
+  /** Saat veya personel değişti: bekleyen hatırlatmalar iptal edilip yeniden planlanır. */
+  abstract onRescheduled(tx: Tx, appt: { id: string; tenantId: string }, previous: { startsAt: Date; staffId: string }, by?: ActorKind): Promise<void>;
 }
 
 @Injectable()
@@ -116,9 +124,11 @@ export class AppointmentsService {
         notes: input.notes,
         source: input.source ?? "PANEL",
         createdById: input.createdById,
+        portalIdentityId: input.portalIdentityId,
+        idempotencyKey: input.idempotencyKey,
       },
     });
-    await this.hooks.onCreated(tx, appt);
+    await this.hooks.onCreated(tx, appt, input.source && input.source !== "PANEL" ? "CUSTOMER" : "STAFF");
     return appt;
   }
 
@@ -162,6 +172,9 @@ export class AppointmentsService {
           where: { id },
           data: { staffId, startsAt, endsAt, notes: input.notes ?? appt.notes, ...(input.price !== undefined ? { price: input.price } : {}) },
         });
+        if (startsAt.getTime() !== appt.startsAt.getTime() || staffId !== appt.staffId) {
+          await this.hooks.onRescheduled(tx, updated, { startsAt: appt.startsAt, staffId: appt.staffId }, "STAFF");
+        }
         if (input.startsAt || input.staffId) {
           await this.audit.log(tx, {
             tenantId: t.tenantId,
@@ -195,7 +208,7 @@ export class AppointmentsService {
         await PackagesService.consumeSession(tx, updated);
         await StockService.consumeForAppointment(tx, updated, t.userId);
       }
-      await this.hooks.onStatusChanged(tx, updated, t.userId);
+      await this.hooks.onStatusChanged(tx, updated, t.userId, "STAFF");
       await this.audit.log(tx, {
         tenantId: t.tenantId,
         actorId: t.userId,

@@ -80,9 +80,15 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
     }
     if (n.status !== "QUEUED") return "skipped";
     if (n.appointmentId && n.template !== "randevu_iptal") {
-      const appt = await db.appointment.findUnique({ where: { id: n.appointmentId }, select: { status: true } });
+      const appt = await db.appointment.findUnique({ where: { id: n.appointmentId }, select: { status: true, startsAt: true } });
       if (!appt || !["BOOKED", "CONFIRMED"].includes(appt.status)) {
         await db.notification.update({ where: { id: n.id }, data: { status: "SKIPPED" } });
+        return "skipped";
+      }
+      // Planlandıktan sonra saat değiştiyse (eski saatli metin) gönderilmez; yeni hatırlatma ayrıca planlanmıştır.
+      const plannedFor = (n.payload as { startsAt?: string }).startsAt;
+      if (plannedFor && plannedFor !== appt.startsAt.toISOString()) {
+        await db.notification.update({ where: { id: n.id }, data: { status: "SKIPPED", error: "Randevu saati değişti" } });
         return "skipped";
       }
     }

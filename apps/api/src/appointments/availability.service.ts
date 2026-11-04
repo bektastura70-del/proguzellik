@@ -17,7 +17,7 @@ export const SLOT_STEP_MIN = 15;
 export class AvailabilityService {
   async slots(
     tx: Tx,
-    opts: { tenantId: string; date: string; serviceId: string; staffId?: string; onlineOnly?: boolean; now?: Date },
+    opts: { tenantId: string; date: string; serviceId: string; staffId?: string; onlineOnly?: boolean; now?: Date; excludeAppointmentId?: string },
   ): Promise<Slot[]> {
     const tenant = await tx.tenant.findUnique({ where: { id: opts.tenantId }, select: { timezone: true } });
     if (!tenant) throw new NotFoundException("İşletme bulunamadı");
@@ -41,7 +41,13 @@ export class AvailabilityService {
         workingHours: { where: { weekday } },
         timeOff: { where: { startsAt: { lt: dayEnd }, endsAt: { gt: dayStart } } },
         appointments: {
-          where: { status: { in: [...ACTIVE] }, startsAt: { lt: dayEnd }, endsAt: { gt: dayStart } },
+          where: {
+            status: { in: [...ACTIVE] },
+            startsAt: { lt: dayEnd },
+            endsAt: { gt: dayStart },
+            // Saat değişikliğinde randevunun kendisi meşgul sayılmaz.
+            ...(opts.excludeAppointmentId ? { id: { not: opts.excludeAppointmentId } } : {}),
+          },
           select: { startsAt: true, endsAt: true },
         },
       },

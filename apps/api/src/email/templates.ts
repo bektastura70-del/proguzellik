@@ -19,7 +19,8 @@ export type EmailTemplate =
   | { name: "subscription_started"; vars: { salon: string; plan: string; until: string; complimentary: boolean; link: string } }
   | { name: "payment_reminder"; vars: { salon: string; description: string; amount: string; dueDate: string; payTo?: string } }
   | { name: "invoice_notice"; vars: { salon: string; number: string; amount: string; date: string } }
-  | { name: "owner_notice"; vars: { subject: string; body: string; salon?: string } };
+  | { name: "owner_notice"; vars: { subject: string; body: string; salon?: string } }
+  | { name: "customer_otp"; vars: { salon: string; code: string; minutes: number } };
 
 export type TemplateName = EmailTemplate["name"];
 
@@ -47,6 +48,7 @@ export const TEMPLATE_META: Record<TemplateName, { label: string; vars: string[]
   payment_reminder: { label: "Ödeme hatırlatması", vars: ["salon", "description", "amount", "dueDate", "payTo"], secret: false, editable: true },
   invoice_notice: { label: "Fatura bildirimi", vars: ["salon", "number", "amount", "date"], secret: false, editable: true },
   owner_notice: { label: "SaaS sahibi bilgilendirmesi", vars: ["subject", "body"], secret: false, editable: false },
+  customer_otp: { label: "Müşteri portalı doğrulama kodu", vars: ["salon", "minutes"], secret: true, editable: false },
 };
 
 export interface TemplateOverride {
@@ -108,6 +110,14 @@ export function render(t: EmailTemplate, override?: TemplateOverride | null): { 
     case "mfa_reset":
       subject = "İki adımlı doğrulamanız sıfırlandı";
       paras = [`Merhaba ${esc(t.vars.fullName)},`, "ProGüzellik destek ekibi talebiniz üzerine hesabınızdaki iki adımlı doğrulamayı sıfırladı ve açık oturumlarınızı kapattı.", "Bir sonraki girişinizde iki adımlı doğrulamayı yeniden kurmanızı öneririz. Bu işlemi siz talep etmediyseniz hemen bizimle iletişime geçin."];
+      break;
+    case "customer_otp":
+      subject = `${t.vars.salon} doğrulama kodunuz`; // Kod konuya yazılmaz: konu e-posta kaydında saklanır.
+      paras = [
+        `${esc(t.vars.salon)} online randevu sayfası için doğrulama kodunuz:`,
+        `<b style="font-size:24px;letter-spacing:4px">${esc(t.vars.code)}</b>`,
+        `Kod ${t.vars.minutes} dakika geçerlidir ve bir kez kullanılabilir. Bu isteği siz yapmadıysanız e-postayı dikkate almayın; kimse hesabınıza erişemez.`,
+      ];
       break;
     case "trial_ending":
       subject = `Deneme sürenizin bitmesine ${t.vars.days} gün kaldı`;

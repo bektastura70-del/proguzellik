@@ -34,7 +34,7 @@ export class PublicBookingService {
   ) {}
 
   /** Online rezervasyona açık işletmeyi slug ile bulur (yalnızca herkese açık alanlar). */
-  private async resolve(slug: string) {
+  async resolve(slug: string) {
     const t = await this.prisma.platform.tenant.findUnique({ where: { slug }, include: { plan: true } });
     const trialOver = t?.status === "TRIAL" && t.trialEndsAt && t.trialEndsAt < new Date();
     if (
@@ -177,7 +177,7 @@ export class PublicBookingService {
         throw new ConflictException(`Randevuya ${CANCEL_MIN_HOURS} saatten az kaldığı için lütfen işletmeyi arayın`);
       }
       const updated = await tx.appointment.update({ where: { id: appt.id }, data: { status: "CANCELLED", cancelReason: "Müşteri online iptal etti" } });
-      await this.hooks.onStatusChanged(tx, updated);
+      await this.hooks.onStatusChanged(tx, updated, undefined, "CUSTOMER");
       await this.audit.log(tx, { tenantId: t.id, action: "booking.online_cancelled", entity: "Appointment", entityId: appt.id });
       return { cancelled: true };
     });

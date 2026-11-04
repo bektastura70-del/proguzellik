@@ -56,6 +56,16 @@ const schema = z.object({
    * 1 = ayrıca online satın alma ve otomatik yenileme açık. 0 = acil durum: onaylı olsa bile tüm tutarlar gizlenir.
    */
   PRICING_PUBLIC: z.preprocess((v) => (v === "" ? undefined : v), z.enum(["0", "1"]).optional()),
+  /**
+   * PWA V1.0 ana anahtarı (müşteri portalı, salon PWA'sı, işletme PWA'sı, Web Push). Tanımsızsa canlıda kapalı, diğer ortamlarda açık.
+   * Açık olsa bile her özellik işletme başına ayrıca (SaaS sahibi panelinden) açılmalıdır; varsayılan kapalıdır.
+   */
+  PWA_ENABLED: z.enum(["0", "1"]).optional(),
+  /** Web Push gönderimi: off = gönderilmez; mock = ağ isteği yok, gönderildi sayılır (yerel/test); live = VAPID ile gerçek gönderim. Tanımsızsa canlıda off, diğer ortamlarda mock. */
+  WEB_PUSH_MODE: z.enum(["off", "mock", "live"]).optional(),
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().optional(),
   /** İşletmelerin abonelik/ödeme için yazacağı kurumsal adres (şirket ayarlarında e-posta girilmişse o kullanılır) */
   SUPPORT_EMAIL: z.string().email().default("info@proguzellik.com"),
 });
@@ -99,6 +109,19 @@ export const registrationEnabled = (env: Pick<Env, "REGISTRATION_ENABLED" | "NOD
  */
 export const inviteDeliveryEnabled = (env: Pick<Env, "EMAIL_MODE" | "NODE_ENV">) => env.EMAIL_MODE === "smtp" || env.NODE_ENV !== "production";
 
+/** PWA V1.0 özellikleri bu ortamda açılabilir mi? Canlıda yalnızca PWA_ENABLED=1 ile. */
+export const pwaEnabled = (env: Pick<Env, "PWA_ENABLED" | "NODE_ENV">) =>
+  env.PWA_ENABLED ? env.PWA_ENABLED === "1" : env.NODE_ENV !== "production";
+
+/** Etkin Web Push kipi. Canlıda açıkça "live" seçilmedikçe ve VAPID anahtarları yoksa gönderim yapılmaz. */
+export const webPushMode = (env: Pick<Env, "WEB_PUSH_MODE" | "NODE_ENV" | "VAPID_PUBLIC_KEY" | "VAPID_PRIVATE_KEY" | "VAPID_SUBJECT">): "off" | "mock" | "live" => {
+  const mode = env.WEB_PUSH_MODE ?? (env.NODE_ENV === "production" ? "off" : "mock");
+  if (mode === "live" && !(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT)) return "off";
+  // Test sağlayıcısı canlıda sahte "gönderildi" kaydı üretmesin.
+  if (mode === "mock" && env.NODE_ENV === "production") return "off";
+  return mode;
+};
+
 export const appUrl = (env: Env) => (env.APP_URL ?? env.WEB_ORIGIN.split(",")[0]).replace(/\/$/, "");
 
 /**
@@ -133,5 +156,12 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
   if (env.PRICING_PUBLIC === "0") warn("PRICING_PUBLIC=0: onaylı paket fiyatları dahil tüm tutarlar sitede ve işletme panelinde gizli");
   if (env.REGISTRATION_ENABLED === "1") warn("REGISTRATION_ENABLED=1: herkese açık işletme kaydı açık");
   if (raw.DISABLE_RATE_LIMIT === "1") err("DISABLE_RATE_LIMIT canlıda kullanılamaz");
+  if (env.PWA_ENABLED === "1") warn("PWA_ENABLED=1: PWA özellikleri SaaS sahibi panelinden işletme başına açılabilir");
+  if (env.WEB_PUSH_MODE === "live") {
+    for (const k of ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"] as const) if (!env[k]) err(`WEB_PUSH_MODE=live için ${k} gerekli`);
+    if (env.VAPID_SUBJECT && !/^(mailto:|https:\/\/)/.test(env.VAPID_SUBJECT)) err("VAPID_SUBJECT mailto: veya https:// ile başlamalı");
+    warn("WEB_PUSH_MODE=live: Web Push bildirimleri gerçek cihazlara gönderilir (API/işçi konteynerinin internete çıkışı gerekir)");
+  }
+  if (env.WEB_PUSH_MODE === "mock") warn("WEB_PUSH_MODE=mock canlıda geçersizdir; Web Push gönderilmez");
   return issues;
 }

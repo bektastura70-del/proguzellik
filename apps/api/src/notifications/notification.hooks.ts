@@ -39,19 +39,38 @@ export class NotificationHooks extends AppointmentHooks {
   }
 
   private async schedule(tx: Tx, c: NonNullable<Awaited<ReturnType<NotificationHooks["context"]>>>, template: TemplateName, at: Date) {
+    // startsAt: gönderim anında randevu saati değişmişse eski hatırlatma gönderilmez.
     const n = await tx.notification.create({
-      data: { tenantId: c.tenant.id, recipient: c.phone, template, payload: { params: c.params }, appointmentId: c.appt.id, scheduledFor: at },
+      data: {
+        tenantId: c.tenant.id, recipient: c.phone, template, payload: { params: c.params, startsAt: c.appt.startsAt.toISOString() },
+        appointmentId: c.appt.id, scheduledFor: at, customerId: c.appt.customerId,
+      },
     });
     // Kuyruğa ekleme hatası randevuyu engellememeli.
     await this.queue.enqueue(n.id, at).catch((e) => this.logger.error(`Kuyruğa eklenemedi: ${(e as Error).message}`));
+  }
+
+  private async scheduleReminder(tx: Tx, c: NonNullable<Awaited<ReturnType<NotificationHooks["context"]>>>) {
+    const reminderAt = new Date(c.appt.startsAt.getTime() - REMINDER_HOURS * 3_600_000);
+    if (reminderAt.getTime() > Date.now() + 3_600_000) await this.schedule(tx, c, "randevu_hatirlatma", reminderAt);
   }
 
   async onCreated(tx: Tx, appt: { id: string }) {
     const c = await this.context(tx, appt.id);
     if (!c) return;
     await this.schedule(tx, c, "randevu_onay", new Date());
-    const reminderAt = new Date(c.appt.startsAt.getTime() - REMINDER_HOURS * 3_600_000);
-    if (reminderAt.getTime() > Date.now() + 3_600_000) await this.schedule(tx, c, "randevu_hatirlatma", reminderAt);
+    await this.scheduleReminder(tx, c);
+  }
+
+  /** Saat değişince eski hatırlatma iptal edilir, yeni saate göre yeniden planlanır. */
+  async onRescheduled(tx: Tx, appt: { id: string }, previous: { startsAt: Date }) {
+    await tx.notification.updateMany({
+      where: { appointmentId: appt.id, status: "QUEUED", template: "randevu_hatirlatma" },
+      data: { status: "SKIPPED", error: "Randevu saati değişti" },
+    });
+    const c = await this.context(tx, appt.id);
+    if (!c || c.appt.startsAt.getTime() === previous.startsAt.getTime()) return;
+    await this.scheduleReminder(tx, c);
   }
 
   async onStatusChanged(tx: Tx, appt: { id: string; status: AppointmentStatus }) {

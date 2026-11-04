@@ -61,6 +61,9 @@ model Tenant {
   billingProfile TenantBillingProfile?
   ledgerEntries  PlatformLedgerEntry[]
   invoices       PlatformInvoice[]
+  pwaSettings    TenantPwaSettings?
+  assets         TenantAsset[]
+  identities     CustomerIdentity[]
 }
 
 model User {
@@ -304,6 +307,10 @@ model Appointment {
   cancelReason      String?
   customerPackageId String?           @db.Uuid
   createdById       String?           @db.Uuid
+  /// Müşteri portalında doğrulanmış kimlikle alındıysa (PWA V1.0)
+  portalIdentityId  String?           @db.Uuid
+  /// Tekrar gönderilen online rezervasyon isteği aynı randevuyu döndürür (Idempotency-Key)
+  idempotencyKey    String?
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -315,9 +322,11 @@ model Appointment {
   transactions    FinanceTransaction[]
 
   @@unique([tenantId, id])
+  @@unique([tenantId, idempotencyKey])
   @@index([tenantId, startsAt])
   @@index([tenantId, staffId, startsAt])
   @@index([tenantId, customerId])
+  @@index([tenantId, portalIdentityId])
 }
 
 // ---------------------------------------------------------------------
@@ -1206,4 +1215,160 @@ model Campaign {
   updatedAt   DateTime  @updatedAt
 
   @@index([tenantId, isActive])
+}
+
+// ---------------------------------------------------------------------
+// PWA V1.0: salon PWA ayarları, müşteri portalı kimliği, Web Push, uygulama içi bildirimler
+// ---------------------------------------------------------------------
+
+/// İşletme başına PWA özellik bayrakları (yalnız SaaS sahibi açar; varsayılan kapalı) ve salon markası (işletme düzenler).
+model TenantPwaSettings {
+  tenantId                       String    @id @db.Uuid
+  businessPwaEnabled             Boolean   @default(false)
+  customerPwaEnabled             Boolean   @default(false)
+  customerBookingEnabled         Boolean   @default(false)
+  webPushEnabled                 Boolean   @default(false)
+  customerSessionTrackingEnabled Boolean   @default(false)
+  flagsUpdatedById               String?   @db.Uuid
+  flagsUpdatedAt                 DateTime?
+  /// Müşterinin portaldan iptal/değişiklik yapabileceği en geç süre (randevuya kalan saat)
+  cancelMinHours                 Int       @default(2)
+  rescheduleMinHours             Int       @default(2)
+  allowCustomerCancel            Boolean   @default(true)
+  allowCustomerReschedule        Boolean   @default(true)
+  appName                        String?
+  shortName                      String?
+  description                    String?
+  primaryColor                   String?
+  secondaryColor                 String?
+  logoAssetId                    String?   @db.Uuid
+  iconAssetId                    String?   @db.Uuid
+  updatedAt                      DateTime  @default(now()) @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+/// İşletmenin yüklediği görseller (logo, uygulama simgesi). Yalnızca PNG/JPEG/WebP, boyut sınırlı.
+model TenantAsset {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  kind        String
+  mime        String
+  bytes       Bytes
+  width       Int
+  height      Int
+  sha256      String
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, kind])
+}
+
+/// Müşteri portalında e-posta koduyla doğrulanmış kimlik (işletme başına ayrı).
+model CustomerIdentity {
+  id                     String                  @id @default(uuid()) @db.Uuid
+  tenantId               String                  @db.Uuid
+  email                  String
+  verifiedAt             DateTime
+  notifyAppointments     Boolean                 @default(true)
+  notifyReminders        Boolean                 @default(true)
+  lastSeenAt             DateTime?
+  createdAt              DateTime                @default(now())
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id])
+  customerPortalSessions CustomerPortalSession[]
+  pushSubscriptions      PushSubscription[]
+
+  @@unique([tenantId, email])
+  @@unique([tenantId, id])
+}
+
+/// Tek kullanımlık doğrulama kodu (yalnız özeti saklanır).
+model CustomerOtp {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  channel     String    @default("EMAIL")
+  destination String
+  codeHash    String
+  attempts    Int       @default(0)
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  ip          String?
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId, destination, createdAt])
+}
+
+model CustomerPortalSession {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @db.Uuid
+  identityId String    @db.Uuid
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastSeenAt DateTime  @default(now())
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  identity CustomerIdentity @relation(fields: [tenantId, identityId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, identityId])
+}
+
+/// Web Push aboneliği: bir cihaz/tarayıcı, bir işletme ve tek bir kişiye (personel kullanıcısı veya müşteri kimliği) bağlıdır.
+model PushSubscription {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  audience      String
+  userId        String?   @db.Uuid
+  identityId    String?   @db.Uuid
+  endpoint      String
+  p256dh        String
+  auth          String
+  userAgent     String?
+  failures      Int       @default(0)
+  lastSuccessAt DateTime?
+  revokedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  identity CustomerIdentity? @relation(fields: [tenantId, identityId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, endpoint])
+  @@index([tenantId, userId])
+  @@index([tenantId, identityId])
+}
+
+/// İşletme kullanıcısının bildirim tercihleri (işletme başına).
+model UserNotificationPreference {
+  tenantId        String   @db.Uuid
+  userId          String   @db.Uuid
+  newAppointments Boolean  @default(true)
+  cancellations   Boolean  @default(true)
+  changes         Boolean  @default(true)
+  assignments     Boolean  @default(true)
+  updatedAt       DateTime @default(now()) @updatedAt
+
+  @@id([tenantId, userId])
+}
+
+/// Uygulama içi bildirim merkezi kaydı (yalnız ilgili kişi görür).
+model InAppNotification {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  audience      String
+  userId        String?   @db.Uuid
+  identityId    String?   @db.Uuid
+  type          String
+  title         String
+  body          String
+  appointmentId String?   @db.Uuid
+  readAt        DateTime?
+  dedupeKey     String
+  createdAt     DateTime  @default(now())
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, userId, createdAt])
+  @@index([tenantId, identityId, createdAt])
 }

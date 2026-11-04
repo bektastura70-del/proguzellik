@@ -32,7 +32,7 @@ const noticeSchema = z
   .refine((v) => !(v.tenantIds?.length && v.statuses?.length), "İşletme listesi ya da durum filtresinden yalnızca birini seçin");
 
 /** Örnek değişkenler (önizleme için; gerçek veri içermez). */
-const SAMPLE: Record<string, string | number | boolean> = { fullName: "Ayşe Yılmaz", salon: "Örnek Güzellik", days: 3, minutes: 30, role: "personel", graceDays: 7, plan: "Profesyonel", amount: "1.000,00", until: "30.11.2026", active: 9, max: 8, description: "Kasım aboneliği", dueDate: "07.11.2026", payTo: "Şirket unvanı · IBAN", number: "ABC2026000000001", date: "30.10.2026", link: "https://proguzellik.com/panel/abonelik", complimentary: false, hours: 24, subject: "Planlı bakım duyurusu", body: "Pazar 02:00-03:00 arasında kısa bir bakım yapılacaktır." };
+const SAMPLE: Record<string, string | number | boolean> = { fullName: "Ayşe Yılmaz", salon: "Örnek Güzellik", days: 3, minutes: 30, role: "personel", graceDays: 7, plan: "Profesyonel", amount: "1.000,00", until: "30.11.2026", active: 9, max: 8, description: "Kasım aboneliği", dueDate: "07.11.2026", payTo: "Şirket unvanı · IBAN", number: "ABC2026000000001", date: "30.10.2026", link: "https://proguzellik.com/panel/abonelik", complimentary: false, hours: 24, subject: "Planlı bakım duyurusu", body: "Pazar 02:00-03:00 arasında kısa bir bakım yapılacaktır.", code: "123456" };
 
 @Controller("platform")
 @PlatformAdmin()
