@@ -204,9 +204,9 @@ function SlotPicker({ slug, serviceId, staffId, value, onChange }: { slug: strin
 
   return (
     <div>
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2" role="listbox" aria-label="Tarih">
+      <div className="-mx-5 flex snap-x scroll-px-5 gap-2 overflow-x-auto overscroll-x-contain px-5 pb-2 [scrollbar-width:none]" role="listbox" aria-label="Tarih">
         {days.map((d) => (
-          <button key={d} type="button" role="option" aria-selected={d === day} onClick={() => setDay(d)} className={cn("min-w-14 shrink-0 rounded-xl border px-2 py-2 text-center", d === day ? "border-[var(--salon)] bg-[var(--salon)] text-white" : "border-sand-200 bg-white")}>
+          <button key={d} type="button" role="option" aria-selected={d === day} onClick={() => setDay(d)} className={cn("min-w-14 shrink-0 snap-start rounded-xl border px-2 py-2 text-center", d === day ? "border-[var(--salon)] bg-[var(--salon)] text-white" : "border-sand-200 bg-white")}>
             <div className="text-xs opacity-80">{dateTr(`${d}T12:00:00+03:00`, { weekday: "short" })}</div>
             <div className="text-lg font-semibold">{d.slice(8)}</div>
           </button>

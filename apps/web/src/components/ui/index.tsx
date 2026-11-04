@@ -14,7 +14,7 @@ export function Button({ className, variant, size, ...props }: React.ButtonHTMLA
 }
 
 /* ----------------------------- Form ------------------------------- */
-const field = "w-full rounded-xl border border-sand-300 bg-white px-3 text-sm placeholder:text-neutral-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:opacity-60";
+const field = "w-full rounded-xl border border-sand-300 bg-white px-3 text-base placeholder:text-neutral-400 sm:text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:opacity-60";
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...p }, ref) {
   return <input ref={ref} className={cn(field, "h-10", className)} {...p} />;

@@ -153,9 +153,9 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
                 </button>
               ))}
             </div>
-            <div className="-mx-1 mt-5 flex gap-2 overflow-x-auto px-1 pb-2">
+            <div className="-mx-5 mt-5 flex snap-x scroll-px-5 gap-2 overflow-x-auto overscroll-x-contain px-5 pb-2 [scrollbar-width:none]">
               {days.map((d) => (
-                <button key={d} onClick={() => setDay(d)} className={cn("min-w-16 rounded-xl border px-3 py-2 text-center", d === day ? "border-brand-600 bg-brand-600 text-white" : "border-sand-200 bg-white")}>
+                <button key={d} onClick={() => setDay(d)} className={cn("min-w-16 shrink-0 snap-start rounded-xl border px-3 py-2 text-center", d === day ? "border-brand-600 bg-brand-600 text-white" : "border-sand-200 bg-white")}>
                   <div className="text-xs opacity-80">{dateTr(`${d}T12:00:00+03:00`, { weekday: "short" })}</div>
                   <div className="text-lg font-semibold">{d.slice(8)}</div>
                 </button>
