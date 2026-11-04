@@ -200,10 +200,13 @@ export class AppointmentsService {
       if (!TRANSITIONS[appt.status].includes(status)) {
         throw new ConflictException(`Durum ${appt.status} → ${status} olarak değiştirilemez`);
       }
-      const updated = await tx.appointment.update({
-        where: { id },
+      // Koşullu güncelleme: eşzamanlı iki "tamamlandı" isteğinde yalnızca biri geçer (seans iki kez düşülmez).
+      const res = await tx.appointment.updateMany({
+        where: { id, status: appt.status },
         data: { status, ...(status === "CANCELLED" ? { cancelReason: reason } : {}) },
       });
+      if (res.count !== 1) throw new ConflictException("Randevu bu sırada başka biri tarafından güncellendi; sayfayı yenileyin");
+      const updated = await tx.appointment.findUniqueOrThrow({ where: { id } });
       if (status === "COMPLETED") {
         await PackagesService.consumeSession(tx, updated);
         await StockService.consumeForAppointment(tx, updated, t.userId);
