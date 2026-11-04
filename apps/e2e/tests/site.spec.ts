@@ -15,6 +15,9 @@ const PAGES = [
   ["/gizlilik", /Gizlilik/],
   ["/cerez-politikasi", /Çerez/],
   ["/kullanim-kosullari", /Kullanım Koşulları/],
+  ["/faturalandirma-politikasi", /Faturalandırma ve Ödeme Belgeleri Politikası/],
+  ["/hesap-kapatma-ve-veri-silme", /Hesap Kapatma, Veri Teslimi ve Veri Silme Politikası/],
+  ["/sorumluluk-sinirlari", /Sorumluluk Sınırları ve Hizmet Güvenceleri/],
 ] as const;
 
 test.describe("Tanıtım sitesi", () => {
@@ -90,6 +93,27 @@ test.describe("Tanıtım sitesi", () => {
         }
       }
     }
+  });
+
+  test("hukuki metinlerde yer tutucu ve taslak notu yok; künye Şirket ayarları'ndan gelir", async ({ page }) => {
+    const site = (await (await page.request.get("/api/p/public/site")).json()) as { company: { address: string | null } };
+    for (const path of ["/kvkk", "/kullanim-kosullari", "/faturalandirma-politikasi", "/hesap-kapatma-ve-veri-silme", "/sorumluluk-sinirlari"]) {
+      await page.goto(path);
+      const main = page.locator("main");
+      await expect(main, path).not.toContainText(/\[[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜa-zçğıöşü ]{3,}\]/);
+      await expect(main, path).not.toContainText(/Yayın öncesi not|sözleşme taslağıdır|Bu metin bir şablondur/);
+      const imprint = page.getByTestId("legal-imprint");
+      await expect(imprint).toContainText("BEKTAŞ TURA REKLAM MEDYA VE BİLGİ TEKNOLOJİLERİ LİMİTED ŞİRKETİ");
+      await expect(imprint).toContainText("info@proguzellik.com");
+      if (site.company.address) await expect(imprint).toContainText("Şirket Adresi");
+    }
+    await page.goto("/kvkk");
+    await expect(page.getByRole("table")).toContainText("Anthropic");
+    await page.goto("/kullanim-kosullari");
+    await page.getByRole("link", { name: "Veri Saklama ve Hesap Kapatma Politikası" }).click();
+    await expect(page).toHaveURL(/\/hesap-kapatma-ve-veri-silme$/);
+    await page.goto("/gizlilik");
+    await expect(page.locator("main")).not.toContainText("Yapay zekâ asistanına müşteri kimlik bilgisi gönderilmez");
   });
 
   test("robots ve site haritası: panel ve yönetim dizine eklenmez", async ({ page }) => {

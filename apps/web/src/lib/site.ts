@@ -5,7 +5,7 @@ export type SitePlan = {
   code: string; name: string; description: string | null; maxStaff: number; maxCustomers: number | null; maxMonthlyAppointments: number | null;
   monthlyPrice: string | null; yearlyPrice: string | null; vatRate: string | null; features: string[]; sortOrder: number;
 };
-export type SiteInfo = { company: { legalName: string | null; address: string | null; phone: string | null; email: string }; pricesAnnounced?: boolean; vat: { rate: string; included: boolean } | null };
+export type SiteInfo = { company: { legalName: string | null; address: string | null; phone: string | null; email: string; taxOffice?: string | null; taxNumber?: string | null }; pricesAnnounced?: boolean; vat: { rate: string; included: boolean } | null };
 
 /** Paketler veritabanından gelir (SaaS sahibi panelinden yönetilir); burada fiyat yazılmaz. */
 export async function getPlans(): Promise<SitePlan[]> {

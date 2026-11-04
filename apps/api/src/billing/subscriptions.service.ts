@@ -65,9 +65,10 @@ export class SubscriptionsService {
   }
 
   async publicSite() {
-    const c = await this.prisma.platform.platformCompany.findUnique({ where: { id: 1 }, select: { legalName: true, address: true, email: true, phone: true, vatRate: true, pricesIncludeVat: true } });
+    const c = await this.prisma.platform.platformCompany.findUnique({ where: { id: 1 }, select: { legalName: true, address: true, email: true, phone: true, taxOffice: true, taxNumber: true, vatRate: true, pricesIncludeVat: true } });
     return {
-      company: { legalName: c?.legalName ?? null, address: c?.address ?? null, phone: c?.phone ?? null, email: c?.email ?? loadEnv().SUPPORT_EMAIL },
+      // Vergi dairesi/VKN hukuki metinlerin künyesinde gösterilir (şirket için kamuya açık bilgi).
+      company: { legalName: c?.legalName ?? null, address: c?.address ?? null, phone: c?.phone ?? null, email: c?.email ?? loadEnv().SUPPORT_EMAIL, taxOffice: c?.taxOffice ?? null, taxNumber: c?.taxNumber ?? null },
       // KDV bilgisi yalnızca şirket ayarlarında hem oran hem dahil/hariç seçildiyse gösterilir.
       pricesAnnounced: (await this.plans()).some((p) => p.monthlyPrice != null),
       vat: c?.vatRate != null && c.pricesIncludeVat != null ? { rate: c.vatRate.toString(), included: c.pricesIncludeVat } : null,

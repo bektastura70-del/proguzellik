@@ -4,7 +4,7 @@ export const metadata = { title: "Çerez Politikası" };
 
 export default function Cerez() {
   return (
-    <LegalPage title="Çerez Politikası">
+    <LegalPage title="Çerez Politikası" draft>
       <p>ProGüzellik yalnızca hizmetin çalışması için zorunlu çerezleri kullanır; reklam veya izleme çerezi kullanılmaz.</p>
       <ul>
         <li><b>pg_token</b>: oturum çerezi (httpOnly, 8 saat)</li>

@@ -84,6 +84,9 @@ export function SiteFooter() {
             <li><Link href="/gizlilik">Gizlilik Politikası</Link></li>
             <li><Link href="/cerez-politikasi">Çerez Politikası</Link></li>
             <li><Link href="/kullanim-kosullari">Kullanım Koşulları</Link></li>
+            <li><Link href="/faturalandirma-politikasi">Faturalandırma Politikası</Link></li>
+            <li><Link href="/hesap-kapatma-ve-veri-silme">Hesap Kapatma ve Veri Silme</Link></li>
+            <li><Link href="/sorumluluk-sinirlari">Sorumluluk Sınırları</Link></li>
           </ul>
         </nav>
       </div>
