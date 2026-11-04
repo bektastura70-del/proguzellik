@@ -126,6 +126,17 @@ test.describe.serial("Randevu takvimi", () => {
   });
 
   test("iptal sebebiyle iptal; 'İptalleri göster' ile görünür", async ({ page }) => {
+    // Demo verisinde Elif'in o güne randevusu haftanın gününe göre olmayabilir; test kendi randevusunu garanti eder.
+    const existing = (await apiGet<(Appt & { staff: { displayName: string } })[]>(page, `/appointments?${range}`)).filter((a) => a.staff.displayName === "Elif" && ["BOOKED", "CONFIRMED"].includes(a.status));
+    if (existing.length === 0) {
+      const staff = await apiGet<{ id: string; displayName: string; services: { serviceId: string }[] }[]>(page, "/staff");
+      const elif = staff.find((x) => x.displayName === "Elif")!;
+      const serviceId = elif.services[0].serviceId;
+      const slots = await apiGet<{ startsAt: string }[]>(page, `/availability?date=${DAY}&serviceId=${serviceId}&staffId=${elif.id}`);
+      const customers = await apiGet<{ items: { id: string }[] }>(page, "/customers?pageSize=1");
+      const r = await page.request.post("/api/p/appointments", { data: { customerId: customers.items[0].id, staffId: elif.id, serviceId, startsAt: slots[0].startsAt } });
+      expect(r.status()).toBe(201);
+    }
     await page.goto(`/panel/takvim?gorunum=gun&tarih=${DAY}`);
     const first = page.getByTestId("col-Elif").getByTestId("appt").first();
     const label = (await first.textContent())!.slice(0, 5);

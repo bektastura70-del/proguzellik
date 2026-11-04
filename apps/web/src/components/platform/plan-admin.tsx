@@ -370,7 +370,7 @@ type SubRow = {
   currentPeriodStart: string; currentPeriodEnd: string; cancelAtPeriodEnd: boolean;
   plan: { code: string; name: string }; tenant: { id: string; name: string; status: string };
 };
-type SubList = { summary: { tenants: Record<string, number>; subscriptions: Record<string, number>; trialsEndingIn7Days: { id: string; name: string; trialEndsAt: string }[]; subscriptionsEndingIn7Days: number }; items: SubRow[] };
+type SubList = { summary: { tenants: Record<string, number>; subscriptions: Record<string, number>; trialsEndingIn7Days: { id: string; name: string; trialEndsAt: string }[]; subscriptionsEndingIn7Days: number }; items: SubRow[]; total: number; page: number; pageSize: number };
 const SUB_STATUS_TR: Record<string, string> = { ACTIVE: "Aktif", PAST_DUE: "Ödeme bekliyor", CANCELLED: "İptal / süresi doldu" };
 const day = (iso: string) => dateTr(iso, { day: "numeric", month: "short", year: "numeric" });
 
@@ -380,7 +380,8 @@ export function SubscriptionsCard({ onOpenTenant }: { onOpenTenant: (id: string)
   const [source, setSource] = useState("");
   const [expiring, setExpiring] = useState("");
   const [q, setQ] = useState("");
-  const qs = new URLSearchParams({ ...(status ? { status } : {}), ...(source ? { source } : {}), ...(expiring ? { expiringDays: expiring } : {}), ...(q ? { q } : {}) });
+  const [page, setPage] = useState(1);
+  const qs = new URLSearchParams({ ...(status ? { status } : {}), ...(source ? { source } : {}), ...(expiring ? { expiringDays: expiring } : {}), ...(q ? { q } : {}), page: String(page) });
   const list = useApi<SubList>(`/platform/subscriptions?${qs}`);
   const s = list.data?.summary;
   return (
@@ -409,17 +410,17 @@ export function SubscriptionsCard({ onOpenTenant }: { onOpenTenant: (id: string)
           title="Abonelikler"
           action={
             <div className="flex flex-wrap gap-2">
-              <Input aria-label="Abonelik ara" placeholder="İşletme ara" className="h-9 w-44" value={q} onChange={(e) => setQ(e.target.value)} />
-              <Select aria-label="Abonelik durumu" className="h-9 w-40" value={status} onChange={(e) => setStatus(e.target.value)}>
+              <Input aria-label="Abonelik ara" placeholder="İşletme ara" className="h-9 w-44" value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
+              <Select aria-label="Abonelik durumu" className="h-9 w-40" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
                 <option value="">Tüm durumlar</option>
                 {Object.entries(SUB_STATUS_TR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </Select>
-              <Select aria-label="Abonelik kaynağı" className="h-9 w-40" value={source} onChange={(e) => setSource(e.target.value)}>
+              <Select aria-label="Abonelik kaynağı" className="h-9 w-40" value={source} onChange={(e) => { setSource(e.target.value); setPage(1); }}>
                 <option value="">Tüm kaynaklar</option>
                 <option value="PROVIDER">Ödemeli</option>
                 <option value="MANUAL">Manuel</option>
               </Select>
-              <Select aria-label="Bitiş" className="h-9 w-40" value={expiring} onChange={(e) => setExpiring(e.target.value)}>
+              <Select aria-label="Bitiş" className="h-9 w-40" value={expiring} onChange={(e) => { setExpiring(e.target.value); setPage(1); }}>
                 <option value="">Tüm bitişler</option>
                 <option value="7">7 gün içinde</option>
                 <option value="30">30 gün içinde</option>
@@ -440,6 +441,13 @@ export function SubscriptionsCard({ onOpenTenant }: { onOpenTenant: (id: string)
               </tr>
             ))}
           </Table>
+        )}
+        {list.data && list.data.total > list.data.pageSize && (
+          <div className="flex items-center justify-end gap-2 border-t border-sand-100 px-4 py-3 text-sm" aria-label="Abonelik sayfaları">
+            <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage(page - 1)}>Önceki</Button>
+            <span className="text-neutral-500">Sayfa {page} / {Math.ceil(list.data.total / list.data.pageSize)}</span>
+            <Button size="sm" variant="outline" disabled={page * list.data.pageSize >= list.data.total} onClick={() => setPage(page + 1)}>Sonraki</Button>
+          </div>
         )}
       </Card>
     </>

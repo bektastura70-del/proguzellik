@@ -99,5 +99,8 @@ test.describe("Tanıtım sitesi", () => {
     const map = await (await page.request.get("/sitemap.xml")).text();
     expect(map).toContain("/ozellikler/stok-finans");
     expect(map).not.toContain("/panel");
+    // Sağlık uçları dışarıdan (web vekili üzerinden) okunamaz
+    expect((await page.request.get("/api/p/health/ready")).status()).toBe(404);
+    expect((await page.request.get("/api/p/health")).status()).toBe(404);
   });
 });

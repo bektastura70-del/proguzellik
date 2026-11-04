@@ -13,6 +13,7 @@ import { api, useApi } from "@/lib/api";
 import { dateTr, STATUS_TR, tl } from "@/lib/format";
 
 type Stats = { tenants: { total: number; byStatus: Record<string, number> }; byPlan: Record<string, number>; signupsLast30Days: number; appointmentsLast30Days: number; mrr: string; activeSubscriptions: number; manualSubscriptions: { total: number; complimentary: number } };
+const TENANT_PAGE_SIZE = 100;
 type TenantRow = { id: string; name: string; slug: string; status: string; planCode: string; trialEndsAt: string | null; createdAt: string; plan: { name: string; maxStaff: number }; _count: { customers: number; staff: number; memberships: number }; owner: { email: string; fullName: string } | null; openInvite: { email: string; status: string; expiresAt: string | null } | null };
 
 export default function PlatformPage() {
@@ -20,8 +21,9 @@ export default function PlatformPage() {
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   const stats = useApi<Stats>("/platform/stats");
-  const tenants = useApi<TenantRow[]>(`/platform/tenants?${new URLSearchParams({ ...(status ? { status } : {}), ...(search ? { search } : {}) })}`);
-  const allTenants = useApi<TenantRow[]>("/platform/tenants");
+  const [page, setPage] = useState(1);
+  const tenants = useApi<TenantRow[]>(`/platform/tenants?${new URLSearchParams({ ...(status ? { status } : {}), ...(search ? { search } : {}), page: String(page) })}`);
+  const allTenants = useApi<TenantRow[]>("/platform/tenants?all=1");
   const [detail, setDetail] = useState<string | null>(null);
   const [tab, setTab] = useState<"tenants" | "subscriptions" | "users" | "finance" | "emails" | "company">("tenants");
   const [creating, setCreating] = useState(false);
@@ -65,8 +67,8 @@ export default function PlatformPage() {
           title="İşletmeler"
           action={
             <div className="flex flex-wrap gap-2">
-              <Input placeholder="Ara (ad, adres, e-posta)" aria-label="İşletme ara" className="h-9 w-52" value={search} onChange={(e) => setSearch(e.target.value)} />
-              <Select className="h-9 w-40" value={status} onChange={(e) => setStatus(e.target.value)}>
+              <Input placeholder="Ara (ad, adres, e-posta)" aria-label="İşletme ara" className="h-9 w-52" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+              <Select className="h-9 w-40" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
                 <option value="">Tüm durumlar</option>
                 {["TRIAL", "ACTIVE", "PAST_DUE", "SUSPENDED", "CANCELLED"].map((s) => <option key={s} value={s}>{STATUS_TR[s]}</option>)}
               </Select>
@@ -88,6 +90,13 @@ export default function PlatformPage() {
             </tr>
           ))}
         </Table>
+        {(page > 1 || (tenants.data?.length ?? 0) >= TENANT_PAGE_SIZE) && (
+          <div className="flex items-center justify-end gap-2 border-t border-sand-100 px-4 py-3 text-sm" aria-label="İşletme sayfaları">
+            <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage(page - 1)}>Önceki</Button>
+            <span className="text-neutral-500">Sayfa {page}</span>
+            <Button size="sm" variant="outline" disabled={(tenants.data?.length ?? 0) < TENANT_PAGE_SIZE} onClick={() => setPage(page + 1)}>Sonraki</Button>
+          </div>
+        )}
       </Card>
       <PlansCard />
       <Card className="mt-6">

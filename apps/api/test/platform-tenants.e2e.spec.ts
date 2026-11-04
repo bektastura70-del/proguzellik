@@ -60,6 +60,23 @@ describe("SaaS sahibi: işletme oluşturma, davet ve yönetim", () => {
     });
   });
 
+  describe("listeleme", () => {
+    it("işletme listesi 100'lük sayfalarla gelir; all=1 seçim listeleri için tümünü verir", async () => {
+      const before = (await admin.get("/platform/tenants?all=1").expect(200)).body.length;
+      await su.tenant.createMany({ data: Array.from({ length: 105 }, (_, i) => ({ name: `Toplu Salon ${i}`, slug: `toplu-salon-${i}` })) });
+      const p1 = (await admin.get("/platform/tenants?page=1").expect(200)).body as { id: string }[];
+      const p2 = (await admin.get("/platform/tenants?page=2").expect(200)).body as { id: string }[];
+      expect(p1).toHaveLength(100);
+      expect(p2).toHaveLength(before + 105 - 100);
+      expect(new Set([...p1, ...p2].map((t) => t.id)).size).toBe(before + 105);
+      expect((await admin.get("/platform/tenants?all=1").expect(200)).body).toHaveLength(before + 105);
+      const subs = (await admin.get("/platform/subscriptions?page=1").expect(200)).body;
+      expect(subs).toMatchObject({ page: 1, pageSize: 100 });
+      expect(typeof subs.total).toBe("number");
+      await su.tenant.deleteMany({ where: { slug: { startsWith: "toplu-salon-" } } });
+    });
+  });
+
   describe("oluşturma ve davet", () => {
     let tenantId: string;
 

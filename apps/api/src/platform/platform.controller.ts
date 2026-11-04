@@ -29,9 +29,14 @@ const inviteSchema = z.object({
   email: z.string().trim().toLowerCase().email("Geçerli bir e-posta girin").max(200),
 });
 const suspendSchema = z.object({ reason: z.string().trim().min(3, "Gerekçe girin").max(300) });
+/** Owner listeleri: sayfa boyutu. `all=1` seçim listeleri (kullanıcı/finans/e-posta) içindir ve üst sınırı yüksektir. */
+const OWNER_PAGE_SIZE = 100;
+const OWNER_ALL_LIMIT = 5000;
 const listSchema = z.object({
   search: z.string().trim().max(100).optional(),
   status: z.enum(["TRIAL", "ACTIVE", "PAST_DUE", "SUSPENDED", "CANCELLED"]).optional(),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
+  all: z.enum(["1"]).optional(),
 });
 const tenantUpdate = z.object({
   // Pasife alma/açma ayrı uç noktalarla (gerekçe ve denetim kaydıyla) yapılır.
@@ -111,6 +116,7 @@ const subscriptionList = z.object({
   source: z.enum(["PROVIDER", "MANUAL"]).optional(),
   q: z.string().trim().max(100).optional(),
   expiringDays: z.coerce.number().int().min(1).max(365).optional(),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
 });
 
 const note = z.string().trim().min(3, "Açıklama girin (en az 3 karakter)").max(500);
@@ -208,8 +214,9 @@ export class PlatformController {
         ...(q.status ? { status: q.status } : {}),
         ...(q.search ? { OR: [{ name: { contains: q.search, mode: "insensitive" } }, { slug: { contains: q.search.toLowerCase() } }, { email: { contains: q.search, mode: "insensitive" } }] } : {}),
       },
-      orderBy: { createdAt: "desc" },
-      take: 200,
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      skip: q.all ? 0 : (q.page - 1) * OWNER_PAGE_SIZE,
+      take: q.all ? OWNER_ALL_LIMIT : OWNER_PAGE_SIZE,
       include: {
         plan: { select: { name: true, maxStaff: true } },
         _count: { select: { customers: true, staff: true, memberships: true } },
@@ -471,11 +478,12 @@ export class PlatformController {
       ...(q.q ? { tenant: { name: { contains: q.q, mode: "insensitive" } } } : {}),
       ...(q.expiringDays ? { status: { in: ["ACTIVE", "PAST_DUE"] }, currentPeriodEnd: { lte: new Date(now.getTime() + q.expiringDays * 86_400_000) } } : {}),
     };
-    const [items, tenantsByStatus, trialsEnding, subsEnding, bySubStatus] = await Promise.all([
+    const [items, tenantsByStatus, trialsEnding, subsEnding, bySubStatus, total] = await Promise.all([
       db.subscription.findMany({
         where,
-        orderBy: { currentPeriodEnd: "asc" },
-        take: 300,
+        orderBy: [{ currentPeriodEnd: "asc" }, { id: "asc" }],
+        skip: (q.page - 1) * OWNER_PAGE_SIZE,
+        take: OWNER_PAGE_SIZE,
         select: {
           id: true, status: true, source: true, isComplimentary: true, billingCycle: true, currentPeriodStart: true, currentPeriodEnd: true, cancelAtPeriodEnd: true, createdAt: true,
           plan: { select: { code: true, name: true } },
@@ -486,6 +494,7 @@ export class PlatformController {
       db.tenant.findMany({ where: { status: "TRIAL", trialEndsAt: { gt: now, lte: soon } }, orderBy: { trialEndsAt: "asc" }, select: { id: true, name: true, trialEndsAt: true } }),
       db.subscription.count({ where: { status: "ACTIVE", currentPeriodEnd: { gt: now, lte: soon } } }),
       db.subscription.groupBy({ by: ["status"], _count: true }),
+      db.subscription.count({ where }),
     ]);
     return {
       summary: {
@@ -495,6 +504,9 @@ export class PlatformController {
         subscriptionsEndingIn7Days: subsEnding,
       },
       items,
+      total,
+      page: q.page,
+      pageSize: OWNER_PAGE_SIZE,
     };
   }
 

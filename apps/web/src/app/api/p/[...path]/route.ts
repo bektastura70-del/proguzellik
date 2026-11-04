@@ -9,6 +9,8 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
   if (!sameOrigin(req)) return NextResponse.json({ message: "Geçersiz istek kaynağı" }, { status: 403 });
   const { path } = await ctx.params;
   if (path.some((p) => p === ".." || p.includes("/"))) return NextResponse.json({ message: "Geçersiz yol" }, { status: 400 });
+  // Sağlık uçları yalnız iç ağdan (Docker sağlık kontrolü) okunur; dışarıya bileşen durumu gösterilmez.
+  if (path[0] === "health") return NextResponse.json({ message: "Bulunamadı" }, { status: 404 });
   const url = `${API_URL}/${path.map(encodeURIComponent).join("/")}${req.nextUrl.search}`;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const token = req.cookies.get(TOKEN_COOKIE)?.value;

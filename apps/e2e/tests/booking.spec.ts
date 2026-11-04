@@ -45,6 +45,8 @@ test("KVKK onayı olmadan rezervasyon gönderilemez", async ({ page }) => {
 });
 
 test("kapalı veya bilinmeyen işletme sayfası açık bilgi verir", async ({ page }) => {
-  await page.goto("/r/olmayan-salon");
+  const res = await page.goto("/r/olmayan-salon");
+  expect(res?.status()).toBe(404);
   await expect(page.getByText("Bu işletme şu an online randevu almıyor.")).toBeVisible();
+  expect(await page.locator('meta[name="robots"]').getAttribute("content")).toMatch(/noindex/);
 });

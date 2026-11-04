@@ -25,6 +25,6 @@ const base = cva(
  * Ek sınıflar (className) temel sınıflarla çakışırsa sonradan verilen kazanır.
  * Örn. "hidden sm:inline-flex" temel "inline-flex"i ezer; aksi hâlde Tailwind 4'te "inline-flex" kazanıyordu.
  */
-export function buttonVariants(props?: VariantProps<typeof base> & { className?: string }) {
-  return twMerge(base(props));
+export function buttonVariants({ className, ...variants }: VariantProps<typeof base> & { className?: string } = {}) {
+  return twMerge(base(variants), className);
 }
