@@ -27,6 +27,32 @@ describe("Kimlik güvenliği: oturumlar, parola sıfırlama, e-posta doğrulama,
     await su.$disconnect();
   });
 
+  describe("hatalı parola koruması", () => {
+    it("bir IP'den 5 hatalı deneme yalnız o IP'yi bekletir; başka IP'den doğru parola ile giriş yapılabilir ve hesap kilitlenmez", async () => {
+      await createTenantWithUser(su, { name: "Kilit Salonu", email: "kilit@test.local" });
+      const from = (ip: string) => http().post("/auth/login").set("X-Forwarded-For", ip);
+      for (let i = 0; i < 5; i++) await from("203.0.113.7").send({ email: "kilit@test.local", password: "YanlisParola1" }).expect(401);
+      const blocked = await from("203.0.113.7").send({ email: "kilit@test.local", password: TEST_PASSWORD }).expect(401);
+      expect(blocked.body.message).toMatch(/Çok fazla hatalı deneme/);
+      const u = await su.user.findUniqueOrThrow({ where: { email: "kilit@test.local" } });
+      expect(u.lockedUntil).toBeNull();
+      expect(u.failedLogins).toBe(5);
+      const ok = await from("198.51.100.9").send({ email: "kilit@test.local", password: TEST_PASSWORD }).expect(200);
+      expect(ok.body.accessToken).toBeTruthy();
+      expect((await su.user.findUniqueOrThrow({ where: { email: "kilit@test.local" } })).failedLogins).toBe(0);
+    });
+
+    it("paralel hatalı denemeler kaybolmadan sayılır; dağıtık 30 denemede hesap kilitlenir", async () => {
+      await createTenantWithUser(su, { name: "Dagitik Salon", email: "dagitik@test.local" });
+      await Promise.all(
+        Array.from({ length: 30 }, (_, i) => http().post("/auth/login").set("X-Forwarded-For", `192.0.2.${i + 1}`).send({ email: "dagitik@test.local", password: "YanlisParola1" }).expect(401)),
+      );
+      const u = await su.user.findUniqueOrThrow({ where: { email: "dagitik@test.local" } });
+      expect(u.lockedUntil!.getTime()).toBeGreaterThan(Date.now());
+      await http().post("/auth/login").set("X-Forwarded-For", "192.0.2.200").send({ email: "dagitik@test.local", password: TEST_PASSWORD }).expect(401);
+    });
+  });
+
   describe("oturum yönetimi", () => {
     it("her giriş ayrı oturum açar; oturumlar listelenir ve tek tek kapatılabilir", async () => {
       const t1 = await login(app, "a@test.local");

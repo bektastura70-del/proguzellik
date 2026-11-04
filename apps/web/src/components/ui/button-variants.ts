@@ -1,7 +1,8 @@
-import { cva } from "class-variance-authority";
+import { cva, type VariantProps } from "class-variance-authority";
+import { twMerge } from "tailwind-merge";
 
 /** Sunucu bileşenlerinde de kullanılabilir ("use client" içermez). */
-export const buttonVariants = cva(
+const base = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
@@ -19,3 +20,11 @@ export const buttonVariants = cva(
   },
 );
 
+
+/**
+ * Ek sınıflar (className) temel sınıflarla çakışırsa sonradan verilen kazanır.
+ * Örn. "hidden sm:inline-flex" temel "inline-flex"i ezer; aksi hâlde Tailwind 4'te "inline-flex" kazanıyordu.
+ */
+export function buttonVariants(props?: VariantProps<typeof base> & { className?: string }) {
+  return twMerge(base(props));
+}

@@ -18,7 +18,9 @@ export const cookieOptions = {
  */
 export function clientIpHeaders(req: NextRequest): Record<string, string> {
   if (process.env.TRUST_PROXY !== "1") return {};
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  // Son değer, önümüzdeki güvenilir vekilin (Caddy) gördüğü bağlantı adresidir. İlk değer istemci
+  // tarafından uydurulabilir (vekil gelen başlığa ekleme yapıyorsa), bu yüzden kullanılmaz.
+  const ip = req.headers.get("x-forwarded-for")?.split(",").map((s) => s.trim()).filter(Boolean).pop();
   return ip ? { "X-Forwarded-For": ip } : {};
 }
 

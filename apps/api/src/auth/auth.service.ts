@@ -8,8 +8,17 @@ import { PrismaService } from "../prisma/prisma.service";
 import { decrypt, encrypt, newTotpSecret, otpauthUrl, randomToken, recoveryCode, sha256, verifyTotp } from "../security/crypto";
 import { SessionService } from "./session.service";
 
-const MAX_FAILED = 5;
+/** Aynı IP'den aynı hesaba bu kadar hatalı parola denemesinden sonra yalnız o IP bekletilir. */
+const MAX_FAILED_PER_IP = 5;
+/**
+ * Hesabın tamamı ancak çok sayıda (farklı IP'lerden dağıtık) hatalı denemede kilitlenir.
+ * Tek bir saldırgan IP'si bu eşiğe ulaşamaz; böylece bilinen bir e-postayla hesap kilitlenemez.
+ */
+const MAX_FAILED_ACCOUNT = 30;
+/** 2FA kodu yalnız parolayı bilen tarafından denenebilir; burada eski eşik korunur. */
+const MAX_FAILED_MFA = 5;
 const LOCK_MINUTES = 15;
+const LOCK_MS = LOCK_MINUTES * 60_000;
 const TRIAL_DAYS = 14;
 const RESET_MINUTES = 30;
 const VERIFY_HOURS = 48;
@@ -69,15 +78,44 @@ export class AuthService {
     return this.prisma.platform;
   }
 
-  private async registerFailure(userId: string, field: "failedLogins" | "mfaFailedAttempts", current: number) {
-    const failed = current + 1;
-    await this.db.user.update({
-      where: { id: userId },
-      data: {
-        [field]: failed >= MAX_FAILED ? 0 : failed,
-        ...(failed >= MAX_FAILED ? { lockedUntil: new Date(Date.now() + LOCK_MINUTES * 60_000) } : {}),
-      },
-    });
+  /** Hesap + IP başına hatalı parola sayaçları (bellek içi, süresi dolan kayıtlar silinir). */
+  private readonly ipFailures = new Map<string, { count: number; resetAt: number }>();
+
+  private ipKey(userId: string, ip?: string) {
+    return `${userId}|${ip ?? "?"}`;
+  }
+
+  private ipBlocked(userId: string, ip?: string) {
+    const b = this.ipFailures.get(this.ipKey(userId, ip));
+    if (!b) return false;
+    if (b.resetAt <= Date.now()) {
+      this.ipFailures.delete(this.ipKey(userId, ip));
+      return false;
+    }
+    return b.count >= MAX_FAILED_PER_IP;
+  }
+
+  private ipFailure(userId: string, ip?: string) {
+    const now = Date.now();
+    if (this.ipFailures.size > 10_000) {
+      for (const [k, v] of this.ipFailures) if (v.resetAt <= now) this.ipFailures.delete(k);
+    }
+    const key = this.ipKey(userId, ip);
+    const b = this.ipFailures.get(key);
+    if (!b || b.resetAt <= now) this.ipFailures.set(key, { count: 1, resetAt: now + LOCK_MS });
+    else b.count += 1;
+  }
+
+  /** Sayaç atomik artırılır (paralel isteklerde deneme kaybolmaz); eşiğe ulaşınca hesap kilitlenir ve sayaç sıfırlanır. */
+  private async registerFailure(userId: string, field: "failedLogins" | "mfaFailedAttempts") {
+    const max = field === "failedLogins" ? MAX_FAILED_ACCOUNT : MAX_FAILED_MFA;
+    const u = await this.db.user.update({ where: { id: userId }, data: { [field]: { increment: 1 } }, select: { failedLogins: true, mfaFailedAttempts: true } });
+    if (u[field] >= max) {
+      await this.db.user.updateMany({
+        where: { id: userId, [field]: { gte: max } },
+        data: { [field]: 0, lockedUntil: new Date(Date.now() + LOCK_MS) },
+      });
+    }
   }
 
   /** 1. adım: parola. 2FA açıksa oturum açılmaz, kısa ömürlü mfaToken döner. */
@@ -89,16 +127,18 @@ export class AuthService {
       await this.audit.logPlatform({ action: "auth.login_failed", metadata: { email }, ip: meta.ip });
       throw generic;
     }
-    if (user.lockedUntil && user.lockedUntil > new Date()) {
+    if ((user.lockedUntil && user.lockedUntil > new Date()) || this.ipBlocked(user.id, meta.ip)) {
       await this.audit.logPlatform({ action: "auth.login_locked", actorId: user.id, ip: meta.ip });
       throw new UnauthorizedException("Çok fazla hatalı deneme. Lütfen daha sonra tekrar deneyin.");
     }
     if (!(await bcrypt.compare(password, user.passwordHash))) {
-      await this.registerFailure(user.id, "failedLogins", user.failedLogins);
+      this.ipFailure(user.id, meta.ip);
+      await this.registerFailure(user.id, "failedLogins");
       await this.audit.logPlatform({ action: "auth.login_failed", actorId: user.id, ip: meta.ip });
       throw generic;
     }
     await this.db.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null } });
+    this.ipFailures.delete(this.ipKey(user.id, meta.ip));
 
     if (user.mfaEnabledAt) {
       const mfaToken = await this.jwt.signAsync({ sub: user.id, typ: "mfa" }, { expiresIn: "5m" });
@@ -143,7 +183,7 @@ export class AuthService {
       if (ok) await this.audit.logPlatform({ action: "auth.recovery_code_used", actorId: user.id, ip: meta.ip });
     }
     if (!ok) {
-      await this.registerFailure(user.id, "mfaFailedAttempts", user.mfaFailedAttempts);
+      await this.registerFailure(user.id, "mfaFailedAttempts");
       await this.audit.logPlatform({ action: "auth.mfa_failed", actorId: user.id, ip: meta.ip });
       throw new UnauthorizedException("Doğrulama kodu hatalı");
     }

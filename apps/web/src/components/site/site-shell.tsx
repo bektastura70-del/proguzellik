@@ -31,7 +31,7 @@ export function SiteHeader() {
         </nav>
         <div className="flex items-center gap-2">
           <Link href="/giris" className={buttonVariants({ variant: "outline", size: "sm", className: "hidden sm:inline-flex" })}>Giriş Yap</Link>
-          <Link href="/ucretsiz-deneme" className={buttonVariants({ size: "sm" })}>14 Gün Ücretsiz Dene</Link>
+          <Link href="/ucretsiz-deneme" className={buttonVariants({ size: "sm" })}><span className="sm:hidden">Ücretsiz Dene</span><span className="hidden sm:inline">14 Gün Ücretsiz Dene</span></Link>
           <button type="button" className="rounded-lg p-2 lg:hidden" aria-expanded={open} aria-controls="site-menu" aria-label={open ? "Menüyü kapat" : "Menüyü aç"} onClick={() => setOpen(!open)}>
             {open ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>

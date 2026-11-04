@@ -69,11 +69,27 @@ test.describe("Tanıtım sitesi", () => {
     await page.getByRole("button", { name: "Menüyü aç" }).click();
     await page.getByRole("navigation", { name: "Mobil menü" }).getByRole("link", { name: "Fiyatlar" }).click();
     await expect(page).toHaveURL(/\/fiyatlar$/);
-    await page.getByRole("banner").getByRole("link", { name: "14 Gün Ücretsiz Dene" }).click();
+    await page.getByRole("banner").getByRole("link", { name: "Ücretsiz Dene", exact: true }).click();
     await expect(page).toHaveURL(/\/ucretsiz-deneme$/);
     await page.goto("/");
     await page.getByRole("main").getByRole("link", { name: "Giriş Yap" }).first().click();
     await expect(page).toHaveURL(/\/giris$/);
+  });
+
+  test("telefon genişliklerinde sayfa yana taşmaz; menü düğmesi ekranın içinde kalır", async ({ page }) => {
+    for (const width of [320, 360, 390, 414]) {
+      await page.setViewportSize({ width, height: 800 });
+      for (const path of ["/", "/fiyatlar", "/ozellikler", "/sss", "/iletisim", "/kvkk", "/ucretsiz-deneme"]) {
+        await page.goto(path);
+        const m = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+        expect(m.sw, `${path} @ ${width}px`).toBeLessThanOrEqual(m.cw);
+        const menu = page.getByRole("button", { name: "Menüyü aç" });
+        if (await menu.count()) {
+          const box = (await menu.boundingBox())!;
+          expect(box.x + box.width, `${path} menü @ ${width}px`).toBeLessThanOrEqual(width);
+        }
+      }
+    }
   });
 
   test("robots ve site haritası: panel ve yönetim dizine eklenmez", async ({ page }) => {

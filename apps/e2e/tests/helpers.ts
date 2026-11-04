@@ -29,7 +29,9 @@ export async function expectNoHorizontalOverflow(page: Page) {
   // Veriler yüklenip tablo/grafikler çizilene kadar bekle.
   await expect(page.getByLabel("Yükleniyor")).toHaveCount(0, { timeout: 10_000 });
   await page.waitForTimeout(300);
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  // Mobil öykünmede (isMobile) window.innerWidth taşan içeriğe göre büyür ve taşmayı gizler;
+  // bu yüzden düzen genişliği (clientWidth) ile karşılaştırılır.
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow, "yatay taşma (px)").toBeLessThanOrEqual(1);
 }
 
