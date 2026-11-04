@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Req } from "@nestjs/common";
-import type { Request } from "express";
+import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Req, Res, StreamableFile } from "@nestjs/common";
+import type { Request, Response } from "express";
 import { z } from "zod";
 import { RateLimitService } from "../auth/rate-limit.service";
 import { Public } from "../common/decorators";
 import { phoneSchema } from "../common/schemas";
 import { ZodPipe } from "../common/zod.pipe";
+import { BrandingService } from "./branding.service";
 import { CustomerAuthService } from "./customer-auth.service";
 import { PortalService } from "./portal.service";
 
@@ -36,7 +37,21 @@ export class PortalController {
     private readonly portal: PortalService,
     private readonly auth: CustomerAuthService,
     private readonly rateLimit: RateLimitService,
+    private readonly branding: BrandingService,
   ) {}
+
+  /** Salonun logo/simgesi. Kimlik numarasıyla adreslenir (içerik değişirse yeni numara), bu yüzden uzun süre önbelleklenebilir. */
+  @Get("assets/:id")
+  async asset(@Param("slug", new ZodPipe(slug)) s: string, @Param("id", ParseUUIDPipe) id: string, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    this.rateLimit.hit(`public:${req.ip}`, 300, 60_000);
+    const a = await this.branding.publicAsset(s, id);
+    res.setHeader("Content-Type", a.mime);
+    res.setHeader("Content-Disposition", "inline");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.setHeader("ETag", `"${a.sha256}"`);
+    return new StreamableFile(Buffer.from(a.bytes));
+  }
 
   @Get("app")
   app(@Param("slug", new ZodPipe(slug)) s: string, @Req() req: Request) {

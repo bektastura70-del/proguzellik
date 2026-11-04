@@ -12,7 +12,13 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
   // Sağlık uçları yalnız iç ağdan (Docker sağlık kontrolü) okunur; dışarıya bileşen durumu gösterilmez.
   if (path[0] === "health") return NextResponse.json({ message: "Bulunamadı" }, { status: 404 });
   const url = `${API_URL}/${path.map(encodeURIComponent).join("/")}${req.nextUrl.search}`;
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  // Salon logosu/simgesi yükleme dışında gövde her zaman JSON'dur; görsel türleri ham bayt olarak aktarılır.
+  const ct = (req.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+  const isImage = ["image/png", "image/jpeg", "image/webp"].includes(ct);
+  if (isImage && Number(req.headers.get("content-length") ?? 0) > 600 * 1024) {
+    return NextResponse.json({ message: "Görsel en fazla 512 KB olabilir" }, { status: 413 });
+  }
+  const headers: Record<string, string> = { "Content-Type": isImage ? ct : "application/json" };
   const token = req.cookies.get(TOKEN_COOKIE)?.value;
   if (token) headers.Authorization = `Bearer ${token}`;
   const tenant = req.headers.get("x-tenant-id") ?? req.cookies.get(TENANT_COOKIE)?.value;
@@ -21,7 +27,7 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
   const res = await fetch(url, {
     method: req.method,
     headers,
-    body: ["GET", "HEAD"].includes(req.method) ? undefined : await req.text(),
+    body: ["GET", "HEAD"].includes(req.method) ? undefined : isImage ? await req.arrayBuffer() : await req.text(),
     cache: "no-store",
   });
   const text = await res.text();

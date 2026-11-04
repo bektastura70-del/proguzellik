@@ -5,6 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "ProGüzellik — Salon Yönetimi",
     short_name: "ProGüzellik",
     description: "Güzellik salonları için randevu, müşteri ve kasa yönetimi",
+    id: "/panel",
     start_url: "/panel",
     scope: "/",
     display: "standalone",

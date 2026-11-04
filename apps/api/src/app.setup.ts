@@ -1,6 +1,7 @@
 import type { INestApplication } from "@nestjs/common";
 import type { NestExpressApplication } from "@nestjs/platform-express";
-import { PrismaExceptionFilter } from "./common/prisma-exception.filter";
+import { HttpAdapterHost } from "@nestjs/core";
+import { AppExceptionFilter } from "./common/prisma-exception.filter";
 import { loadEnv } from "./config/env";
 
 /** Uygulama ve testler için ortak HTTP ayarları. */
@@ -17,7 +18,9 @@ export function configureApp(app: INestApplication) {
     res.setHeader("Referrer-Policy", "no-referrer");
     next();
   });
-  app.useGlobalFilters(new PrismaExceptionFilter());
+  // Salon logosu/simgesi yükleme: yalnızca bu görsel türleri ham bayt olarak okunur (en fazla 512 KB; içerik ayrıca denetlenir).
+  express.useBodyParser("raw", { type: ["image/png", "image/jpeg", "image/webp"], limit: "512kb" });
+  app.useGlobalFilters(new AppExceptionFilter(app.get(HttpAdapterHost).httpAdapter));
   app.enableShutdownHooks();
   return app;
 }

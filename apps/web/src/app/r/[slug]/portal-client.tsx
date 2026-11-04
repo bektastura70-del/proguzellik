@@ -58,9 +58,9 @@ export function PortalClient({ slug, app }: { slug: string; app: AppInfo }) {
     <div style={style} className="min-h-screen bg-sand-50 pb-[calc(5rem+env(safe-area-inset-bottom))]">
       <header className="bg-[var(--salon)] px-5 pb-8 pt-[calc(1.25rem+env(safe-area-inset-top))] text-white">
         <div className="mx-auto flex max-w-2xl items-center gap-3">
-          {app.logoUrl ? (
+          {app.logoUrl || app.iconUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={app.logoUrl} alt="" width={48} height={48} className="size-12 shrink-0 rounded-xl bg-white object-contain p-1" />
+            <img src={(app.logoUrl ?? app.iconUrl)!} alt="" width={48} height={48} className="size-12 shrink-0 rounded-xl bg-white object-contain p-1" />
           ) : (
             <div aria-hidden className="grid size-12 shrink-0 place-items-center rounded-xl bg-white/15 text-xl font-semibold">{app.name.slice(0, 1)}</div>
           )}
