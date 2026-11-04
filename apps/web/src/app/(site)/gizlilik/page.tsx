@@ -1,30 +1,6 @@
-import { LegalPage } from "@/components/legal";
-import { getSiteInfo } from "@/lib/site";
+import { permanentRedirect } from "next/navigation";
 
-/** Şirket unvanı ve iletişim bilgisi SaaS sahibi panelindeki "Şirket ayarları"ndan gelir (metinde elle yazılmaz). */
-export const dynamic = "force-dynamic";
-export const metadata = { title: "Gizlilik Politikası" };
-
-export default async function Gizlilik() {
-  const { company } = await getSiteInfo();
-  return (
-    <LegalPage title="Gizlilik Politikası" draft>
-      <p>ProGüzellik, salonların müşteri verilerini yalnızca ilgili salon adına (veri işleyen sıfatıyla) işler. Her salonun verisi veritabanı düzeyinde diğer salonlardan yalıtılmıştır.</p>
-      <h2>Güvenlik önlemleri</h2>
-      <ul>
-        <li>Parolalar geri döndürülemez biçimde (bcrypt) saklanır.</li>
-        <li>Oturum bilgisi tarayıcıda JavaScript erişimine kapalı çerezde tutulur.</li>
-        <li>Mali kayıtlar ve denetim kayıtları değiştirilemez şekilde saklanır.</li>
-        <li>İşletme asistanı (sahip ve yöneticinin sorduğu işletme soruları) yalnızca toplu işletme metriklerini kullanır; bu özellikte müşteri kimlik bilgisi yapay zekâ sağlayıcısına gönderilmez.</li>
-        <li>Yapay zekâ destekli müşteri iletişimi etkinleştirildiğinde, yanıt için gerekli ve veri minimizasyonu ilkesine uygun bilgiler (müşterinin mesajı ve randevu işlemi için gereken kayıtlar gibi) yapay zekâ sağlayıcısına iletilebilir. Ayrıntılar <a className="text-brand-700 underline" href="/kvkk">KVKK Aydınlatma Metni</a>&apos;ndedir.</li>
-      </ul>
-      <h2>İletişim</h2>
-      <p>
-        {company.legalName && <>{company.legalName}<br /></>}
-        {company.address && <>{company.address}<br /></>}
-        E-posta: <a href={`mailto:${company.email}`}>{company.email}</a>
-        {company.phone && <><br />Telefon: <a href={`tel:${company.phone.replace(/\s/g, "")}`}>{company.phone}</a></>}
-      </p>
-    </LegalPage>
-  );
+/** Eski adres: Gizlilik Politikası /gizlilik-politikasi adresine taşındı. */
+export default function LegacyGizlilik() {
+  permanentRedirect("/gizlilik-politikasi");
 }

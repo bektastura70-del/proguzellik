@@ -3,18 +3,20 @@ import type { ReactNode } from "react";
 
 /**
  * Hukuki metinler için küçük, bağımlılıksız markdown okuyucu.
- * Desteklenen: "## başlık", paragraf, "- liste", tablo (| a | b |), **kalın**, [bağlantı](/yol).
+ * Desteklenen: "## başlık", "### alt başlık", paragraf (satır sonları korunur), "- liste", tablo (| a | b |),
+ * **kalın**, [bağlantı](/yol) ve [e-posta](mailto:adres).
  * Metin olduğu gibi gösterilir; HTML yorumlanmaz.
  */
 function inline(text: string, key: string): ReactNode[] {
   const out: ReactNode[] = [];
-  const re = /\*\*(.+?)\*\*|\[([^\]]+)\]\((\/[^)\s]*)\)/g;
+  const re = /\*\*(.+?)\*\*|\[([^\]]+)\]\((\/[^)\s]*|mailto:[^)\s]+)\)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let i = 0;
   while ((m = re.exec(text))) {
     if (m.index > last) out.push(text.slice(last, m.index));
     if (m[1] !== undefined) out.push(<strong key={`${key}-${i++}`} className="font-semibold text-ink">{m[1]}</strong>);
+    else if (m[3].startsWith("mailto:")) out.push(<a key={`${key}-${i++}`} href={m[3]} className="text-brand-700 underline">{m[2]}</a>);
     else out.push(<Link key={`${key}-${i++}`} href={m[3]} className="text-brand-700 underline">{m[2]}</Link>);
     last = m.index + m[0].length;
   }
@@ -31,6 +33,7 @@ export function LegalMarkdown({ source }: { source: string }) {
       {blocks.map((block, bi) => {
         const lines = block.split("\n");
         const key = `b${bi}`;
+        if (lines[0].startsWith("### ")) return <h3 key={key}>{inline(lines[0].slice(4), key)}</h3>;
         if (lines[0].startsWith("## ")) return <h2 key={key}>{inline(lines[0].slice(3), key)}</h2>;
         if (lines.every((l) => l.startsWith("- "))) {
           return <ul key={key}>{lines.map((l, li) => <li key={li}>{inline(l.slice(2), `${key}-${li}`)}</li>)}</ul>;
@@ -46,7 +49,7 @@ export function LegalMarkdown({ source }: { source: string }) {
             </div>
           );
         }
-        return <p key={key}>{inline(lines.join(" "), key)}</p>;
+        return <p key={key}>{lines.map((l, li) => <span key={li}>{li > 0 && <br />}{inline(l, `${key}-${li}`)}</span>)}</p>;
       })}
     </>
   );

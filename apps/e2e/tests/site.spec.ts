@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { login, USERS } from "./helpers";
 
 const PAGES = [
   ["/", /tek panelde/],
@@ -12,8 +13,8 @@ const PAGES = [
   ["/iletisim", /Bize ulaşın/],
   ["/hakkimizda", /sade bir yönetim yazılımı/],
   ["/kvkk", /KVKK Aydınlatma Metni/],
-  ["/gizlilik", /Gizlilik/],
-  ["/cerez-politikasi", /Çerez/],
+  ["/gizlilik-politikasi", /Gizlilik Politikası/],
+  ["/cerez-politikasi", /Çerez Politikası/],
   ["/kullanim-kosullari", /Kullanım Koşulları/],
   ["/faturalandirma-politikasi", /Faturalandırma ve Ödeme Belgeleri Politikası/],
   ["/hesap-kapatma-ve-veri-silme", /Hesap Kapatma, Veri Teslimi ve Veri Silme Politikası/],
@@ -97,7 +98,7 @@ test.describe("Tanıtım sitesi", () => {
 
   test("hukuki metinlerde yer tutucu ve taslak notu yok; künye Şirket ayarları'ndan gelir", async ({ page }) => {
     const site = (await (await page.request.get("/api/p/public/site")).json()) as { company: { address: string | null } };
-    for (const path of ["/kvkk", "/kullanim-kosullari", "/faturalandirma-politikasi", "/hesap-kapatma-ve-veri-silme", "/sorumluluk-sinirlari"]) {
+    for (const path of ["/kvkk", "/gizlilik-politikasi", "/cerez-politikasi", "/kullanim-kosullari", "/faturalandirma-politikasi", "/hesap-kapatma-ve-veri-silme", "/sorumluluk-sinirlari"]) {
       await page.goto(path);
       const main = page.locator("main");
       await expect(main, path).not.toContainText(/\[[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜa-zçğıöşü ]{3,}\]/);
@@ -116,7 +117,34 @@ test.describe("Tanıtım sitesi", () => {
     await page.getByRole("link", { name: "Veri Saklama ve Hesap Kapatma Politikası" }).click();
     await expect(page).toHaveURL(/\/hesap-kapatma-ve-veri-silme$/);
     await page.goto("/gizlilik");
-    await expect(page.locator("main")).not.toContainText("Yapay zekâ asistanına müşteri kimlik bilgisi gönderilmez");
+    await expect(page).toHaveURL(/\/gizlilik-politikasi$/);
+    await expect(page.getByRole("heading", { name: "5. Üçüncü Taraf Hizmet Sağlayıcıları" })).toBeVisible();
+    await expect(page.getByTestId("legal-note")).toContainText("Anthropic");
+    await page.goto("/cerez-politikasi");
+    await expect(page.getByRole("heading", { name: "3.1. Kesinlikle Gerekli Çerezler" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "info@proguzellik.com" }).first()).toHaveAttribute("href", "mailto:info@proguzellik.com");
+    for (const name of ["pg_token", "pg_tenant"]) await expect(page.getByTestId("legal-note")).toContainText(name);
+  });
+
+  test("çerez envanteri: herkese açık sayfalar çerez, tarayıcı depolaması ve dış kaynak kullanmaz; girişte yalnız tablodaki iki çerez", async ({ page, context, baseURL }) => {
+    const origin = new URL(baseURL!).host;
+    const foreign: string[] = [];
+    page.on("request", (r) => { const h = new URL(r.url()).host; if (h !== origin && !r.url().startsWith("data:")) foreign.push(r.url()); });
+    for (const path of ["/", "/fiyatlar", "/ucretsiz-deneme", "/giris", "/kvkk", "/gizlilik-politikasi", "/cerez-politikasi"]) {
+      await page.goto(path);
+      await page.waitForLoadState("networkidle");
+    }
+    expect(await context.cookies()).toEqual([]);
+    expect(await page.evaluate(() => [localStorage.length, sessionStorage.length])).toEqual([0, 0]);
+    expect(foreign).toEqual([]);
+    await page.goto("/ucretsiz-deneme");
+    const links = page.getByTestId("policy-links");
+    for (const href of ["/kvkk", "/gizlilik-politikasi", "/cerez-politikasi", "/kullanim-kosullari"]) await expect(links.locator(`a[href="${href}"]`)).toBeVisible();
+    await login(page, USERS.owner);
+    const names = (await context.cookies()).map((c) => c.name).sort();
+    expect(names).toEqual(["pg_tenant", "pg_token"]);
+    expect((await context.cookies()).find((c) => c.name === "pg_token")?.httpOnly).toBe(true);
+    expect(await page.evaluate(() => [localStorage.length, sessionStorage.length])).toEqual([0, 0]);
   });
 
   test("robots ve site haritası: panel ve yönetim dizine eklenmez", async ({ page }) => {

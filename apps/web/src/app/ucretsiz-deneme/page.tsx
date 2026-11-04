@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { Logo } from "@/components/logo";
 import { API_URL } from "@/lib/server-api";
 import { getSiteInfo } from "@/lib/site";
+import { PolicyLinks } from "@/components/policy-links";
 import { RegisterForm, type PublicPlan } from "./register-form";
 
 export const dynamic = "force-dynamic";
@@ -59,7 +60,8 @@ export default async function TrialPage() {
             {company && <DemoContact company={company} />}
           </>
         )}
-        <p className="mt-6 text-center text-sm text-neutral-500">Zaten hesabınız var mı? <Link href="/giris" className="font-medium text-brand-700">Giriş yapın</Link></p>
+        <PolicyLinks className="mt-6 text-center" />
+        <p className="mt-3 text-center text-sm text-neutral-500">Zaten hesabınız var mı? <Link href="/giris" className="font-medium text-brand-700">Giriş yapın</Link></p>
       </div>
     </main>
   );

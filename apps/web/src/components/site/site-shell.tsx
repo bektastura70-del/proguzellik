@@ -81,7 +81,7 @@ export function SiteFooter() {
           <h2 className="mb-2 font-semibold text-ink">Yasal</h2>
           <ul className="space-y-1.5">
             <li><Link href="/kvkk">KVKK Aydınlatma Metni</Link></li>
-            <li><Link href="/gizlilik">Gizlilik Politikası</Link></li>
+            <li><Link href="/gizlilik-politikasi">Gizlilik Politikası</Link></li>
             <li><Link href="/cerez-politikasi">Çerez Politikası</Link></li>
             <li><Link href="/kullanim-kosullari">Kullanım Koşulları</Link></li>
             <li><Link href="/faturalandirma-politikasi">Faturalandırma Politikası</Link></li>

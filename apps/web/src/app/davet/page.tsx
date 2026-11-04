@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PolicyLinks } from "@/components/policy-links";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { AuthCard } from "@/components/auth-card";
@@ -68,6 +69,7 @@ function InviteForm() {
           <Link href="/kvkk" target="_blank" className="text-brand-700 underline">KVKK Aydınlatma Metni</Link>&apos;ni okudum, kişisel verilerimin hizmetin sunulması amacıyla işlenmesini kabul ediyorum.
         </span>
       </label>
+      <PolicyLinks />
       <Button className="w-full" size="lg" disabled={busy}>{busy ? "Kaydediliyor…" : "Daveti kabul et"}</Button>
     </form>
   );

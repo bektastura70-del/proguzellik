@@ -12,7 +12,7 @@ export function LegalPage({ title, children, draft = false, imprint }: { title: 
           Bu metin bir şablondur. Yayına almadan önce bir hukuk danışmanı tarafından gözden geçirilmelidir.
         </div>
       )}
-      <article className="prose-sm mt-8 space-y-4 text-[15px] leading-7 text-neutral-700 [&_h1]:font-display [&_h1]:text-3xl [&_h1]:font-semibold [&_h1]:text-ink [&_h2]:mt-8 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-ink [&_ul]:list-disc [&_ul]:pl-6">
+      <article className="prose-sm mt-8 space-y-4 text-[15px] leading-7 text-neutral-700 [&_h1]:font-display [&_h1]:text-3xl [&_h1]:font-semibold [&_h1]:text-ink [&_h2]:mt-8 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-ink [&_h3]:mt-6 [&_h3]:font-semibold [&_h3]:text-ink [&_ul]:list-disc [&_ul]:pl-6">
         <h1>{title}</h1>
         {imprint}
         {children}
