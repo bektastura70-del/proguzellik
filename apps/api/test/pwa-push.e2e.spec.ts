@@ -148,11 +148,13 @@ describe("Web Push ve uygulama içi bildirimler (Modül 3)", () => {
     expect(await run(cancel.id)).toBe("sent");
   });
 
-  it("müşteri portaldan randevu alırsa: müşteriye 'oluşturuldu' gitmez; masa rolleri 'yeni randevu', atanan personel 'size atandı' alır", async () => {
+  it("müşteri portaldan randevu alırsa: müşteriye 'alındı' gider; masa rolleri 'yeni randevu', atanan personel 'size atandı' alır", async () => {
     const r = await portal(app, A.tenant.slug, token).post("/bookings").set("Idempotency-Key", "push-key-0001").send({ ...guest, serviceId: s.service.id, staffId: s.staff.id, startsAt: futureAt(7, "11:00") }).expect(201);
     const id = r.body.bookingId;
     const rows = await pushRows(id);
-    expect(rows.some((x) => x.template === "push_randevu_olusturuldu")).toBe(false);
+    const own = rows.filter((x) => x.template === "push_randevu_olusturuldu");
+    expect(own).toHaveLength(1);
+    expect((own[0].payload as { body: string }).body).toMatch(/^Randevunuz alındı: /);
     expect(rows.filter((x) => x.template.startsWith("push_hatirlatma"))).toHaveLength(2);
     const inApp = await su.inAppNotification.findMany({ where: { appointmentId: id } });
     const map = Object.fromEntries(inApp.map((n) => [n.userId, n.type]));
@@ -172,7 +174,7 @@ describe("Web Push ve uygulama içi bildirimler (Modül 3)", () => {
     const inApp = await su.inAppNotification.findMany({ where: { appointmentId: r.body.bookingId, type: "appointment.customer_cancelled" } });
     expect(inApp.map((n) => n.userId).sort()).toEqual([A.user.id, elifUserId].sort());
     const rows = await pushRows(r.body.bookingId);
-    expect(rows.some((x) => x.template === "push_randevu_iptal")).toBe(false);
+    expect(rows.filter((x) => x.template === "push_randevu_iptal")).toHaveLength(1);
     const staffCancel = rows.filter((x) => x.template === "push_isletme_musteri_iptal");
     expect(staffCancel.map((x) => x.recipient).sort()).toEqual([`user:${A.user.id}`, `user:${elifUserId}`].sort());
     await rec.patch("/pwa/preferences").send({ cancellations: true }).expect(200);

@@ -10,6 +10,8 @@ export function SalonSwRegister({ slug }: { slug: string }) {
   useEffect(() => {
     if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) return;
     navigator.serviceWorker.register(`/r/${slug}/sw.js`, { scope: `/r/${slug}/`, updateViaCache: "none" }).catch(() => undefined);
+    // Uygulama açılınca ana ekran simgesindeki bildirim sayısı silinir.
+    (navigator as Navigator & { clearAppBadge?: () => Promise<void> }).clearAppBadge?.().catch(() => undefined);
   }, [slug]);
   return null;
 }

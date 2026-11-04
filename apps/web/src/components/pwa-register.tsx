@@ -9,6 +9,8 @@ export function PwaRegister() {
     // Salon sayfaları (/r/…) işletme uygulamasının service worker'ını kaydetmez; kendi kapsamlı worker'ları vardır.
     if (window.location.pathname.startsWith("/r/")) return;
     navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+    // Uygulama açılınca ana ekran simgesindeki bildirim sayısı silinir.
+    (navigator as Navigator & { clearAppBadge?: () => Promise<void> }).clearAppBadge?.().catch(() => undefined);
   }, []);
   return null;
 }

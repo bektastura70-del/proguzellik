@@ -104,15 +104,14 @@ export class PushPlanner {
       const ids = await this.customerIdentities(tx, appt);
       if (ids.length) {
         const url = `/r/${tenant.slug}/uygulama?sekme=randevularim`;
-        const ev2tpl: Partial<Record<PushEvent, [string, string]>> =
-          by === "CUSTOMER"
-            ? {} // Müşterinin kendi işlemi ekranda onaylanır; aynı kişiye ayrıca push gitmez.
-            : {
-                created: [PUSH_TEMPLATES.created, `Randevunuz oluşturuldu: ${when}`],
-                confirmed: [PUSH_TEMPLATES.confirmed, `Randevunuz onaylandı: ${when}`],
-                rescheduled: [PUSH_TEMPLATES.changed, `Randevunuz yeni saate alındı: ${when}`],
-                cancelled: [PUSH_TEMPLATES.cancelled, `${when} tarihli randevunuz iptal edildi`],
-              };
+        // Müşterinin kendi işlemi de bildirilir (talimat: oluşturuldu/değişti/iptal); kayıt telefonda kalsın diye.
+        const own = by === "CUSTOMER";
+        const ev2tpl: Partial<Record<PushEvent, [string, string]>> = {
+          created: [PUSH_TEMPLATES.created, own ? `Randevunuz alındı: ${when}` : `Randevunuz oluşturuldu: ${when}`],
+          confirmed: [PUSH_TEMPLATES.confirmed, `Randevunuz onaylandı: ${when}`],
+          rescheduled: [PUSH_TEMPLATES.changed, `Randevunuz yeni saate alındı: ${when}`],
+          cancelled: [PUSH_TEMPLATES.cancelled, `${when} tarihli randevunuz iptal edildi`],
+        };
         const hit = ev2tpl[ev];
         for (const id of ids) {
           if (hit && (ev === "cancelled" || ["BOOKED", "CONFIRMED"].includes(appt.status))) {

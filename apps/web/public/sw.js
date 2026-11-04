@@ -33,6 +33,15 @@ self.addEventListener("fetch", (e) => {
   }
 });
 
+// Ana ekran simgesindeki sayı (iOS 16.4+ ana ekran uygulaması, Android/masaüstü Chrome). Desteklenmezse sessizce geçilir.
+function updateBadge() {
+  return self.registration.getNotifications().then((list) => {
+    const nav = self.navigator;
+    if (!nav || !nav.setAppBadge) return;
+    return list.length ? nav.setAppBadge(list.length) : nav.clearAppBadge();
+  }).catch(() => undefined);
+}
+
 /* Anlık bildirim (işletme paneli). Yük yalnızca başlık, kısa metin ve panel içi adres içerir. */
 self.addEventListener("push", (e) => {
   let d = {};
@@ -43,12 +52,17 @@ self.addEventListener("push", (e) => {
     icon: "/icon-192.png",
     badge: "/icon-192.png",
     tag: typeof d.tag === "string" ? d.tag.slice(0, 100) : undefined,
+    renotify: typeof d.tag === "string",
+    silent: false,
+    vibrate: [200, 100, 200],
+    timestamp: Date.now(),
     data: { url },
-  }));
+  }).then(updateBadge));
 });
 
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
+  updateBadge();
   const raw = e.notification.data && e.notification.data.url;
   const url = typeof raw === "string" && raw.startsWith("/panel") ? raw : "/panel/bildirim-merkezi";
   e.waitUntil(
