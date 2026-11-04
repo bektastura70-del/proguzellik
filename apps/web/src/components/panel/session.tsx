@@ -17,8 +17,20 @@ export interface Me {
   memberships: Membership[];
 }
 
+export interface PwaFlags {
+  businessPwaEnabled: boolean;
+  customerPwaEnabled: boolean;
+  customerBookingEnabled: boolean;
+  webPushEnabled: boolean;
+  customerSessionTrackingEnabled: boolean;
+  pushAvailable: boolean;
+  vapidPublicKey: string | null;
+}
+
 interface Session {
   me: Me | null;
+  /** İşletmenin PWA bayrakları (yüklenene kadar null; hata olursa hepsi kapalı sayılır) */
+  pwa: PwaFlags | null;
   current: Membership | null;
   tenantId: string | null;
   switchTenant: (id: string) => void;
@@ -36,6 +48,7 @@ const readCookie = (name: string) =>
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const [pwa, setPwa] = useState<PwaFlags | null>(null);
 
   const refresh = useCallback(async () => {
     const data = await api<Me>("/auth/me");
@@ -52,10 +65,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     refresh().catch(() => undefined);
   }, [refresh]);
 
+  useEffect(() => {
+    if (!tenantId) return;
+    api<PwaFlags>("/pwa/flags", { tenant: tenantId })
+      .then(setPwa)
+      .catch(() => setPwa({ businessPwaEnabled: false, customerPwaEnabled: false, customerBookingEnabled: false, webPushEnabled: false, customerSessionTrackingEnabled: false, pushAvailable: false, vapidPublicKey: null }));
+  }, [tenantId]);
+
   const value = useMemo<Session>(() => {
     const current = me?.memberships.find((m) => m.tenant.id === tenantId) ?? null;
     return {
       me,
+      pwa,
       current,
       tenantId,
       switchTenant: (id) => {
@@ -71,7 +92,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         window.location.href = "/giris";
       },
     };
-  }, [me, tenantId, refresh]);
+  }, [me, tenantId, refresh, pwa]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

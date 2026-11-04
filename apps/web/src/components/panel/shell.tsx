@@ -1,21 +1,23 @@
 "use client";
 
 import {
-  BarChart3, Bell, Boxes, MessageCircle, Link2, Megaphone, CalendarDays, CreditCard, LayoutDashboard, LogOut, Menu, Package, Scissors, Settings, Sparkles, Users, UserSquare2, Wallet, X, Shield,
+  BarChart3, Bell, BellRing, Boxes, MessageCircle, Link2, Megaphone, CalendarDays, CalendarCheck, CreditCard, LayoutDashboard, LogOut, Menu, Package, Scissors, Settings, Smartphone, Sparkles, Users, UserSquare2, Wallet, X, Shield,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
 import { Logo } from "@/components/logo";
 import { Alert, Badge, Spinner } from "@/components/ui";
 import { STATUS_TR } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Membership, useSession } from "./session";
 
-type Item = { href: string; label: string; icon: React.ComponentType<{ className?: string }>; roles?: Membership["role"][]; feature?: string };
+type Item = { href: string; label: string; icon: React.ComponentType<{ className?: string }>; roles?: Membership["role"][]; feature?: string; pwa?: boolean };
 
 const NAV: Item[] = [
   { href: "/panel", label: "Genel bakış", icon: LayoutDashboard },
+  { href: "/panel/bugun", label: "Bugün", icon: CalendarCheck, pwa: true },
   { href: "/panel/takvim", label: "Takvim", icon: CalendarDays },
   { href: "/panel/musteriler", label: "Müşteriler", icon: Users },
   { href: "/panel/hizmetler", label: "Hizmetler", icon: Scissors, roles: ["OWNER", "MANAGER"] },
@@ -30,13 +32,53 @@ const NAV: Item[] = [
   { href: "/panel/bildirimler", label: "Bildirimler", icon: Bell, roles: ["OWNER", "MANAGER", "RECEPTION"], feature: "WHATSAPP" },
   { href: "/panel/asistan", label: "Asistan", icon: Sparkles, roles: ["OWNER", "MANAGER"], feature: "AI_ASSISTANT" },
   { href: "/panel/abonelik", label: "Abonelik", icon: CreditCard, roles: ["OWNER", "MANAGER"] },
+  { href: "/panel/bildirim-merkezi", label: "Bildirim merkezi", icon: BellRing, pwa: true },
+  { href: "/panel/uygulama", label: "Salon uygulaması", icon: Smartphone, roles: ["OWNER", "MANAGER"] },
   { href: "/panel/ayarlar", label: "Ayarlar", icon: Settings, roles: ["OWNER", "MANAGER"] },
 ];
 
+/** İşletme mobil uygulaması açıkken telefonda alt menü: en sık kullanılan ekranlar tek dokunuşta. */
+function BottomNav({ path, unread, onMenu }: { path: string; unread: number; onMenu: () => void }) {
+  const items = [
+    { href: "/panel/bugun", label: "Bugün", icon: CalendarCheck },
+    { href: "/panel/takvim", label: "Takvim", icon: CalendarDays },
+    { href: "/panel/musteriler", label: "Müşteriler", icon: Users },
+    { href: "/panel/bildirim-merkezi", label: "Bildirimler", icon: BellRing, badge: unread },
+  ];
+  return (
+    <nav aria-label="Hızlı menü" className="fixed inset-x-0 bottom-0 z-20 border-t border-sand-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
+      <ul className="flex">
+        {items.map((i) => {
+          const active = path.startsWith(i.href);
+          return (
+            <li key={i.href} className="flex-1">
+              <Link href={i.href} aria-current={active ? "page" : undefined} className={cn("relative flex flex-col items-center gap-0.5 py-2.5 text-[11px]", active ? "font-semibold text-brand-700" : "text-neutral-500")}>
+                <i.icon className="size-5" />
+                {i.label}
+                {!!i.badge && <span className="absolute right-[calc(50%-1.25rem)] top-1.5 min-w-4 rounded-full bg-red-600 px-1 text-center text-[10px] font-semibold leading-4 text-white">{i.badge > 9 ? "9+" : i.badge}</span>}
+              </Link>
+            </li>
+          );
+        })}
+        <li className="flex-1">
+          <button type="button" onClick={onMenu} className="flex w-full flex-col items-center gap-0.5 py-2.5 text-[11px] text-neutral-500"><Menu className="size-5" />Menü</button>
+        </li>
+      </ul>
+    </nav>
+  );
+}
+
 export function PanelShell({ children }: { children: React.ReactNode }) {
-  const { me, current, can, has, switchTenant, logout } = useSession();
+  const { me, current, can, has, switchTenant, logout, pwa, tenantId } = useSession();
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const mobileApp = !!pwa?.businessPwaEnabled;
+
+  useEffect(() => {
+    if (!mobileApp || !tenantId) return;
+    api<{ unread: number }>("/pwa/notifications?unread=1", { tenant: tenantId }).then((r) => setUnread(r.unread)).catch(() => undefined);
+  }, [mobileApp, tenantId, path]);
 
   if (!me) {
     return (
@@ -59,7 +101,7 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const items = NAV.filter((i) => (!i.roles || can(...i.roles)) && (!i.feature || has(i.feature)));
+  const items = NAV.filter((i) => (!i.roles || can(...i.roles)) && (!i.feature || has(i.feature)) && (!i.pwa || mobileApp) && (i.href !== "/panel/uygulama" || !!pwa?.customerPwaEnabled || !!pwa?.customerBookingEnabled));
   const trialDays = current.tenant.status === "TRIAL" && current.tenant.trialEndsAt
     ? Math.max(0, Math.ceil((new Date(current.tenant.trialEndsAt).getTime() - Date.now()) / 86_400_000))
     : null;
@@ -148,7 +190,7 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
         <Logo className="text-lg" />
         <span className="w-8" />
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+      <main className={cn("mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10", mobileApp && "pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-10")}>
         {me.emailVerified === false && (
           <div className="mb-6">
             <Alert tone="amber">
@@ -173,6 +215,7 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
         )}
         {children}
       </main>
+      {mobileApp && <BottomNav path={path} unread={unread} onMenu={() => setOpen(true)} />}
     </div>
   );
 }
