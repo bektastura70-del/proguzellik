@@ -56,6 +56,17 @@ if [[ -f "$ENV_FILE" ]]; then
   else
     ok "İşletme kaydı kapalı"
   fi
+  # PWA V1.0
+  if [[ "$(env_get PWA_ENABLED)" == "1" ]]; then
+    warn "PWA_ENABLED=1: salon uygulaması SaaS sahibi panelinden işletme başına açılabilir"
+    [[ "$(env_get EMAIL_MODE)" == "smtp" ]] || warn "PWA_ENABLED=1 ama e-posta kapalı: müşteri portalına giriş kodu gönderilemez (portal 503 döner)"
+  else
+    ok "PWA kapalı (tüm işletmelerde eski online randevu akışı)"
+  fi
+  if [[ "$(env_get WEB_PUSH_MODE)" == "live" ]]; then
+    for k in VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY VAPID_SUBJECT; do [[ -n "$(env_get "$k")" ]] && ok "$k tanımlı" || bad "WEB_PUSH_MODE=live ama $k boş"; done
+    [[ "$(env_get COMPOSE_FILE)" == *docker-compose.egress.yml* ]] && ok "Push için çıkış ağı etkin" || bad "WEB_PUSH_MODE=live ama COMPOSE_FILE'da docker-compose.egress.yml yok (worker push servislerine ulaşamaz)"
+  fi
   [[ -n "$(env_get APP_VERSION)" ]] && ok "APP_VERSION tanımlı" || bad "APP_VERSION boş"
 else
   bad ".env yok: $ENV_FILE"

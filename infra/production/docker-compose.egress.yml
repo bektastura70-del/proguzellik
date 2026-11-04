@@ -1,4 +1,4 @@
-# Dış SMTP sunucusuna erişim: yalnızca api ve worker servislerine giden (egress) ağ ekler.
+# Dış SMTP sunucusuna ve (WEB_PUSH_MODE=live ise) tarayıcı push servislerine (443) erişim: yalnızca api ve worker servislerine giden (egress) ağ ekler.
 # Gelen bağlantı yoktur (port yayınlanmaz). Yalnızca EMAIL_MODE=smtp iken kullanılır.
 # Etkinleştirme (.env):  COMPOSE_FILE=docker-compose.yml:docker-compose.edge.yml:docker-compose.egress.yml
 # ardından:              docker compose up -d --no-deps api worker
