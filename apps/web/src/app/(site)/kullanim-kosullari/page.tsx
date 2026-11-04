@@ -1,12 +1,16 @@
 import { LegalPage } from "@/components/legal";
+import { getSiteInfo } from "@/lib/site";
 
+/** Şirket unvanı ve iletişim bilgisi SaaS sahibi panelindeki "Şirket ayarları"ndan gelir (metinde elle yazılmaz). */
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Kullanım Koşulları", alternates: { canonical: "/kullanim-kosullari" } };
 
 /** Şablon: ürünün gerçek işleyişini anlatır; şirket/hukuk bilgileri [KÖŞELİ PARANTEZ] ile işaretlidir ve doldurulmalıdır. */
-export default function Terms() {
+export default async function Terms() {
+  const { company } = await getSiteInfo();
   return (
     <LegalPage title="Kullanım Koşulları">
-      <p>Bu koşullar, [ŞİRKET ÜNVANI] (&quot;ProGüzellik&quot;) tarafından sunulan ProGüzellik salon yönetim yazılımının (&quot;Hizmet&quot;) kullanımını düzenler. Hizmete kaydolarak bu koşulları kabul etmiş olursunuz.</p>
+      <p>Bu koşullar, {company.legalName ?? "[ŞİRKET ÜNVANI]"} (&quot;ProGüzellik&quot;) tarafından sunulan ProGüzellik salon yönetim yazılımının (&quot;Hizmet&quot;) kullanımını düzenler. Hizmete kaydolarak bu koşulları kabul etmiş olursunuz.</p>
       <h2>1. Hesap ve işletme</h2>
       <ul>
         <li>Hesap, e-posta adresinin doğrulanmasıyla açılır. Hesap bilgilerinin doğru tutulmasından ve parolanın korunmasından hesap sahibi sorumludur.</li>

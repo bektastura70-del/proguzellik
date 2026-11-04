@@ -1,11 +1,15 @@
 import { LegalPage } from "@/components/legal";
+import { getSiteInfo } from "@/lib/site";
 
+/** Şirket unvanı ve iletişim bilgisi SaaS sahibi panelindeki "Şirket ayarları"ndan gelir (metinde elle yazılmaz). */
+export const dynamic = "force-dynamic";
 export const metadata = { title: "KVKK Aydınlatma Metni" };
 
-export default function Kvkk() {
+export default async function Kvkk() {
+  const { company } = await getSiteInfo();
   return (
     <LegalPage title="KVKK Aydınlatma Metni">
-      <p>6698 sayılı Kişisel Verilerin Korunması Kanunu (&quot;KVKK&quot;) uyarınca, [VERİ SORUMLUSU ÜNVANI] (&quot;ProGüzellik&quot;) olarak kişisel verilerinizi aşağıda açıklanan kapsamda işlemekteyiz.</p>
+      <p>6698 sayılı Kişisel Verilerin Korunması Kanunu (&quot;KVKK&quot;) uyarınca, {company.legalName ?? "[VERİ SORUMLUSU ÜNVANI]"} (&quot;ProGüzellik&quot;) olarak kişisel verilerinizi aşağıda açıklanan kapsamda işlemekteyiz.</p>
       <h2>1. İşlenen kişisel veriler</h2>
       <ul>
         <li>Kimlik ve iletişim: ad, soyad, telefon, e-posta</li>
