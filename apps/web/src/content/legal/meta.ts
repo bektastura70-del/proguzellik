@@ -5,7 +5,9 @@ export const LEGAL_BRAND = "Pro Güzellik";
 export const LEGAL_WEBSITE = "https://proguzellik.com";
 export const LEGAL_EMAIL = "info@proguzellik.com";
 /**
- * Yürürlük tarihi (YYYY-AA-GG). Metinler yayına alınırken SaaS sahibi belirler; boşken künyede gösterilmez.
- * Değiştirildiğinde api/src/auth/auth.service.ts içindeki KVKK_NOTICE_VERSION / TERMS_VERSION da güncellenmelidir.
+ * Belge künyesindeki tarih ve sürüm (Bektaş Tura, 04.11.2026). Metin değiştiğinde güncellenir;
+ * yürürlük tarihi değişirse api/src/auth/auth.service.ts içindeki KVKK_NOTICE_VERSION / TERMS_VERSION da güncellenmelidir.
  */
-export const LEGAL_EFFECTIVE_DATE: string | null = null;
+export const LEGAL_EFFECTIVE_DATE = "04.11.2026";
+export const LEGAL_UPDATED_DATE = "04.11.2026";
+export const LEGAL_DOC_VERSION = "1.0";

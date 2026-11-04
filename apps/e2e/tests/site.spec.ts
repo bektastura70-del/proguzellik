@@ -105,6 +105,9 @@ test.describe("Tanıtım sitesi", () => {
       const imprint = page.getByTestId("legal-imprint");
       await expect(imprint).toContainText("BEKTAŞ TURA REKLAM MEDYA VE BİLGİ TEKNOLOJİLERİ LİMİTED ŞİRKETİ");
       await expect(imprint).toContainText("info@proguzellik.com");
+      await expect(imprint).toContainText(/Yürürlük Tarihi\s*04\.11\.2026/);
+      await expect(imprint).toContainText(/Son Güncelleme Tarihi\s*04\.11\.2026/);
+      await expect(imprint).toContainText(/Belge Sürümü\s*1\.0/);
       if (site.company.address) await expect(imprint).toContainText("Şirket Adresi");
     }
     await page.goto("/kvkk");

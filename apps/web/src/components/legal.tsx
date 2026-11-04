@@ -1,4 +1,4 @@
-import { LEGAL_BRAND, LEGAL_EFFECTIVE_DATE, LEGAL_EMAIL, LEGAL_PROVIDER, LEGAL_WEBSITE } from "@/content/legal/meta";
+import { LEGAL_BRAND, LEGAL_DOC_VERSION, LEGAL_EFFECTIVE_DATE, LEGAL_UPDATED_DATE, LEGAL_EMAIL, LEGAL_PROVIDER, LEGAL_WEBSITE } from "@/content/legal/meta";
 import { getSiteInfo } from "@/lib/site";
 
 /**
@@ -21,8 +21,6 @@ export function LegalPage({ title, children, draft = false, imprint }: { title: 
   );
 }
 
-const dateTr = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Istanbul" });
-
 /** Hizmet sağlayıcı künyesi. Adres ve vergi bilgisi Şirket ayarları'ndan gelir; girilmemiş satır gösterilmez. */
 export async function LegalImprint() {
   const { company } = await getSiteInfo();
@@ -35,7 +33,7 @@ export async function LegalImprint() {
   ];
   if (company.address) rows.push(["Şirket Adresi", company.address]);
   if (tax) rows.push(["Vergi Dairesi ve Vergi Numarası", tax]);
-  if (LEGAL_EFFECTIVE_DATE) rows.push(["Yürürlük Tarihi", dateTr(LEGAL_EFFECTIVE_DATE)]);
+  rows.push(["Yürürlük Tarihi", LEGAL_EFFECTIVE_DATE], ["Son Güncelleme Tarihi", LEGAL_UPDATED_DATE], ["Belge Sürümü", LEGAL_DOC_VERSION]);
   return (
     <dl className="grid gap-x-4 gap-y-1 rounded-xl border border-sand-200 bg-white p-4 text-sm sm:grid-cols-[max-content_1fr]" data-testid="legal-imprint">
       {rows.map(([k, v]) => (
