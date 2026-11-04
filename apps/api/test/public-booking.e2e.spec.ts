@@ -77,6 +77,18 @@ describe("Online rezervasyon (herkese açık)", () => {
     expect(c.firstName).toBe("Online");
   });
 
+  it("başkasının telefonuyla alınan randevu o müşterinin KVKK/izin kaydını değiştirmez; farklı ad nota yazılır", async () => {
+    const existing = await su.customer.create({ data: { tenantId: A.tenant.id, firstName: "Gerçek", lastName: "Sahibi", phone: "05557776655", marketingConsent: false } });
+    const r = await http().post(`/public/salons/${slug}/bookings`).send({ ...guest, firstName: "Başka", lastName: "Biri", phone: "0555 777 66 55", marketingConsent: true, serviceId: s.service.id, startsAt: futureAt(5, "16:00") }).expect(201);
+    const after = await su.customer.findUniqueOrThrow({ where: { id: existing.id } });
+    expect(after.kvkkConsentAt).toBeNull();
+    expect(after.marketingConsent).toBe(false);
+    expect(after.firstName).toBe("Gerçek");
+    const appt = await su.appointment.findUniqueOrThrow({ where: { id: r.body.bookingId } });
+    expect(appt.customerId).toBe(existing.id);
+    expect(appt.notes).toMatch(/Online formdaki ad: Başka Biri/);
+  });
+
   it("online kapalı personel/hizmet ve çalışma saati dışı seçilemez", async () => {
     await http().post(`/public/salons/${slug}/bookings`).send({ ...guest, serviceId: s.service.id, staffId: s.staff2.id, startsAt: futureAt(5, "14:00") }).expect(409);
     await http().post(`/public/salons/${slug}/bookings`).send({ ...guest, serviceId: s.service.id, startsAt: futureAt(5, "20:00") }).expect(409);

@@ -94,14 +94,18 @@ export class InboxService {
     });
   }
 
-  /** Meta teslim durumları (gönderildi/iletildi/okundu/başarısız). */
-  async applyStatus(providerMessageId: string, status: "SENT" | "DELIVERED" | "READ" | "FAILED", error?: string) {
+  /**
+   * Meta teslim durumları (gönderildi/iletildi/okundu/başarısız).
+   * Webhook işletmeye özeldir ve imza sırrını işletme kendisi girer; bu yüzden güncelleme yalnız o işletmenin
+   * kayıtlarına RLS altında uygulanır (başka işletmenin mesaj durumu değiştirilemez).
+   */
+  async applyStatus(tenantId: string, providerMessageId: string, status: "SENT" | "DELIVERED" | "READ" | "FAILED", error?: string) {
     const data = { status, ...(status === "FAILED" ? { error: error ?? "Teslim edilemedi" } : {}) };
-    const [n, m] = await Promise.all([
-      this.prisma.platform.notification.updateMany({ where: { providerMessageId }, data }),
-      this.prisma.platform.conversationMessage.updateMany({ where: { providerMessageId }, data }),
-    ]);
-    return n.count + m.count;
+    return this.prisma.withTenant({ tenantId, userId: "" }, async (tx) => {
+      const n = await tx.notification.updateMany({ where: { tenantId, providerMessageId }, data });
+      const m = await tx.conversationMessage.updateMany({ where: { tenantId, providerMessageId }, data });
+      return n.count + m.count;
+    });
   }
 
   /**

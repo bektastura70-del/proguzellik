@@ -110,6 +110,7 @@ export class PublicBookingService {
 
         let customer = await tx.customer.findUnique({ where: { tenantId_phone: { tenantId: t.id, phone: b.phone } } });
         if (customer?.anonymizedAt) customer = null;
+        const isNew = !customer;
         if (!customer) {
           await assertUsageLimit(tx, t.id, "customer");
           customer = await tx.customer.create({
@@ -124,16 +125,22 @@ export class PublicBookingService {
               marketingConsent: b.marketingConsent ?? false,
             },
           });
-        } else if (!customer.kvkkConsentAt) {
-          await tx.customer.update({ where: { id: customer.id }, data: { kvkkConsentAt: new Date() } });
         }
+        // Telefon mevcut bir müşteriyle eşleşse de formu dolduranın o kişi olduğu doğrulanamaz:
+        // kayıttaki KVKK/izin bilgisi değiştirilmez; ad farklıysa resepsiyon teyit etsin diye nota yazılır.
+        const norm = (v: string) => v.trim().toLocaleLowerCase("tr-TR").replace(/\s+/g, " ");
+        const nameMismatch = !isNew && norm(`${b.firstName} ${b.lastName}`) !== norm(`${customer.firstName} ${customer.lastName}`);
+        const notes = [
+          nameMismatch ? `Online formdaki ad: ${b.firstName} ${b.lastName} (kayıttaki müşteri adından farklı; lütfen telefonla teyit edin)` : null,
+          b.notes ?? null,
+        ].filter(Boolean).join("\n") || undefined;
 
         const appt = await this.appointments.createInTx(tx, t.id, {
           customerId: customer.id,
           staffId: slot.staffId,
           serviceId: service.id,
           startsAt: slot.startsAt,
-          notes: b.notes,
+          notes,
           source: "ONLINE",
         });
         await this.audit.log(tx, { tenantId: t.id, action: "booking.online_created", entity: "Appointment", entityId: appt.id, ip });

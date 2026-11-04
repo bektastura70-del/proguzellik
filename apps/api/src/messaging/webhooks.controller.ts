@@ -130,7 +130,7 @@ export class MetaWebhooksController {
       if (m.isText && !r.optedOut) await this.sink.inbound(c as ChannelConnection, r.conversation.id, r.message.id);
     }
     let updated = 0;
-    for (const s of parsed.statuses) updated += await this.inbox.applyStatus(s.id, s.status, s.error);
+    for (const s of parsed.statuses) updated += await this.inbox.applyStatus(c.tenantId, s.id, s.status, s.error);
     if (stored || updated) this.logger.log(`Webhook ${c.channel}: ${stored} yeni mesaj, ${updated} durum`);
     return { received: true, stored, updated };
   }

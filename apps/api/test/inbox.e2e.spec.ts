@@ -117,6 +117,15 @@ describe("Gelen kutusu: Meta webhook'ları, personel yanıtı, 24 saat kuralı",
     expect((await su.conversationMessage.findUniqueOrThrow({ where: { id: msg.id } })).status).toBe("READ");
   });
 
+  it("bir işletme kendi imzalı webhook'uyla başka işletmenin mesaj durumunu değiştiremez", async () => {
+    const msg = await su.conversationMessage.findFirstOrThrow({ where: { conversationId: convId, author: "STAFF" } });
+    await su.conversationMessage.update({ where: { id: msg.id }, data: { status: "SENT" } });
+    const body = { object: "whatsapp_business_account", entry: [{ id: "2", changes: [{ field: "messages", value: { metadata: { phone_number_id: PHONE_B }, statuses: [{ id: msg.providerMessageId, status: "failed", timestamp: "1", recipient_id: "905550000001" }] } }] }] };
+    const r = await signedPost(app, waB, body, SECRET_B).expect(200);
+    expect(r.body.updated).toBe(0);
+    expect((await su.conversationMessage.findUniqueOrThrow({ where: { id: msg.id } })).status).toBe("SENT");
+  });
+
   it("24 saat penceresi kapanınca serbest mesaj gönderilmez", async () => {
     await su.conversation.update({ where: { id: convId }, data: { lastInboundAt: new Date(Date.now() - 25 * 3_600_000) } });
     const r = await rcp.post(`/conversations/${convId}/messages`).send({ text: "Geç yanıt" }).expect(409);
