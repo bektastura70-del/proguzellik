@@ -45,7 +45,7 @@ export class CustomersService {
 
   async list(t: TenantInfo, q: { search?: string; page: number; pageSize: number; tag?: string }) {
     return this.prisma.withTenant(t, async (tx) => {
-      const where: Prisma.CustomerWhereInput = { anonymizedAt: null };
+      const where: Prisma.CustomerWhereInput = { anonymizedAt: null, ...CustomersService.staffScope(t) };
       if (q.search) {
         const s = q.search.trim();
         where.OR = [
@@ -69,8 +69,23 @@ export class CustomersService {
     });
   }
 
+  /**
+   * Personel (STAFF) yalnız kendisine randevusu olan (geçmiş veya gelecek) müşterileri görür.
+   * Diğer roller tüm müşterileri görür.
+   */
+  static staffScope(t: TenantInfo): Prisma.CustomerWhereInput {
+    return t.role === "STAFF" ? { appointments: { some: { staff: { userId: t.userId } } } } : {};
+  }
+
+  /** Personel kendi müşterisi olmayan kaydı açamaz (varlığı da belli edilmez). */
+  private async findVisible(tx: Tx, t: TenantInfo, id: string) {
+    const c = await tx.customer.findFirst({ where: { id, ...CustomersService.staffScope(t) } });
+    if (!c) throw new NotFoundException("Müşteri bulunamadı");
+    return c;
+  }
+
   async get(t: TenantInfo, id: string) {
-    return this.prisma.withTenant(t, (tx) => this.find(tx, id));
+    return this.prisma.withTenant(t, (tx) => this.findVisible(tx, t, id));
   }
 
   async find(tx: Tx, id: string) {
@@ -109,7 +124,7 @@ export class CustomersService {
 
   addNote(t: TenantInfo, id: string, body: string) {
     return this.prisma.withTenant(t, async (tx) => {
-      await this.find(tx, id);
+      await this.findVisible(tx, t, id);
       return tx.customerNote.create({
         data: { tenantId: t.tenantId, customerId: id, authorId: t.userId, body },
       });
@@ -119,7 +134,7 @@ export class CustomersService {
   /** Müşteri geçmişi: notlar, randevular, paketler ve ödemeler. */
   history(t: TenantInfo, id: string) {
     return this.prisma.withTenant(t, async (tx) => {
-      const customer = await this.find(tx, id);
+      const customer = await this.findVisible(tx, t, id);
       const notes = await tx.customerNote.findMany({
         where: { customerId: id },
         orderBy: { createdAt: "desc" },

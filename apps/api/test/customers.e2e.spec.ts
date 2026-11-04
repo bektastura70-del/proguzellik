@@ -1,5 +1,5 @@
 import { INestApplication } from "@nestjs/common";
-import { api, createApp, createTenantWithUser, login, owner, resetDb, addMember, TEST_PASSWORD } from "./helpers";
+import { api, createApp, createTenantWithUser, login, owner, resetDb, addMember, TEST_PASSWORD, setupSalon, futureAt } from "./helpers";
 
 describe("Müşteri CRM (API + gerçek veritabanı)", () => {
   const su = owner();
@@ -99,5 +99,37 @@ describe("Müşteri CRM (API + gerçek veritabanı)", () => {
     await a.patch(`/customers/${ayseId}`).send({ firstName: "Geri" }).expect(409);
     const logs = await su.auditLog.findMany({ where: { entityId: ayseId } });
     expect(logs.map((l) => l.action).sort()).toEqual(["customer.anonymized", "customer.created", "customer.exported"]);
+  });
+  it("personel (STAFF) yalnız kendi randevusu olan müşterileri görür; takvimde başkasının müşterisinin telefonu gizlidir", async () => {
+    const S = await createTenantWithUser(su, { name: "Personel Salonu", email: "ps@test.local" });
+    const o = api(app, await login(app, "ps@test.local"), S.tenant.id);
+    const salon = await setupSalon(o);
+    await addMember(app, o, { email: "uzman@test.local", fullName: "Uzman", role: "STAFF" });
+    const uzman = await su.user.findUniqueOrThrow({ where: { email: "uzman@test.local" } });
+    await o.patch(`/staff/${salon.staff.id}`).send({ userId: uzman.id }).expect(200);
+    const mine = salon.customer;
+    const other = (await o.post("/customers").send({ firstName: "Diğer", lastName: "Müşteri", phone: "05550000002" }).expect(201)).body;
+    await o.post("/appointments").send({ customerId: mine.id, staffId: salon.staff.id, serviceId: salon.service.id, startsAt: futureAt(3, "10:00") }).expect(201);
+    await o.post("/appointments").send({ customerId: other.id, staffId: salon.staff2.id, serviceId: salon.service.id, startsAt: futureAt(3, "11:00") }).expect(201);
+
+    const st = api(app, await login(app, "uzman@test.local"), S.tenant.id);
+    const list = (await st.get("/customers").expect(200)).body;
+    expect(list.items.map((c: { id: string }) => c.id)).toEqual([mine.id]);
+    expect(list.total).toBe(1);
+    await st.get(`/customers/${mine.id}`).expect(200);
+    await st.get(`/customers/${other.id}`).expect(404);
+    await st.get(`/customers/${other.id}/history`).expect(404);
+    await st.post(`/customers/${other.id}/notes`).send({ body: "x" }).expect(404);
+
+    const from = encodeURIComponent(futureAt(3, "00:00"));
+    const to = encodeURIComponent(futureAt(4, "00:00"));
+    const appts = (await st.get(`/appointments?from=${from}&to=${to}`).expect(200)).body as { customer: { id: string; phone: string | null }; staff: Record<string, unknown> }[];
+    expect(appts.find((x) => x.customer.id === mine.id)!.customer.phone).toBe("05550000001");
+    expect(appts.find((x) => x.customer.id === other.id)!.customer.phone).toBeNull();
+    expect(appts[0].staff).not.toHaveProperty("userId");
+    // Sahip her şeyi görür
+    expect((await o.get("/customers").expect(200)).body.total).toBe(2);
+    const ownerAppts = (await o.get(`/appointments?from=${from}&to=${to}`).expect(200)).body as { customer: { phone: string | null } }[];
+    expect(ownerAppts.every((x) => x.customer.phone)).toBe(true);
   });
 });

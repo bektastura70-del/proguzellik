@@ -52,8 +52,8 @@ export class AppointmentsService {
   }
 
   list(t: TenantInfo, q: { from: string; to: string; staffId?: string; customerId?: string }) {
-    return this.prisma.withTenant(t, (tx) =>
-      tx.appointment.findMany({
+    return this.prisma.withTenant(t, async (tx) => {
+      const rows = await tx.appointment.findMany({
         where: {
           startsAt: { lt: new Date(q.to) },
           endsAt: { gt: new Date(q.from) },
@@ -63,11 +63,17 @@ export class AppointmentsService {
         orderBy: { startsAt: "asc" },
         include: {
           customer: { select: { id: true, firstName: true, lastName: true, phone: true } },
-          staff: { select: { id: true, displayName: true, color: true } },
+          staff: { select: { id: true, displayName: true, color: true, userId: true } },
           service: { select: { id: true, name: true, durationMin: true, color: true } },
         },
-      }),
-    );
+      });
+      // Personel (STAFF) takvimde herkesi görür ama başka personelin müşterisinin telefonunu görmez (KVKK: veri minimizasyonu).
+      return rows.map(({ staff: { userId, ...staff }, ...a }) => ({
+        ...a,
+        staff,
+        customer: t.role === "STAFF" && userId !== t.userId ? { ...a.customer, phone: null } : a.customer,
+      }));
+    });
   }
 
   /** Panel ve online rezervasyonun ortak oluşturma mantığı (transaction içinde). */
