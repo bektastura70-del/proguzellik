@@ -106,6 +106,8 @@ describe("PWA işletme ve personel mobil paneli (Modül 2) + SaaS sahibi bayrakl
 
   it("bildirim merkezi yalnız kullanıcının kendi kayıtlarını gösterir ve okundu işaretler", async () => {
     const ownerId = A.user.id;
+    // Önceki testlerdeki randevuların gerçek bildirimleri temizlenir; burada yalnız sabit kayıtlar denetlenir.
+    await su.inAppNotification.deleteMany({});
     await su.inAppNotification.createMany({
       data: [
         { tenantId: A.tenant.id, audience: "STAFF", userId: elifUserId, type: "appointment.assigned", title: "Size randevu atandı", body: "5 Kasım 10:00", dedupeKey: "t1" },

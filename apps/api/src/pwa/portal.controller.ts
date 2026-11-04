@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Req, Res, StreamableFile } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, HttpCode, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Req, Res, StreamableFile } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { RateLimitService } from "../auth/rate-limit.service";
@@ -6,6 +6,8 @@ import { Public } from "../common/decorators";
 import { phoneSchema } from "../common/schemas";
 import { ZodPipe } from "../common/zod.pipe";
 import { BrandingService } from "./branding.service";
+import { endpointSchema, subscriptionSchema } from "./business.controller";
+import { PushSubscriptionsService } from "./push-subscriptions.service";
 import { CustomerAuthService } from "./customer-auth.service";
 import { PortalService } from "./portal.service";
 
@@ -38,7 +40,28 @@ export class PortalController {
     private readonly auth: CustomerAuthService,
     private readonly rateLimit: RateLimitService,
     private readonly branding: BrandingService,
+    private readonly push: PushSubscriptionsService,
   ) {}
+
+  /** Müşteri cihazı push aboneliği: yalnızca giriş yapmış kimlik, yalnızca bu salon için. */
+  @Post("portal/push/subscriptions")
+  subscribePush(
+    @Param("slug", new ZodPipe(slug)) s: string,
+    @Body(new ZodPipe(subscriptionSchema)) b: z.infer<typeof subscriptionSchema>,
+    @Req() req: Request,
+    @Headers(SESSION_HEADER) token?: string,
+  ) {
+    this.rateLimit.hit(`push-sub:${req.ip}`, 30, 60 * 60_000);
+    return this.portal.withIdentity(s, token, (tx, me, { pwa }) => {
+      if (!PushSubscriptionsService.pushAvailable(pwa, "CUSTOMER")) throw new NotFoundException("Anlık bildirimler bu salonda açık değil");
+      return this.push.subscribeInTx(tx, me.tenantId, { audience: "CUSTOMER", identityId: me.identityId }, b, req.headers["user-agent"]);
+    });
+  }
+
+  @Delete("portal/push/subscriptions")
+  unsubscribePush(@Param("slug", new ZodPipe(slug)) s: string, @Body(new ZodPipe(endpointSchema)) b: z.infer<typeof endpointSchema>, @Headers(SESSION_HEADER) token?: string) {
+    return this.portal.withIdentity(s, token, (tx, me) => this.push.unsubscribeInTx(tx, me.tenantId, { audience: "CUSTOMER", identityId: me.identityId }, b.endpoint));
+  }
 
   /** Salonun logo/simgesi. Kimlik numarasıyla adreslenir (içerik değişirse yeni numara), bu yüzden uzun süre önbelleklenebilir. */
   @Get("assets/:id")

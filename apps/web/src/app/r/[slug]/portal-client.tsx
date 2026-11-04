@@ -7,6 +7,7 @@ import { Alert, Badge, Button, Card, Field, Input, Spinner, Textarea } from "@/c
 import { addDays, dateTr, isoDay, STATUS_TR, timeTr, tl } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AppInfo, MyAppointment, MyPackage, papi, PortalError, Salon, Slot } from "./portal-api";
+import { disablePush } from "@/lib/web-push-client";
 import { AccountExtras } from "./portal-extras";
 
 type Tab = "book" | "mine" | "packages" | "account";
@@ -17,6 +18,13 @@ const newKey = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? 
 /** Salonun markasıyla müşteri uygulaması: randevu al, randevularım, paketlerim, hesabım. */
 export function PortalClient({ slug, app }: { slug: string; app: AppInfo }) {
   const [tab, setTab] = useState<Tab>("book");
+  useEffect(() => {
+    // Bildirime dokununca doğrudan ilgili sekme açılır (?sekme=randevularim).
+    const s = new URLSearchParams(window.location.search).get("sekme");
+    if (s === "randevularim") setTab("mine");
+    else if (s === "paketlerim") setTab("packages");
+    else if (s === "hesabim") setTab("account");
+  }, []);
   const [me, setMe] = useState<Me | null | undefined>(undefined);
   const [salon, setSalon] = useState<Salon | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -509,7 +517,12 @@ function AccountTab({ slug, me, app, onLoggedIn, onLogout }: { slug: string; me:
         <Card className="p-5">
           <h2 className="font-semibold">Hesabım</h2>
           <p className="mt-1 text-sm text-neutral-600">{me.email} ile giriş yaptınız.</p>
-          <Button variant="secondary" size="sm" className="mt-4" onClick={async () => { await papi(slug, "portal/logout", { method: "POST" }).catch(() => null); onLogout(); }}>
+          <Button variant="secondary" size="sm" className="mt-4" onClick={async () => {
+            // Paylaşılan cihazda sonraki kişiye bu müşterinin bildirimleri gitmesin.
+            await disablePush(`/r/${slug}/`, (endpoint) => papi(slug, "portal/push/subscriptions", { method: "DELETE", body: { endpoint } })).catch(() => undefined);
+            await papi(slug, "portal/logout", { method: "POST" }).catch(() => null);
+            onLogout();
+          }}>
             <LogOut className="size-4" /> Çıkış yap
           </Button>
         </Card>

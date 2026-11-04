@@ -1,5 +1,5 @@
 /* ProGüzellik service worker: uygulama kabuğunu önbelleğe alır, API yanıtlarını ASLA önbelleğe almaz. */
-const CACHE = "proguzellik-v2";
+const CACHE = "proguzellik-v3";
 const OFFLINE = "/offline.html";
 
 self.addEventListener("install", (e) => {
@@ -31,4 +31,32 @@ self.addEventListener("fetch", (e) => {
   if (req.mode === "navigate") {
     e.respondWith(fetch(req).catch(() => caches.match(OFFLINE)));
   }
+});
+
+/* Anlık bildirim (işletme paneli). Yük yalnızca başlık, kısa metin ve panel içi adres içerir. */
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (_) { d = {}; }
+  const url = typeof d.url === "string" && d.url.startsWith("/panel") ? d.url : "/panel/bildirim-merkezi";
+  e.waitUntil(self.registration.showNotification(typeof d.title === "string" ? d.title.slice(0, 80) : "ProGüzellik", {
+    body: typeof d.body === "string" ? d.body.slice(0, 200) : "",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: typeof d.tag === "string" ? d.tag.slice(0, 100) : undefined,
+    data: { url },
+  }));
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const raw = e.notification.data && e.notification.data.url;
+  const url = typeof raw === "string" && raw.startsWith("/panel") ? raw : "/panel/bildirim-merkezi";
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if (new URL(c.url).pathname.startsWith("/panel") && "focus" in c) { c.navigate(url).catch(() => undefined); return c.focus(); }
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
 });

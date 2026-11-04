@@ -39,7 +39,7 @@ export abstract class AppointmentHooks {
   abstract onCreated(tx: Tx, appt: { id: string; tenantId: string }, by?: ActorKind): Promise<void>;
   abstract onStatusChanged(tx: Tx, appt: { id: string; tenantId: string; status: AppointmentStatus }, actorId?: string, by?: ActorKind): Promise<void>;
   /** Saat veya personel değişti: bekleyen hatırlatmalar iptal edilip yeniden planlanır. */
-  abstract onRescheduled(tx: Tx, appt: { id: string; tenantId: string }, previous: { startsAt: Date; staffId: string }, by?: ActorKind): Promise<void>;
+  abstract onRescheduled(tx: Tx, appt: { id: string; tenantId: string }, previous: { startsAt: Date; staffId: string }, by?: ActorKind, actorId?: string): Promise<void>;
 }
 
 @Injectable()
@@ -173,7 +173,7 @@ export class AppointmentsService {
           data: { staffId, startsAt, endsAt, notes: input.notes ?? appt.notes, ...(input.price !== undefined ? { price: input.price } : {}) },
         });
         if (startsAt.getTime() !== appt.startsAt.getTime() || staffId !== appt.staffId) {
-          await this.hooks.onRescheduled(tx, updated, { startsAt: appt.startsAt, staffId: appt.staffId }, "STAFF");
+          await this.hooks.onRescheduled(tx, updated, { startsAt: appt.startsAt, staffId: appt.staffId }, "STAFF", t.userId);
         }
         if (input.startsAt || input.staffId) {
           await this.audit.log(tx, {

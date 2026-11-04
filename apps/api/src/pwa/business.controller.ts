@@ -1,9 +1,10 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { CurrentTenant, Roles, TenantInfo } from "../common/decorators";
 import { dateOnly } from "../common/schemas";
 import { ZodPipe } from "../common/zod.pipe";
 import { BusinessPwaService } from "./business.service";
+import { PushSubscriptionsService } from "./push-subscriptions.service";
 
 const agendaSchema = z.object({ date: dateOnly, staffId: z.string().uuid().optional() });
 const listSchema = z.object({ unread: z.enum(["1", "0"]).optional() });
@@ -13,10 +14,43 @@ const prefsSchema = z.object({
   changes: z.boolean().optional(),
   assignments: z.boolean().optional(),
 });
+export const subscriptionSchema = z.object({
+  endpoint: z.string().url().max(1000),
+  keys: z.object({ p256dh: z.string().max(200), auth: z.string().max(100) }),
+});
+export const endpointSchema = z.object({ endpoint: z.string().url().max(1000) });
 
 @Controller("pwa")
 export class BusinessPwaController {
-  constructor(private readonly svc: BusinessPwaService) {}
+  constructor(
+    private readonly svc: BusinessPwaService,
+    private readonly push: PushSubscriptionsService,
+  ) {}
+
+  @Get("push")
+  @Roles()
+  pushStatus(@CurrentTenant() t: TenantInfo) {
+    return this.push.staffStatus(t);
+  }
+
+  @Post("push/subscriptions")
+  @Roles()
+  subscribe(@CurrentTenant() t: TenantInfo, @Body(new ZodPipe(subscriptionSchema)) b: z.infer<typeof subscriptionSchema>, @Headers("user-agent") ua?: string) {
+    return this.push.staffSubscribe(t, b, ua);
+  }
+
+  @Delete("push/subscriptions")
+  @Roles()
+  unsubscribe(@CurrentTenant() t: TenantInfo, @Body(new ZodPipe(endpointSchema)) b: z.infer<typeof endpointSchema>) {
+    return this.push.staffUnsubscribe(t, b.endpoint);
+  }
+
+  @Post("push/test")
+  @HttpCode(202)
+  @Roles()
+  testPush(@CurrentTenant() t: TenantInfo) {
+    return this.push.staffTest(t);
+  }
 
   @Get("flags")
   @Roles()

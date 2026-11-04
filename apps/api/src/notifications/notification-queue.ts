@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from "@nestjs/common";
 import { Job, Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { loadEnv } from "../config/env";
@@ -7,6 +7,7 @@ import { waCreds } from "../messaging/channels.service";
 import { recordTemplateInConversation } from "../messaging/inbox.service";
 import { renderTemplate } from "../messaging/templates";
 import { MetaDisabledError, MetaGateway } from "../messaging/meta.gateway";
+import { WebPushDelivery } from "./push/web-push.delivery";
 import { WhatsAppNotConfiguredError, WhatsAppProvider } from "./whatsapp.provider";
 
 export const QUEUE_NAME = "notifications";
@@ -24,6 +25,7 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly provider: WhatsAppProvider,
     private readonly meta: MetaGateway,
+    @Optional() private readonly webPush?: WebPushDelivery,
   ) {}
 
   /**
@@ -79,6 +81,10 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
       throw new Error("Bildirim kaydı henüz yok");
     }
     if (n.status !== "QUEUED") return "skipped";
+    if (n.channel === "WEBPUSH") {
+      if (!this.webPush) return "skipped";
+      return this.webPush.deliver(n, job.attemptsMade + 1 >= MAX_ATTEMPTS);
+    }
     if (n.appointmentId && n.template !== "randevu_iptal") {
       const appt = await db.appointment.findUnique({ where: { id: n.appointmentId }, select: { status: true, startsAt: true } });
       if (!appt || !["BOOKED", "CONFIRMED"].includes(appt.status)) {

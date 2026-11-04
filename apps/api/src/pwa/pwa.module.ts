@@ -8,11 +8,12 @@ import { CustomerAuthService } from "./customer-auth.service";
 import { PlatformPwaController } from "./platform-pwa.controller";
 import { PortalController } from "./portal.controller";
 import { PortalService } from "./portal.service";
+import { PushSubscriptionsService } from "./push-subscriptions.service";
 
 @Module({
   imports: [PublicBookingModule],
   controllers: [PortalController, BusinessPwaController, PlatformPwaController, BrandingController],
-  providers: [PortalService, CustomerAuthService, BusinessPwaService, BrandingService],
+  providers: [PortalService, CustomerAuthService, BusinessPwaService, BrandingService, PushSubscriptionsService],
   exports: [PortalService, CustomerAuthService],
 })
 export class PwaModule {}

@@ -26,7 +26,8 @@ export class NotificationsController {
   list(@CurrentTenant() t: TenantInfo, @Query(new ZodPipe(z.object({ appointmentId: z.string().uuid().optional() }))) q: { appointmentId?: string }) {
     return this.prisma.withTenant(t, (tx) =>
       tx.notification.findMany({
-        where: q.appointmentId ? { appointmentId: q.appointmentId } : {},
+        // Bu liste WhatsApp gönderim kaydıdır; Web Push kayıtları burada gösterilmez.
+        where: { channel: "WHATSAPP", ...(q.appointmentId ? { appointmentId: q.appointmentId } : {}) },
         orderBy: { createdAt: "desc" },
         take: 200,
       }),

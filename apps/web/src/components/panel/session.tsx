@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import { disablePush } from "@/lib/web-push-client";
 
 export interface Membership {
   role: "OWNER" | "MANAGER" | "RECEPTION" | "STAFF";
@@ -88,6 +89,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       has: (f) => !!current?.tenant.plan.features.includes(f),
       refresh,
       logout: async () => {
+        // Paylaşılan cihazda sonraki kişiye bu kullanıcının bildirimleri gitmesin.
+        await disablePush("/", (endpoint) => api("/pwa/push/subscriptions", { method: "DELETE", body: { endpoint } })).catch(() => undefined);
         await fetch("/api/auth/logout", { method: "POST" });
         window.location.href = "/giris";
       },
