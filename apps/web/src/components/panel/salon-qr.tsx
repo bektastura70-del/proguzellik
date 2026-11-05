@@ -96,9 +96,9 @@ button{margin-top:6mm;font-size:12pt;padding:3mm 6mm}@media print{button{display
           <a href={svg ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` : undefined} download={`${base}.svg`} aria-disabled={!svg} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-sand-200 bg-white px-3 text-sm font-medium hover:bg-sand-50">
             <Download className="size-4" aria-hidden /> SVG indir
           </a>
-          <Button type="button" variant="secondary" size="sm" className="min-h-10" disabled={!png} onClick={printPoster}><Printer className="size-4" aria-hidden /> Afiş yazdır</Button>
-          <a href={url ? `https://wa.me/?text=${encodeURIComponent(message)}` : undefined} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-sand-200 bg-white px-3 text-sm font-medium hover:bg-sand-50">
-            <MessageCircle className="size-4" aria-hidden /> WhatsApp'ta paylaş
+          <button type="button" disabled={!png} onClick={printPoster} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-sand-200 bg-white px-3 text-sm font-medium hover:bg-sand-50 disabled:opacity-50"><Printer className="size-4" aria-hidden /> Afiş yazdır</button>
+          <a href={url ? `https://wa.me/?text=${encodeURIComponent(message)}` : undefined} target="_blank" rel="noopener noreferrer" aria-label="WhatsApp'ta paylaş" className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-sand-200 bg-white px-3 text-sm font-medium hover:bg-sand-50">
+            <MessageCircle className="size-4" aria-hidden /> WhatsApp
           </a>
         </div>
       </CardBody>

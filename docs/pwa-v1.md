@@ -110,3 +110,24 @@ portal kimliği (e-posta) ve push abonelikleri silinmez. Portal kimliği silme/d
 - Müşterinin kendi yaptığı işlemde (randevu alma/iptal/değiştirme) aynı müşteriye ayrıca push gitmez; ekranda onaylanır.
 - Personel başka personele aktarılan randevunun eski sahibine bildirim gitmez; yalnız yeni atanan bilgilendirilir.
 - Simgede yalnız PNG/JPEG kabul edilir (iPhone uyumu); logo WebP olabilir.
+
+## 8. Kolay yükleme (V1.1, yerelde; canlıya alınmadı)
+
+Bayrak yapısı değişmedi: aşağıdakilerin hepsi yalnız `customer_pwa_enabled` açık salonda görünür. API ve veritabanı
+değişikliği yok, canlıya alma **yalnız web** dağıtımıdır (migration yok).
+
+| Özellik | Nerede | Not |
+|---|---|---|
+| Android tek dokunuş "Uygulamayı yükle" | Randevu al ekranının üstündeki kart | Chrome kurulum penceresini yalnız müşterinin dokunuşu açar; pencere gelmezse ⋮ menüsü tarif edilir |
+| iPhone resimli 3 adım | Aynı kart, "Nasıl eklenir?" | Paylaş (veya •••) → Ana Ekrana Ekle → "Web Uygulaması olarak aç" açık → Ekle. iOS 16.4 altı için bildirim uyarısı |
+| Uygulama içi tarayıcı uyarısı | Instagram, Facebook vb. içinde açılınca | "Tarayıcıda aç" (Safari/Chrome) yönlendirmesi |
+| Yüklüyse gizleme | Ana ekrandan açılınca veya kurulum kabul edilince | Kart kapatılırsa 14 gün gösterilmez (yalnız o tarayıcıda) |
+| Randevu sonrası öneri | "Randevunuz alındı" kartı | Yüklü değilse ekleme; yüklü ve bildirim kapalıysa "Bildirimleri aç" |
+| QR kod ve kısa bağlantı | İşletme paneli → Salon uygulaması | `https://proguzellik.com/r/{salon}`; PNG (1024 px), SVG, A5 afiş yazdır, bağlantı kopyala, WhatsApp'ta paylaş |
+
+QR ve bağlantı `/r/{salon}` adresini kullanır: uygulama açıkken uygulamaya yönlenir, bayrak kapatılırsa eski online
+randevu sayfası açılır. Basılı afişler geri almada bozulmaz.
+
+**Gerçek cihaz denemesi yapılmadı.** Tarayıcı testleri telefon kimliğiyle ve taklit edilmiş kurulum olayıyla çalışır.
+iPhone (Safari, iOS 16.4+) ve Android (Chrome) üzerinde kurulum, simge, açılış ve bildirim yalnız gerçek cihazda
+doğrulanabilir; çizimler temsilidir, iOS sürümüne göre düğme yerleri değişebilir.
