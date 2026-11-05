@@ -85,6 +85,8 @@ services:
       TRUST_PROXY: "1"
       # Başlangıçta kapalı: herkese açık işletme kaydı yok
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-0}
+      # Kayıt kapalıyken sitede deneme başvuru formu (onay SaaS sahibinde). Varsayılan kapalı.
+      TRIAL_APPLICATIONS_ENABLED: ${TRIAL_APPLICATIONS_ENABLED:-0}
       # Boş: yalnız SaaS sahibinin onayladığı fiyatlar görünür (online satış kapalı). 0: acil durum, tüm tutarlar gizli.
       PRICING_PUBLIC: ${PRICING_PUBLIC:-}
       # E-posta varsayılan olarak kapalı (mock: canlıda hiçbir e-posta "gönderildi" sayılmaz).

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { planCodeSchema } from "../billing/plans";
 import { AuthUser, CurrentUser, Public } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
-import { loadEnv, registrationEnabled } from "../config/env";
+import { loadEnv, registrationEnabled, trialApplicationsEnabled } from "../config/env";
 import { AuditService } from "../audit/audit.service";
 import { AuthService, ClientMeta } from "./auth.service";
 import { RateLimitService } from "./rate-limit.service";
@@ -75,7 +75,8 @@ export class AuthController {
   @Public()
   @Get("registration")
   registration() {
-    return { enabled: registrationEnabled(loadEnv()) };
+    const env = loadEnv();
+    return { enabled: registrationEnabled(env), applications: trialApplicationsEnabled(env) };
   }
 
   /** Ücretsiz deneme başvurusu: hesap e-posta doğrulanınca açılır (202). */

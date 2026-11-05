@@ -24,6 +24,9 @@ export const apiEnv: Record<string, string> = {
   EMAIL_MODE: "mock",
   // Fiyat gizleme testi: PRICING_PUBLIC=0 pnpm test:e2e site
   ...(process.env.PRICING_PUBLIC ? { PRICING_PUBLIC: process.env.PRICING_PUBLIC } : {}),
+  // Kayıt kapalıyken deneme başvurusu testi: REGISTRATION_ENABLED=0 pnpm test:e2e trial-applications
+  ...(process.env.REGISTRATION_ENABLED ? { REGISTRATION_ENABLED: process.env.REGISTRATION_ENABLED } : {}),
+  ...(process.env.TRIAL_APPLICATIONS_ENABLED ? { TRIAL_APPLICATIONS_ENABLED: process.env.TRIAL_APPLICATIONS_ENABLED } : {}),
   TRUST_PROXY: "0",
 };
 

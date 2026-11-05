@@ -60,7 +60,7 @@ describe("Canlıya hazırlık", () => {
       it("kapalıyken kayıt 403 döner, gövde doğrulanmaz ve hiçbir kayıt oluşmaz", async () => {
         env.REGISTRATION_ENABLED = "0";
         const before = await su.tenant.count();
-        expect((await http().get("/auth/registration").expect(200)).body).toEqual({ enabled: false });
+        expect((await http().get("/auth/registration").expect(200)).body).toEqual({ enabled: false, applications: true }); // test ortamında başvuru formu varsayılan açık
         const r = await http().post("/auth/register").send(validRegistration).expect(403);
         expect(r.body.message).toMatch(/kapalı/);
         await http().post("/auth/register").send({ junk: true }).expect(403);
@@ -70,7 +70,7 @@ describe("Canlıya hazırlık", () => {
 
       it("açıkken kayıt çalışır", async () => {
         env.REGISTRATION_ENABLED = "1";
-        expect((await http().get("/auth/registration").expect(200)).body).toEqual({ enabled: true });
+        expect((await http().get("/auth/registration").expect(200)).body).toEqual({ enabled: true, applications: false });
         await registerTrial(app, validRegistration);
         expect(await su.user.findUnique({ where: { email: validRegistration.email } })).not.toBeNull();
       });

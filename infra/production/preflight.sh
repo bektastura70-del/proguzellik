@@ -51,6 +51,9 @@ if [[ -f "$ENV_FILE" ]]; then
     warn "EMAIL_MODE=mock: davet, doğrulama ve parola sıfırlama e-postaları GÖNDERİLMEZ"
   fi
   [[ "$(env_get PRICING_PUBLIC)" == "1" ]] && warn "PRICING_PUBLIC=1: paket fiyatları sitede görünür ve satışta kullanılır (onaylı mı?)"
+  if [[ "$(env_get TRIAL_APPLICATIONS_ENABLED)" == "1" ]]; then
+    [[ "$(env_get EMAIL_MODE)" == "smtp" ]] && warn "TRIAL_APPLICATIONS_ENABLED=1: sitede deneme başvuru formu açık" || bad "TRIAL_APPLICATIONS_ENABLED=1 ama e-posta kapalı: başvurular doğrulanamaz"
+  fi
   if [[ "$(env_get REGISTRATION_ENABLED)" == "1" ]]; then
     [[ "$(env_get EMAIL_MODE)" == "smtp" ]] && warn "REGISTRATION_ENABLED=1: ücretsiz deneme kaydı açık" || bad "REGISTRATION_ENABLED=1 ama e-posta kapalı: başvurular doğrulanamaz"
   else

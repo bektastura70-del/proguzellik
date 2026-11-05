@@ -52,6 +52,11 @@ const schema = z.object({
   // Yeni işletme kaydı. Tanımsızsa: canlıda (NODE_ENV=production) kapalı, diğer ortamlarda açık.
   REGISTRATION_ENABLED: z.enum(["0", "1"]).optional(),
   /**
+   * Kayıt kapalıyken sitede deneme BAŞVURU formu (SaaS sahibi onaylayınca işletme açılır).
+   * Tanımsızsa: canlıda kapalı (sayfa eskisi gibi yalnız iletişim bilgisi gösterir), diğer ortamlarda açık.
+   */
+  TRIAL_APPLICATIONS_ENABLED: z.enum(["0", "1"]).optional(),
+  /**
    * Tanımsız/boş (önerilen): SaaS sahibinin onayladığı fiyatlar sitede ve işletme panelinde görünür; canlıda online satın alma kapalı.
    * 1 = ayrıca online satın alma ve otomatik yenileme açık. 0 = acil durum: onaylı olsa bile tüm tutarlar gizlenir.
    */
@@ -102,6 +107,10 @@ export const pricingPublic = (env: Pick<Env, "PRICING_PUBLIC" | "NODE_ENV">) =>
 /** Herkese açık işletme kaydı açık mı? Canlıda yalnızca REGISTRATION_ENABLED=1 ile açılır. */
 export const registrationEnabled = (env: Pick<Env, "REGISTRATION_ENABLED" | "NODE_ENV">) =>
   env.REGISTRATION_ENABLED ? env.REGISTRATION_ENABLED === "1" : env.NODE_ENV !== "production";
+
+/** Deneme başvuru formu açık mı? Canlıda yalnızca TRIAL_APPLICATIONS_ENABLED=1 ile. Kayıt açıkken form yerine kendi kendine kayıt kullanılır. */
+export const trialApplicationsEnabled = (env: Pick<Env, "TRIAL_APPLICATIONS_ENABLED" | "REGISTRATION_ENABLED" | "NODE_ENV">) =>
+  !registrationEnabled(env) && (env.TRIAL_APPLICATIONS_ENABLED ? env.TRIAL_APPLICATIONS_ENABLED === "1" : env.NODE_ENV !== "production");
 
 /**
  * Davet e-postası gerçekten iletilebilir mi? Canlıda yalnızca SMTP ile. Aksi hâlde davet "teslim bekliyor"
@@ -156,6 +165,7 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
   if (env.PRICING_PUBLIC === "0") warn("PRICING_PUBLIC=0: onaylı paket fiyatları dahil tüm tutarlar sitede ve işletme panelinde gizli");
   if (env.REGISTRATION_ENABLED === "1") warn("REGISTRATION_ENABLED=1: herkese açık işletme kaydı açık");
   if (raw.DISABLE_RATE_LIMIT === "1") err("DISABLE_RATE_LIMIT canlıda kullanılamaz");
+  if (env.TRIAL_APPLICATIONS_ENABLED === "1") warn("TRIAL_APPLICATIONS_ENABLED=1: sitede deneme başvuru formu açık (onay SaaS sahibinde)");
   if (env.PWA_ENABLED === "1") warn("PWA_ENABLED=1: PWA özellikleri SaaS sahibi panelinden işletme başına açılabilir");
   if (env.WEB_PUSH_MODE === "live") {
     for (const k of ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"] as const) if (!env[k]) err(`WEB_PUSH_MODE=live için ${k} gerekli`);

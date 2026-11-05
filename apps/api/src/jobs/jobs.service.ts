@@ -7,6 +7,7 @@ import { loadEnv } from "../config/env";
 import { PaymentReminderService } from "../platform/finance/payment-reminder.service";
 import { RetentionService } from "../notifications/retention.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { purgeTrialApplications } from "../platform/trial-application.service";
 
 export const DAILY_JOB = "subscription-lifecycle";
 const STALE_RUNNING_MS = 60 * 60_000;
@@ -82,12 +83,15 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       const pay = await this.reminders.sendOverdue(now);
       // Doğrulanmamış, süresi dolmuş deneme başvuruları saklanmaz (veri minimizasyonu)
       const expiredSignups = (await db.signupRequest.deleteMany({ where: { expiresAt: { lt: now } } })).count;
+      // Deneme başvuruları: doğrulanmamış ve süresi dolmuş olanlar ile eski reddedilenler silinir
+      const applications = await purgeTrialApplications(db, now);
       // Paket bitişi / tekrar randevu hatırlatmaları (işletmelerin WhatsApp numarasından)
       const ret = await this.retention.run(now);
       const result = {
         ...lifecycle,
         paymentReminders: pay.paymentReminders,
         expiredSignups,
+        ...applications,
         packageReminders: ret.packageReminders,
         rebookReminders: ret.rebookReminders,
         errors: [...lifecycle.errors, ...pay.paymentReminderErrors, ...ret.errors],

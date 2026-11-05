@@ -64,6 +64,7 @@ model Tenant {
   pwaSettings    TenantPwaSettings?
   assets         TenantAsset[]
   identities     CustomerIdentity[]
+  trialApplications TrialApplication[]
 }
 
 model User {
@@ -1047,6 +1048,53 @@ model SignupRequest {
   userAgent         String?
   createdAt         DateTime @default(now())
 
+  @@index([phone])
+  @@index([expiresAt])
+}
+
+/// Kayıt kapalıyken siteden gelen deneme başvurusu. SaaS sahibi onaylayınca işletme + sahip daveti oluşturulur.
+enum TrialApplicationStatus {
+  /// E-posta doğrulanmadı; Owner listesinde görünmez, süresi dolunca silinir
+  UNVERIFIED
+  /// E-posta doğrulandı; SaaS sahibinin onayını bekliyor
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Herkese açık deneme başvurusu (parola tutulmaz; hesap onaydan sonra davetle açılır). Yalnız platform rolü erişir.
+model TrialApplication {
+  id                String                 @id @default(uuid()) @db.Uuid
+  status            TrialApplicationStatus @default(UNVERIFIED)
+  businessName      String
+  fullName          String
+  /// Küçük harfe çevrilmiş
+  email             String
+  /// Normalleştirilmiş telefon (+90XXXXXXXXXX)
+  phone             String
+  city              String?
+  staffCount        Int?
+  planCode          String?
+  note              String?
+  kvkkNoticeVersion String
+  termsVersion      String
+  marketingConsent  Boolean                @default(false)
+  /// Yalnızca doğrulama için (tek kullanımlık); doğrulanınca silinir
+  tokenHash         String?                @unique
+  expiresAt         DateTime?
+  verifiedAt        DateTime?
+  decidedAt         DateTime?
+  decidedById       String?                @db.Uuid
+  rejectReason      String?
+  tenantId          String?                @db.Uuid
+  tenant            Tenant?                @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  ip                String?
+  userAgent         String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([status, createdAt])
+  @@index([email])
   @@index([phone])
   @@index([expiresAt])
 }

@@ -5,6 +5,7 @@ import { Logo } from "@/components/logo";
 import { API_URL } from "@/lib/server-api";
 import { getSiteInfo } from "@/lib/site";
 import { PolicyLinks } from "@/components/policy-links";
+import { ApplicationForm } from "./application-form";
 import { RegisterForm, type PublicPlan } from "./register-form";
 
 export const dynamic = "force-dynamic";
@@ -15,16 +16,16 @@ export const metadata: Metadata = {
 };
 
 /** Kayıt durumunu ve paketleri API'den okur. API'ye ulaşılamazsa kayıt kapalı sayılır. */
-async function load(): Promise<{ open: boolean; plans: PublicPlan[] }> {
+async function load(): Promise<{ open: boolean; applications: boolean; plans: PublicPlan[] }> {
   try {
     const [reg, plans] = await Promise.all([
       fetch(`${API_URL}/auth/registration`, { cache: "no-store" }),
       fetch(`${API_URL}/plans`, { cache: "no-store" }),
     ]);
-    const open = reg.ok && (await reg.json()).enabled === true;
-    return { open, plans: plans.ok ? await plans.json() : [] };
+    const r = reg.ok ? await reg.json() : {};
+    return { open: r.enabled === true, applications: r.applications === true, plans: plans.ok ? await plans.json() : [] };
   } catch {
-    return { open: false, plans: [] };
+    return { open: false, applications: false, plans: [] };
   }
 }
 
@@ -37,7 +38,7 @@ function whatsappNumber(phone: string | null) {
 }
 
 export default async function TrialPage() {
-  const { open, plans } = await load();
+  const { open, applications, plans } = await load();
   const { company } = open && plans.length > 0 ? { company: null } : await getSiteInfo();
   return (
     <main className="grid min-h-screen place-items-center px-4 py-10">
@@ -50,6 +51,15 @@ export default async function TrialPage() {
             <Suspense>
               <RegisterForm plans={plans} />
             </Suspense>
+          </>
+        ) : applications ? (
+          <>
+            <h1 className="mt-8 font-display text-3xl font-semibold">14 gün ücretsiz deneme başvurusu</h1>
+            <p className="mb-6 mt-1 text-sm text-neutral-500" data-testid="application-intro">Kredi kartı gerekmez. Başvurunuzu inceleyip onayladığımızda hesabınızı oluşturmanız için size bir davet e-postası göndeririz.</p>
+            <Suspense>
+              <ApplicationForm plans={plans} />
+            </Suspense>
+            {company && <DemoContact company={company} title="Doğrudan ulaşmak isterseniz" />}
           </>
         ) : (
           <>
@@ -67,14 +77,14 @@ export default async function TrialPage() {
   );
 }
 
-function DemoContact({ company }: { company: { email: string; phone: string | null } }) {
+function DemoContact({ company, title = "Demo talep edin" }: { company: { email: string; phone: string | null }; title?: string }) {
   const subject = encodeURIComponent("Demo talebi");
   const body = encodeURIComponent("Merhaba,\n\nSalon adı:\nŞehir:\nPersonel sayısı:\nSize ulaşabileceğimiz telefon:\n");
   const wa = whatsappNumber(company.phone);
   const btn = "inline-flex h-11 items-center justify-center rounded-xl px-5 text-sm font-medium";
   return (
     <div className="mt-6 rounded-2xl border border-sand-200 bg-white p-5" data-testid="demo-contact">
-      <h2 className="font-semibold">Demo talep edin</h2>
+      <h2 className="font-semibold">{title}</h2>
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
         <a className={`${btn} bg-brand-600 text-white hover:bg-brand-700`} href={`mailto:${company.email}?subject=${subject}&body=${body}`}>E-posta ile demo iste</a>
         {wa && <a className={`${btn} border border-sand-300 hover:bg-sand-100`} href={`https://wa.me/${wa}?text=${encodeURIComponent("Merhaba, ProGüzellik için demo talep etmek istiyorum.")}`} target="_blank" rel="noopener noreferrer">WhatsApp ile yazın</a>}

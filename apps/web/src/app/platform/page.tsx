@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Logo } from "@/components/logo";
 import { InviteBadge, NewTenantDialog, TenantDetailDialog } from "@/components/platform/tenant-admin";
 import { EmailCenter } from "@/components/platform/email-admin";
 import { CompanySettingsCard, FinanceOverview } from "@/components/platform/finance-admin";
 import { PlansCard, SubscriptionsCard } from "@/components/platform/plan-admin";
 import { UsersCard } from "@/components/platform/user-admin";
+import { TrialApplicationsCard, usePendingApplications } from "@/components/platform/trial-applications";
 import { Alert, Badge, Button, Card, CardHeader, Dialog, Field, Input, Select, Spinner, Stat, Table, Td, statusTone, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { dateTr, STATUS_TR, tl } from "@/lib/format";
@@ -25,7 +26,13 @@ export default function PlatformPage() {
   const tenants = useApi<TenantRow[]>(`/platform/tenants?${new URLSearchParams({ ...(status ? { status } : {}), ...(search ? { search } : {}), page: String(page) })}`);
   const allTenants = useApi<TenantRow[]>("/platform/tenants?all=1");
   const [detail, setDetail] = useState<string | null>(null);
-  const [tab, setTab] = useState<"tenants" | "subscriptions" | "users" | "finance" | "emails" | "company">("tenants");
+  // Bildirim e-postasındaki bağlantı (?sekme=basvurular) doğrudan başvurular sekmesini açar.
+  const [tab, setTab] = useState<"tenants" | "applications" | "subscriptions" | "users" | "finance" | "emails" | "company">("tenants");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("sekme") === "basvurular") setTab("applications");
+  }, []);
+  const pendingApps = usePendingApplications();
+  const pendingCount = pendingApps.data?.counts.PENDING ?? 0;
   const [creating, setCreating] = useState(false);
   const jobs = useApi<{ id: string; runKey: string; status: string; startedAt: string; finishedAt: string | null; result: Record<string, unknown> | null; error: string | null }[]>("/platform/jobs");
 
@@ -52,10 +59,14 @@ export default function PlatformPage() {
         </div>
       )}
       <div role="tablist" aria-label="Yönetim bölümleri" className="mt-6 inline-flex flex-wrap rounded-xl border border-sand-200 bg-white p-1 text-sm">
-        {([["tenants", "İşletmeler ve paketler"], ["subscriptions", "Abonelikler"], ["users", "Kullanıcılar"], ["finance", "Finans"], ["emails", "E-postalar"], ["company", "Şirket ayarları"]] as const).map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={tab === k} className={`rounded-lg px-4 py-1.5 ${tab === k ? "bg-brand-600 text-white" : "text-neutral-600 hover:bg-sand-100"}`} onClick={() => setTab(k)}>{label}</button>
+        {([["tenants", "İşletmeler ve paketler"], ["applications", "Başvurular"], ["subscriptions", "Abonelikler"], ["users", "Kullanıcılar"], ["finance", "Finans"], ["emails", "E-postalar"], ["company", "Şirket ayarları"]] as const).map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={tab === k} className={`rounded-lg px-4 py-1.5 ${tab === k ? "bg-brand-600 text-white" : "text-neutral-600 hover:bg-sand-100"}`} onClick={() => setTab(k)}>
+            {label}
+            {k === "applications" && pendingCount > 0 && <span data-testid="pending-applications" className={`ml-1.5 inline-flex min-w-5 justify-center rounded-full px-1.5 text-xs font-semibold ${tab === k ? "bg-white text-brand-700" : "bg-amber-500 text-white"}`}>{pendingCount}</span>}
+          </button>
         ))}
       </div>
+      {tab === "applications" && <TrialApplicationsCard onOpenTenant={setDetail} onChanged={() => { pendingApps.reload(); tenants.reload(); stats.reload(); allTenants.reload(); }} />}
       {tab === "users" && <UsersCard tenants={allTenants.data ?? []} />}
       {tab === "subscriptions" && <SubscriptionsCard onOpenTenant={setDetail} />}
       {tab === "finance" && <div className="mt-6"><FinanceOverview tenants={allTenants.data ?? []} /></div>}

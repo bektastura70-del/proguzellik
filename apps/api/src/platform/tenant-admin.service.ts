@@ -38,6 +38,13 @@ export interface CreateTenantInput {
   phone?: string;
 }
 
+/** create() içinde, aynı işlemde (transaction) çalışan ek adımlar (ör. deneme başvurusunu sahiplenip bağlamak). */
+export interface CreateTenantHooks {
+  /** İşletme oluşturulmadan önce: hata fırlatırsa hiçbir şey yazılmaz. */
+  before?: (tx: Prisma.TransactionClient) => Promise<void>;
+  after?: (tx: Prisma.TransactionClient, tenant: { id: string }) => Promise<void>;
+}
+
 /** SaaS sahibi panelinden işletme oluşturma, davet ve durum yönetimi. Yalnızca platform rolüyle çalışır. */
 @Injectable()
 export class TenantAdminService {
@@ -61,7 +68,7 @@ export class TenantAdminService {
     throw new ConflictException("Benzersiz işletme adresi üretilemedi; farklı bir ad deneyin");
   }
 
-  async create(actorId: string, input: CreateTenantInput, ip?: string) {
+  async create(actorId: string, input: CreateTenantInput, ip?: string, hooks: CreateTenantHooks = {}) {
     const ownerEmail = input.ownerEmail.trim().toLowerCase();
     const existingUser = await this.db.user.findUnique({ where: { email: ownerEmail }, select: { isPlatformAdmin: true } });
     if (existingUser?.isPlatformAdmin) throw new ConflictException("Platform yöneticisi hesabı işletme sahibi olarak davet edilemez");
@@ -70,6 +77,7 @@ export class TenantAdminService {
     if (!plan.isActive) throw new ConflictException(`${plan.name} paketi pasif`);
     const slug = await this.uniqueSlug(input.name);
     const { tenant, invite } = await this.db.$transaction(async (tx) => {
+      await hooks.before?.(tx);
       const tenant = await tx.tenant.create({
         data: {
           name: input.name.trim(),
@@ -95,6 +103,7 @@ export class TenantAdminService {
           metadata: { planCode: input.planCode, trialDays: input.trialDays, inviteId: invite.id },
         },
       });
+      await hooks.after?.(tx, tenant);
       return { tenant, invite };
     });
     const delivery = await this.deliver(invite.id, actorId, ip);

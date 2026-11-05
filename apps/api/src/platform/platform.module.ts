@@ -11,11 +11,14 @@ import { PlanAdminService } from "./plan-admin.service";
 import { PlatformController } from "./platform.controller";
 import { PlatformUsersService } from "./platform-users.service";
 import { TenantAdminService } from "./tenant-admin.service";
+import { PlatformTrialApplicationController, PublicTrialApplicationController } from "./trial-application.controller";
+import { TrialApplicationService } from "./trial-application.service";
 
 @Module({
-  controllers: [PlatformController, PlatformFinanceController, PlatformEmailController],
+  controllers: [PlatformController, PlatformFinanceController, PlatformEmailController, PlatformTrialApplicationController, PublicTrialApplicationController],
   providers: [
     TenantAdminService,
+    TrialApplicationService,
     ManualSubscriptionService,
     PlatformUsersService,
     PlanAdminService,
