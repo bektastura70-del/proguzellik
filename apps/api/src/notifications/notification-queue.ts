@@ -7,7 +7,9 @@ import { waCreds } from "../messaging/channels.service";
 import { recordTemplateInConversation } from "../messaging/inbox.service";
 import { renderTemplate } from "../messaging/templates";
 import { MetaDisabledError, MetaGateway } from "../messaging/meta.gateway";
+import { EmailService } from "../email/email.service";
 import { WebPushDelivery } from "./push/web-push.delivery";
+import { RENEWAL_TEMPLATE, renewalEmailVars, renewalSkipReason } from "./renewal-checks";
 import { WhatsAppNotConfiguredError, WhatsAppProvider } from "./whatsapp.provider";
 
 export const QUEUE_NAME = "notifications";
@@ -26,6 +28,7 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
     private readonly provider: WhatsAppProvider,
     private readonly meta: MetaGateway,
     @Optional() private readonly webPush?: WebPushDelivery,
+    @Optional() private readonly email?: EmailService,
   ) {}
 
   /**
@@ -72,6 +75,24 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  /** E-posta kanalı: SMTP yoksa SKIPPED; geçici hata yeniden denenir, son denemede FAILED. */
+  private async sendRenewalEmail(n: { id: string; tenantId: string; recipient: string } & Parameters<typeof renewalEmailVars>[1], last: boolean) {
+    const db = this.prisma.platform;
+    if (!this.email) return "skipped";
+    const vars = await renewalEmailVars(db, n);
+    const r = await this.email.send(n.recipient, { name: "renewal_reminder", vars }, { tenantId: n.tenantId });
+    if ("sent" in r) {
+      await db.notification.update({ where: { id: n.id }, data: { status: "SENT", sentAt: new Date(), attempts: { increment: 1 }, error: null } });
+      return "sent";
+    }
+    if ("failed" in r && r.code === "EMAIL_NOT_CONFIGURED") {
+      await db.notification.update({ where: { id: n.id }, data: { status: "SKIPPED", attempts: { increment: 1 }, error: "E-posta (SMTP) yapılandırılmadı" } });
+      return "not_configured";
+    }
+    await db.notification.update({ where: { id: n.id }, data: { attempts: { increment: 1 }, error: "E-posta gönderilemedi", ...(last ? { status: "FAILED" } : {}) } });
+    throw new Error("E-posta gönderilemedi");
+  }
+
   async process(job: Job<{ notificationId: string }>) {
     const db = this.prisma.platform;
     const n = await db.notification.findUnique({ where: { id: job.data.notificationId } });
@@ -81,6 +102,15 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
       throw new Error("Bildirim kaydı henüz yok");
     }
     if (n.status !== "QUEUED") return "skipped";
+    if (n.template === RENEWAL_TEMPLATE) {
+      // Yenilenme hatırlatması: koşullar gönderim anında yeniden denetlenir (izin, vazgeçme, yeni randevu, tarih).
+      const reason = await renewalSkipReason(db, n);
+      if (reason) {
+        await db.notification.update({ where: { id: n.id }, data: { status: "SKIPPED", error: reason } });
+        return "skipped";
+      }
+      if (n.channel === "EMAIL") return this.sendRenewalEmail(n, job.attemptsMade + 1 >= MAX_ATTEMPTS);
+    }
     if (n.channel === "WEBPUSH") {
       if (!this.webPush) return "skipped";
       return this.webPush.deliver(n, job.attemptsMade + 1 >= MAX_ATTEMPTS);

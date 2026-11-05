@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Patch } from "@nestjs/common";
+import { BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Patch } from "@nestjs/common";
+import { loadEnv, renewalRemindersOn } from "../config/env";
 import { z } from "zod";
 import { AuthUser, CurrentTenant, CurrentUser, Roles, TenantInfo } from "../common/decorators";
 import { phoneSchema } from "../common/schemas";
@@ -21,11 +22,12 @@ const settingsSchema = z.object({
   onlineBookingEnabled: z.boolean().optional(),
   requireMfa: z.boolean().optional(),
   packageReminderDays: z.number().int().min(1).max(60).optional(),
+  renewalRemindersEnabled: z.boolean().optional(),
 });
 
 const PUBLIC_FIELDS = {
   id: true, name: true, slug: true, phone: true, email: true, address: true, timezone: true,
-  onlineBookingEnabled: true, requireMfa: true, packageReminderDays: true, status: true, planCode: true, trialEndsAt: true,
+  onlineBookingEnabled: true, requireMfa: true, packageReminderDays: true, renewalRemindersEnabled: true, status: true, planCode: true, trialEndsAt: true,
 } as const;
 
 @Controller("settings")
@@ -34,8 +36,9 @@ export class SettingsController {
 
   @Get()
   @Roles()
-  get(@CurrentTenant() t: TenantInfo) {
-    return this.prisma.withTenant(t, (tx) => tx.tenant.findUniqueOrThrow({ where: { id: t.tenantId }, select: PUBLIC_FIELDS }));
+  async get(@CurrentTenant() t: TenantInfo) {
+    const r = await this.prisma.withTenant(t, (tx) => tx.tenant.findUniqueOrThrow({ where: { id: t.tenantId }, select: PUBLIC_FIELDS }));
+    return { ...r, features: { renewalReminders: renewalRemindersOn(loadEnv()) } };
   }
 
   @Patch()
@@ -46,8 +49,13 @@ export class SettingsController {
       // Sahip kendini kilitlememesi için önce kendi 2FA'sını açmış olmalı.
       if (b.requireMfa && !u.mfaVerified) throw new BadRequestException("Önce kendi hesabınızda iki adımlı doğrulamayı açın ve 2FA ile giriş yapın");
     }
+    if (b.renewalRemindersEnabled !== undefined && !renewalRemindersOn(loadEnv())) throw new ConflictException("Yenilenme hatırlatması henüz kullanıma açılmadı");
     return this.prisma.withTenant(t, async (tx) => {
+      const before = b.renewalRemindersEnabled !== undefined ? await tx.tenant.findUniqueOrThrow({ where: { id: t.tenantId }, select: { renewalRemindersEnabled: true } }) : null;
       const r = await tx.tenant.update({ where: { id: t.tenantId }, data: b, select: PUBLIC_FIELDS });
+      if (before && before.renewalRemindersEnabled !== b.renewalRemindersEnabled) {
+        await tx.auditLog.create({ data: { tenantId: t.tenantId, actorId: t.userId, action: "tenant.renewal_reminders_changed", metadata: { from: before.renewalRemindersEnabled, to: b.renewalRemindersEnabled } } });
+      }
       if (b.requireMfa !== undefined) {
         await tx.auditLog.create({ data: { tenantId: t.tenantId, actorId: t.userId, action: "tenant.require_mfa_changed", metadata: { requireMfa: b.requireMfa } } });
       }

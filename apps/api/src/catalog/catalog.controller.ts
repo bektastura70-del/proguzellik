@@ -1,4 +1,4 @@
-import { Body, ConflictException, Controller, Delete, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, ConflictException, Controller, Delete, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query } from "@nestjs/common";
 import { z } from "zod";
 import { CurrentTenant, Roles, TenantInfo } from "../common/decorators";
 import { moneySchema } from "../common/schemas";
@@ -16,7 +16,16 @@ const serviceSchema = z.object({
   isActive: z.boolean().optional(),
   onlineBookable: z.boolean().optional(),
   rebookAfterDays: z.number().int().min(1).max(365).nullable().optional(),
+  /** Yenileme tarihinden kaç gün önce müşteriye hatırlatma gider (tekrar süresinden kısa olmalı) */
+  renewalRemindDaysBefore: z.number().int().min(1).max(60).nullable().optional(),
 });
+/** Hatırlatma günü, tekrar süresinden önce olmalı (ör. 45 günlük işlemde en fazla 44 gün önce). */
+function checkRenewal(v: { rebookAfterDays?: number | null; renewalRemindDaysBefore?: number | null }) {
+  if (v.renewalRemindDaysBefore && !v.rebookAfterDays) throw new BadRequestException("Hatırlatma için önce tekrar süresini (gün) girin");
+  if (v.renewalRemindDaysBefore && v.rebookAfterDays && v.renewalRemindDaysBefore >= v.rebookAfterDays) {
+    throw new BadRequestException("Hatırlatma günü, tekrar süresinden kısa olmalı");
+  }
+}
 const listSchema = z.object({ includeInactive: z.enum(["true", "false"]).optional() });
 
 @Controller()
@@ -71,6 +80,7 @@ export class CatalogController {
   @Post("services")
   @Roles("OWNER", "MANAGER")
   createService(@CurrentTenant() t: TenantInfo, @Body(new ZodPipe(serviceSchema)) b: z.infer<typeof serviceSchema>) {
+    checkRenewal(b);
     return this.prisma.withTenant(t, async (tx) => {
       if (b.categoryId && !(await tx.serviceCategory.findUnique({ where: { id: b.categoryId } }))) {
         throw new NotFoundException("Kategori bulunamadı");
@@ -87,7 +97,11 @@ export class CatalogController {
     @Body(new ZodPipe(serviceSchema.partial())) b: Partial<z.infer<typeof serviceSchema>>,
   ) {
     return this.prisma.withTenant(t, async (tx) => {
-      if (!(await tx.service.findUnique({ where: { id } }))) throw new NotFoundException("Hizmet bulunamadı");
+      const cur = await tx.service.findUnique({ where: { id } });
+      if (!cur) throw new NotFoundException("Hizmet bulunamadı");
+      // Tekrar süresi kaldırılırsa hatırlatma da kalkar.
+      if (b.rebookAfterDays === null && b.renewalRemindDaysBefore === undefined) b = { ...b, renewalRemindDaysBefore: null };
+      checkRenewal({ rebookAfterDays: b.rebookAfterDays !== undefined ? b.rebookAfterDays : cur.rebookAfterDays, renewalRemindDaysBefore: b.renewalRemindDaysBefore !== undefined ? b.renewalRemindDaysBefore : cur.renewalRemindDaysBefore });
       if (b.categoryId && !(await tx.serviceCategory.findUnique({ where: { id: b.categoryId } }))) {
         throw new NotFoundException("Kategori bulunamadı");
       }

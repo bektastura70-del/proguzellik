@@ -14,12 +14,12 @@ import type { TimeOff } from "./shared";
 type Slot = { staffId: string; staffName: string; startsAt: string };
 
 /** Hızlı randevu: hizmet+personel+tarih seçilince boş saatler önerilir. */
-export function NewAppointment({ preset, staff, onClose, onDone }: { preset: { staffId?: string; date?: string; time?: string }; staff: Staff[]; onClose: () => void; onDone: () => void }) {
+export function NewAppointment({ preset, staff, onClose, onDone }: { preset: { staffId?: string; date?: string; time?: string; customerId?: string; serviceId?: string }; staff: Staff[]; onClose: () => void; onDone: () => void }) {
   const toast = useToast();
   const { can } = useSession();
   const services = useApi<Service[]>("/services");
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [serviceId, setServiceId] = useState("");
+  const [serviceId, setServiceId] = useState(preset.serviceId ?? "");
   const [staffId, setStaffId] = useState(preset.staffId ?? "");
   const [date, setDate] = useState(preset.date ?? isoDay());
   const [time, setTime] = useState(preset.time ?? "");
@@ -32,6 +32,12 @@ export function NewAppointment({ preset, staff, onClose, onDone }: { preset: { s
   const pkgs = useApi<{ id: string; name: string; serviceId: string; status: string; usedSessions: number; totalSessions: number }[]>(customer ? `/customers/${customer.id}/packages` : null, [customer?.id]);
   const eligibleStaff = useMemo(() => staff.filter((s) => !serviceId || s.services.some((x) => x.serviceId === serviceId)), [staff, serviceId]);
   const usablePkgs = (pkgs.data ?? []).filter((p) => p.status === "ACTIVE" && p.serviceId === serviceId && p.usedSessions < p.totalSessions);
+
+  // "Yaklaşan yenilemeler" listesinden gelindiyse müşteri önceden seçilir.
+  useEffect(() => {
+    if (!preset.customerId) return;
+    api<Customer>(`/customers/${preset.customerId}`).then(setCustomer).catch(() => undefined);
+  }, [preset.customerId]);
 
   useEffect(() => {
     if (!serviceId || !date) return setSlots(null);

@@ -18,6 +18,7 @@ export interface CustomerInput {
   source?: string;
   kvkkConsent?: boolean;
   marketingConsent?: boolean;
+  renewalRemindersOptOut?: boolean;
 }
 
 @Injectable()
@@ -28,9 +29,10 @@ export class CustomersService {
   ) {}
 
   private toData(input: Partial<CustomerInput>) {
-    const { kvkkConsent, birthDate, ...rest } = input;
+    const { kvkkConsent, birthDate, renewalRemindersOptOut, ...rest } = input;
     return {
       ...rest,
+      ...(renewalRemindersOptOut !== undefined ? { renewalRemindersOptOutAt: renewalRemindersOptOut ? new Date() : null } : {}),
       ...(birthDate !== undefined ? { birthDate: birthDate ? new Date(birthDate) : null } : {}),
       ...(kvkkConsent ? { kvkkConsentAt: new Date() } : {}),
     };
@@ -117,7 +119,18 @@ export class CustomersService {
       .withTenant(t, async (tx) => {
         const c = await this.find(tx, id);
         if (c.anonymizedAt) throw new ConflictException("Anonimleştirilmiş müşteri düzenlenemez");
-        return tx.customer.update({ where: { id }, data: this.toData(input) });
+        const data = this.toData(input);
+        // Zaten kapalıysa ilk vazgeçme zamanı korunur.
+        if (input.renewalRemindersOptOut && c.renewalRemindersOptOutAt) delete (data as { renewalRemindersOptOutAt?: Date }).renewalRemindersOptOutAt;
+        const updated = await tx.customer.update({ where: { id }, data });
+        // İleti izni / vazgeçme değişiklikleri denetim kaydına yazılır (kim, ne zaman, ne değişti).
+        const consent: Record<string, { from: boolean; to: boolean }> = {};
+        if (input.marketingConsent !== undefined && input.marketingConsent !== c.marketingConsent) consent.marketingConsent = { from: c.marketingConsent, to: input.marketingConsent };
+        if (input.renewalRemindersOptOut !== undefined && input.renewalRemindersOptOut !== !!c.renewalRemindersOptOutAt) consent.renewalRemindersOptOut = { from: !!c.renewalRemindersOptOutAt, to: input.renewalRemindersOptOut };
+        if (Object.keys(consent).length) {
+          await this.audit.log(tx, { tenantId: t.tenantId, actorId: t.userId, action: "customer.consent_changed", entity: "Customer", entityId: id, metadata: { ...consent, via: "panel" } });
+        }
+        return updated;
       })
       .catch((e) => this.uniqueGuard(e));
   }

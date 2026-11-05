@@ -16,6 +16,7 @@ export function CustomerForm({ initial, onClose, onSaved }: { initial?: Customer
       firstName: s("firstName"), lastName: s("lastName"), phone: s("phone"), email: s("email"), birthDate: s("birthDate"), gender: s("gender"),
       notes: s("notes"), tags: s("tags")?.split(",").map((t) => t.trim()).filter(Boolean) ?? [],
       ...(initial?.kvkkConsentAt ? {} : { kvkkConsent: f.get("kvkk") === "on" }), marketingConsent: f.get("marketing") === "on",
+      ...(initial ? { renewalRemindersOptOut: f.get("renewalOptOut") === "on" } : {}),
     };
     try {
       const c = await api<Customer>(initial ? `/customers/${initial.id}` : "/customers", { method: initial ? "PATCH" : "POST", body });
@@ -51,6 +52,7 @@ export function CustomerForm({ initial, onClose, onSaved }: { initial?: Customer
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="kvkk" className="accent-brand-600" /> KVKK aydınlatma metni müşteriye sunuldu ve onaylandı</label>
         )}
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="marketing" defaultChecked={initial?.marketingConsent} className="accent-brand-600" /> Ticari ileti (kampanya) izni var</label>
+        {initial && <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="renewalOptOut" defaultChecked={!!initial.renewalRemindersOptOutAt} className="accent-brand-600" /> Yenileme hatırlatması istemiyor</label>}
         <Button className="w-full">Kaydet</Button>
       </form>
     </Dialog>

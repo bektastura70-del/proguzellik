@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  BarChart3, Bell, BellRing, Boxes, MessageCircle, Link2, Megaphone, CalendarDays, CalendarCheck, CreditCard, LayoutDashboard, LogOut, Menu, Package, Scissors, Settings, Smartphone, Sparkles, Users, UserSquare2, Wallet, X, Shield,
+  BarChart3, Bell, BellRing, RefreshCw, Boxes, MessageCircle, Link2, Megaphone, CalendarDays, CalendarCheck, CreditCard, LayoutDashboard, LogOut, Menu, Package, Scissors, Settings, Smartphone, Sparkles, Users, UserSquare2, Wallet, X, Shield,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -13,13 +13,14 @@ import { STATUS_TR } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Membership, useSession } from "./session";
 
-type Item = { href: string; label: string; icon: React.ComponentType<{ className?: string }>; roles?: Membership["role"][]; feature?: string; pwa?: boolean };
+type Item = { href: string; label: string; icon: React.ComponentType<{ className?: string }>; roles?: Membership["role"][]; feature?: string; pwa?: boolean; renewal?: boolean };
 
 const NAV: Item[] = [
   { href: "/panel", label: "Genel bakış", icon: LayoutDashboard },
   { href: "/panel/bugun", label: "Bugün", icon: CalendarCheck, pwa: true },
   { href: "/panel/takvim", label: "Takvim", icon: CalendarDays },
   { href: "/panel/musteriler", label: "Müşteriler", icon: Users },
+  { href: "/panel/yenilemeler", label: "Yaklaşan yenilemeler", icon: RefreshCw, roles: ["OWNER", "MANAGER", "RECEPTION"], renewal: true },
   { href: "/panel/hizmetler", label: "Hizmetler", icon: Scissors, roles: ["OWNER", "MANAGER"] },
   { href: "/panel/personel", label: "Personel", icon: UserSquare2, roles: ["OWNER", "MANAGER"] },
   { href: "/panel/paketler", label: "Paketler", icon: Package },
@@ -73,12 +74,18 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [renewal, setRenewal] = useState(false);
   const mobileApp = !!pwa?.businessPwaEnabled;
 
   useEffect(() => {
     if (!mobileApp || !tenantId) return;
     api<{ unread: number }>("/pwa/notifications?unread=1", { tenant: tenantId }).then((r) => setUnread(r.unread)).catch(() => undefined);
   }, [mobileApp, tenantId, path]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    api<{ features?: { renewalReminders?: boolean } }>("/settings", { tenant: tenantId }).then((r) => setRenewal(!!r.features?.renewalReminders)).catch(() => setRenewal(false));
+  }, [tenantId]);
 
   if (!me) {
     return (
@@ -101,7 +108,7 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const items = NAV.filter((i) => (!i.roles || can(...i.roles)) && (!i.feature || has(i.feature)) && (!i.pwa || mobileApp) && (i.href !== "/panel/uygulama" || !!pwa?.customerPwaEnabled || !!pwa?.customerBookingEnabled));
+  const items = NAV.filter((i) => (!i.roles || can(...i.roles)) && (!i.feature || has(i.feature)) && (!i.pwa || mobileApp) && (!i.renewal || renewal) && (i.href !== "/panel/uygulama" || !!pwa?.customerPwaEnabled || !!pwa?.customerBookingEnabled));
   const trialDays = current.tenant.status === "TRIAL" && current.tenant.trialEndsAt
     ? Math.max(0, Math.ceil((new Date(current.tenant.trialEndsAt).getTime() - Date.now()) / 86_400_000))
     : null;

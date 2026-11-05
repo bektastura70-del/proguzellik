@@ -5,6 +5,7 @@ import IORedis from "ioredis";
 import { SubscriptionsService } from "../billing/subscriptions.service";
 import { loadEnv } from "../config/env";
 import { PaymentReminderService } from "../platform/finance/payment-reminder.service";
+import { RenewalService } from "../notifications/renewal.service";
 import { RetentionService } from "../notifications/retention.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { purgeTrialApplications } from "../platform/trial-application.service";
@@ -34,6 +35,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     private readonly subs: SubscriptionsService,
     private readonly reminders: PaymentReminderService,
     private readonly retention: RetentionService,
+    private readonly renewal: RenewalService,
   ) {}
 
   async onModuleInit() {
@@ -87,6 +89,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       const applications = await purgeTrialApplications(db, now);
       // Paket bitişi / tekrar randevu hatırlatmaları (işletmelerin WhatsApp numarasından)
       const ret = await this.retention.run(now);
+      // Yenilenme hatırlatmaları (uygulama bildirimi + e-posta; RENEWAL_REMINDERS=1 ve işletme ayarı açıksa)
+      const ren = await this.renewal.run(now);
       const result = {
         ...lifecycle,
         paymentReminders: pay.paymentReminders,
@@ -94,7 +98,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         ...applications,
         packageReminders: ret.packageReminders,
         rebookReminders: ret.rebookReminders,
-        errors: [...lifecycle.errors, ...pay.paymentReminderErrors, ...ret.errors],
+        renewalReminders: ren.renewalReminders,
+        errors: [...lifecycle.errors, ...pay.paymentReminderErrors, ...ret.errors, ...ren.errors],
       };
       await db.jobRun.update({
         where: { id: run.id },

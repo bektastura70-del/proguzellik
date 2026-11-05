@@ -1,8 +1,8 @@
 export type Customer = {
   id: string; firstName: string; lastName: string; phone: string | null; email: string | null; tags: string[];
-  birthDate: string | null; notes: string | null; kvkkConsentAt: string | null; marketingConsent: boolean; createdAt: string; source: string | null;
+  birthDate: string | null; notes: string | null; kvkkConsentAt: string | null; marketingConsent: boolean; renewalRemindersOptOutAt?: string | null; createdAt: string; source: string | null;
 };
-export type Service = { id: string; name: string; durationMin: number; price: string; isActive: boolean; onlineBookable: boolean; color: string | null; category: { id: string; name: string } | null; staff: { staffId: string }[]; description: string | null; rebookAfterDays?: number | null };
+export type Service = { id: string; name: string; durationMin: number; price: string; isActive: boolean; onlineBookable: boolean; color: string | null; category: { id: string; name: string } | null; staff: { staffId: string }[]; description: string | null; rebookAfterDays?: number | null; renewalRemindDaysBefore?: number | null };
 export type Staff = {
   id: string; displayName: string; title: string | null; phone: string | null; color: string | null; commissionRate: string; isActive: boolean; onlineBookable: boolean; userId: string | null;
   services: { serviceId: string }[]; workingHours: { weekday: number; startMin: number; endMin: number }[];

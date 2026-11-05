@@ -109,6 +109,8 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      # Yenilenme hatırlatması (uygulama bildirimi + e-posta). 0: kapalı. 1 olsa da işletme kendi ayarından ayrıca açar.
+      RENEWAL_REMINDERS: ${RENEWAL_REMINDERS:-0}
       # Kuyruk işçileri ve günlük görev yalnızca "worker" servisinde çalışır.
       JOBS_ENABLED: "0"
       NOTIFICATIONS_WORKER: "0"

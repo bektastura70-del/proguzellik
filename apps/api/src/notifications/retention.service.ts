@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { toZoned, zonedTime } from "../common/time";
+import { loadEnv, renewalRemindersOn } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotificationQueue } from "./notification-queue";
 
@@ -47,7 +48,7 @@ export class RetentionService {
   async forTenant(tenantId: string, now = new Date()) {
     const created: { id: string; at: Date }[] = [];
     const counts = await this.prisma.withTenant({ tenantId, userId: "" }, async (tx) => {
-      const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true, timezone: true, packageReminderDays: true } });
+      const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true, timezone: true, packageReminderDays: true, renewalRemindersEnabled: true } });
       const tz = tenant.timezone;
       const local = toZoned(now, tz);
       const sendAt = local.minutes < SEND_AT_MIN ? zonedTime(local.date, SEND_AT_MIN, tz) : now;
@@ -86,7 +87,9 @@ export class RetentionService {
       }
 
       let rebook = 0;
-      const services = await tx.service.findMany({ where: { isActive: true, rebookAfterDays: { not: null } }, select: { id: true, name: true, rebookAfterDays: true } });
+      // Yenilenme hatırlatması açık işletmede eski (süre dolduktan sonra WhatsApp) mesaj gönderilmez: müşteri iki kez rahatsız edilmesin.
+      const renewalOn = renewalRemindersOn(loadEnv()) && tenant.renewalRemindersEnabled;
+      const services = renewalOn ? [] : await tx.service.findMany({ where: { isActive: true, rebookAfterDays: { not: null } }, select: { id: true, name: true, rebookAfterDays: true } });
       for (const s of services) {
         const due = new Date(now.getTime() - s.rebookAfterDays! * 86_400_000);
         const oldest = new Date(due.getTime() - REBOOK_WINDOW_DAYS * 86_400_000);

@@ -43,6 +43,8 @@ model Tenant {
   timezone             String        @default("Europe/Istanbul")
   /// Süreli paket bitimine kaç gün kala müşteriye hatırlatma planlanır (WhatsApp)
   packageReminderDays  Int           @default(7)
+  /// Yenilenme hatırlatması (uygulama bildirimi + e-posta) bu işletmede açık mı? Ortamda RENEWAL_REMINDERS=1 de gerekir.
+  renewalRemindersEnabled Boolean    @default(false)
   suspendedAt          DateTime?
   suspendedReason      String?
   suspendedFromStatus  TenantStatus?
@@ -144,6 +146,8 @@ model Customer {
   source           String?
   kvkkConsentAt    DateTime?
   marketingConsent Boolean   @default(false)
+  /// Müşteri yenilenme hatırlatmalarını kapattıysa (vazgeçme) zamanı; boşsa kapatmamış
+  renewalRemindersOptOutAt DateTime?
   anonymizedAt     DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -202,6 +206,8 @@ model Service {
   onlineBookable  Boolean  @default(true)
   /// Tamamlanan randevudan kaç gün sonra "tekrar randevu" hatırlatması yapılır (boşsa yapılmaz)
   rebookAfterDays Int?
+  /// Yenilenme tarihinden (son işlem + rebookAfterDays) kaç gün önce müşteriye hatırlatma gider (boşsa gitmez)
+  renewalRemindDaysBefore Int?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

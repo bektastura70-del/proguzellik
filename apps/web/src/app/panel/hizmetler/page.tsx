@@ -70,6 +70,7 @@ function ServiceForm({ initial, cats, onClose, onSaved }: { initial?: Service; c
       durationMin: Number(f.get("durationMin")), price: Number(f.get("price")), color: f.get("color"),
       isActive: f.get("isActive") === "on", onlineBookable: f.get("onlineBookable") === "on",
       rebookAfterDays: f.get("rebookAfterDays") ? Number(f.get("rebookAfterDays")) : null,
+      renewalRemindDaysBefore: f.get("rebookAfterDays") && f.get("renewalRemindDaysBefore") ? Number(f.get("renewalRemindDaysBefore")) : null,
     };
     try {
       await api(initial ? `/services/${initial.id}` : "/services", { method: initial ? "PATCH" : "POST", body });
@@ -93,9 +94,14 @@ function ServiceForm({ initial, cats, onClose, onSaved }: { initial?: Service; c
           <Field label="Fiyat (₺)"><Input name="price" type="number" min={0} step="0.01" required defaultValue={initial ? Number(initial.price) : ""} /></Field>
           <Field label="Renk"><Input name="color" type="color" defaultValue={initial?.color ?? "#b0507b"} className="p-1" /></Field>
         </div>
-        <Field label="Tekrar randevu hatırlatması (gün)" hint="Örn. lazer için 42. Boş bırakılırsa hatırlatma yapılmaz. WhatsApp bağlıysa son işlemden bu kadar gün sonra müşteriye mesaj planlanır.">
-          <Input name="rebookAfterDays" type="number" min={1} max={365} defaultValue={initial?.rebookAfterDays ?? ""} />
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Tekrar süresi (gün)" hint="Örn. saç boyama için 45. Son işlemden bu kadar gün sonra yenileme zamanı gelir.">
+            <Input name="rebookAfterDays" type="number" min={1} max={365} defaultValue={initial?.rebookAfterDays ?? ""} />
+          </Field>
+          <Field label="Kaç gün önce hatırlatılsın" hint="Örn. 7. Boşsa müşteriye yenileme hatırlatması gitmez (liste yine görünür).">
+            <Input name="renewalRemindDaysBefore" type="number" min={1} max={60} defaultValue={initial?.renewalRemindDaysBefore ?? ""} />
+          </Field>
+        </div>
         <Field label="Açıklama (online sayfada görünür)"><Textarea name="description" defaultValue={initial?.description ?? ""} /></Field>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="isActive" defaultChecked={initial?.isActive ?? true} className="accent-brand-600" /> Aktif</label>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="onlineBookable" defaultChecked={initial?.onlineBookable ?? true} className="accent-brand-600" /> Online randevuya açık</label>

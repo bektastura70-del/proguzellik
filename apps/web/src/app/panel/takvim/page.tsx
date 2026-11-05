@@ -26,7 +26,9 @@ function CalendarInner() {
   const day = /^\d{4}-\d{2}-\d{2}$/.test(params.get("tarih") ?? "") ? params.get("tarih")! : isoDay();
   const [staffFilter, setStaffFilter] = useState("");
   const [showCancelled, setShowCancelled] = useState(false);
-  const [creating, setCreating] = useState<{ staffId?: string; date?: string; time?: string } | null>(null);
+  const [creating, setCreating] = useState<{ staffId?: string; date?: string; time?: string; customerId?: string; serviceId?: string } | null>(() =>
+    params.get("yeni") === "1" ? { date: day, customerId: params.get("musteri") ?? undefined, serviceId: params.get("hizmet") ?? undefined } : null,
+  );
   const [blocking, setBlocking] = useState<{ staffId?: string; date?: string } | TimeOff | null>(null);
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [dragging, setDragging] = useState<Appointment | null>(null);

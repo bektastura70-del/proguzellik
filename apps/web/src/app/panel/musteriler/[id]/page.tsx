@@ -76,6 +76,7 @@ export default function CustomerDetail({ params }: { params: Promise<{ id: strin
         {c.tags.map((t) => <Badge key={t} tone="brand">{t}</Badge>)}
         <Badge tone={c.kvkkConsentAt ? "green" : "amber"}>{c.kvkkConsentAt ? `KVKK onayı ${dateTr(c.kvkkConsentAt, { day: "numeric", month: "short", year: "numeric" })}` : "KVKK onayı yok"}</Badge>
         {c.marketingConsent && <Badge tone="blue">Kampanya izni</Badge>}
+        {c.renewalRemindersOptOutAt && <Badge tone="neutral">Yenileme hatırlatması kapalı</Badge>}
       </div>
 
       <div className="grid grid-cols-3 gap-3">

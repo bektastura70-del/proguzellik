@@ -6,12 +6,14 @@ import { PushPlanner } from "./push/push.planner";
 import { WebPushDelivery } from "./push/web-push.delivery";
 import { LiveWebPushSender, MockWebPushSender } from "./push/web-push.sender";
 import { NotificationsController } from "./notifications.controller";
+import { RenewalService } from "./renewal.service";
+import { RenewalOptOutController, RenewalsController } from "./renewals.controller";
 import { RetentionService } from "./retention.service";
 import { CloudWhatsAppProvider, DisabledWhatsAppProvider, MockWhatsAppProvider, WhatsAppProvider } from "./whatsapp.provider";
 
 @Global()
 @Module({
-  controllers: [NotificationsController],
+  controllers: [NotificationsController, RenewalsController, RenewalOptOutController],
   providers: [
     MockWhatsAppProvider,
     {
@@ -27,11 +29,12 @@ import { CloudWhatsAppProvider, DisabledWhatsAppProvider, MockWhatsAppProvider, 
     NotificationQueue,
     NotificationHooks,
     RetentionService,
+    RenewalService,
     MockWebPushSender,
     LiveWebPushSender,
     WebPushDelivery,
     PushPlanner,
   ],
-  exports: [NotificationQueue, NotificationHooks, RetentionService, WhatsAppProvider, MockWhatsAppProvider, MockWebPushSender, PushPlanner],
+  exports: [NotificationQueue, NotificationHooks, RetentionService, RenewalService, WhatsAppProvider, MockWhatsAppProvider, MockWebPushSender, PushPlanner],
 })
 export class NotificationsModule {}

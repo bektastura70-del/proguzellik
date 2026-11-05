@@ -27,6 +27,8 @@ export const apiEnv: Record<string, string> = {
   // Kayıt kapalıyken deneme başvurusu testi: REGISTRATION_ENABLED=0 pnpm test:e2e trial-applications
   ...(process.env.REGISTRATION_ENABLED ? { REGISTRATION_ENABLED: process.env.REGISTRATION_ENABLED } : {}),
   ...(process.env.TRIAL_APPLICATIONS_ENABLED ? { TRIAL_APPLICATIONS_ENABLED: process.env.TRIAL_APPLICATIONS_ENABLED } : {}),
+  // Yenilenme hatırlatması tarayıcı testleri (canlıda varsayılan kapalı)
+  RENEWAL_REMINDERS: "1",
   TRUST_PROXY: "0",
 };
 

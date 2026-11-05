@@ -71,6 +71,11 @@ const schema = z.object({
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().optional(),
+  /**
+   * Yenilenme hatırlatması ana anahtarı: hizmetin tekrar süresi dolmadan müşteriye uygulama bildirimi + e-posta.
+   * Tanımsızsa her ortamda KAPALI. Açık olsa bile işletme kendi ayarından ayrıca açmalıdır.
+   */
+  RENEWAL_REMINDERS: z.enum(["0", "1"]).optional(),
   /** İşletmelerin abonelik/ödeme için yazacağı kurumsal adres (şirket ayarlarında e-posta girilmişse o kullanılır) */
   SUPPORT_EMAIL: z.string().email().default("info@proguzellik.com"),
 });
@@ -122,6 +127,9 @@ export const inviteDeliveryEnabled = (env: Pick<Env, "EMAIL_MODE" | "NODE_ENV">)
 export const pwaEnabled = (env: Pick<Env, "PWA_ENABLED" | "NODE_ENV">) =>
   env.PWA_ENABLED ? env.PWA_ENABLED === "1" : env.NODE_ENV !== "production";
 
+/** Yenilenme hatırlatması bu ortamda açık mı? Yalnızca RENEWAL_REMINDERS=1 ile (varsayılan kapalı). */
+export const renewalRemindersOn = (env: Pick<Env, "RENEWAL_REMINDERS">) => env.RENEWAL_REMINDERS === "1";
+
 /** Etkin Web Push kipi. Canlıda açıkça "live" seçilmedikçe ve VAPID anahtarları yoksa gönderim yapılmaz. */
 export const webPushMode = (env: Pick<Env, "WEB_PUSH_MODE" | "NODE_ENV" | "VAPID_PUBLIC_KEY" | "VAPID_PRIVATE_KEY" | "VAPID_SUBJECT">): "off" | "mock" | "live" => {
   const mode = env.WEB_PUSH_MODE ?? (env.NODE_ENV === "production" ? "off" : "mock");
@@ -172,6 +180,7 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
     if (env.VAPID_SUBJECT && !/^(mailto:|https:\/\/)/.test(env.VAPID_SUBJECT)) err("VAPID_SUBJECT mailto: veya https:// ile başlamalı");
     warn("WEB_PUSH_MODE=live: Web Push bildirimleri gerçek cihazlara gönderilir (API/işçi konteynerinin internete çıkışı gerekir)");
   }
+  if (env.RENEWAL_REMINDERS === "1") warn("RENEWAL_REMINDERS=1: işletmeler yenilenme hatırlatmasını açabilir (müşteriye ticari ileti izni olanlara uygulama bildirimi + e-posta)");
   if (env.WEB_PUSH_MODE === "mock") warn("WEB_PUSH_MODE=mock canlıda geçersizdir; Web Push gönderilmez");
   return issues;
 }

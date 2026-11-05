@@ -7,7 +7,7 @@ import { Alert, Badge, Button, Card, CardBody, CardHeader, Dialog, Field, Input,
 import { api, useApi } from "@/lib/api";
 import { ROLE_TR } from "@/lib/format";
 
-type Settings = { name: string; slug: string; phone: string | null; email: string | null; address: string | null; timezone: string; onlineBookingEnabled: boolean; requireMfa: boolean; packageReminderDays: number };
+type Settings = { name: string; slug: string; phone: string | null; email: string | null; address: string | null; timezone: string; onlineBookingEnabled: boolean; requireMfa: boolean; packageReminderDays: number; renewalRemindersEnabled: boolean; features?: { renewalReminders: boolean } };
 type TeamInvite = { id: string; email: string; fullName: string; role: string; status: "PENDING_DELIVERY" | "SENT"; expiresAt: string | null; sentAt: string | null };
 type InviteResult = { delivered: boolean; reason?: string };
 type Member = { id: string; role: string; isActive: boolean; user: { id: string; fullName: string; email: string } };
@@ -55,6 +55,28 @@ export default function SettingsPage() {
             </form>
           </CardBody>
         </Card>
+        {s.features?.renewalReminders && (
+          <Card>
+            <CardHeader title="Yenilenme hatırlatması" description="Tekrar süresi tanımlı hizmetlerde, süre dolmadan müşteriye uygulama bildirimi ve e-posta gönderilir." />
+            <CardBody className="space-y-3 text-sm">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={s.renewalRemindersEnabled} className="accent-brand-600" onChange={async (e) => {
+                  const next = e.target.checked;
+                  settings.setData({ ...s, renewalRemindersEnabled: next });
+                  try {
+                    await api("/settings", { method: "PATCH", body: { renewalRemindersEnabled: next } });
+                    toast(next ? "Yenilenme hatırlatması açıldı" : "Yenilenme hatırlatması kapatıldı");
+                  } catch (err) {
+                    settings.setData({ ...s, renewalRemindersEnabled: !next });
+                    toast((err as Error).message, "red");
+                  }
+                }} />
+                Müşterilere yenilenme hatırlatması gönder
+              </label>
+              <p className="text-neutral-500">Yalnızca ticari ileti (kampanya) izni olan ve hatırlatmaları kapatmamış müşterilere gider. Gün ayarları Hizmetler sayfasında yapılır. Müşteri zaten randevu aldıysa hatırlatma gönderilmez.</p>
+            </CardBody>
+          </Card>
+        )}
         {can("OWNER") && (
           <Card>
             <CardHeader title="Güvenlik politikası" description="İşletme sahibi ve yöneticiler için iki adımlı doğrulamayı zorunlu kılın." />

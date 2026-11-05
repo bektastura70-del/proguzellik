@@ -22,7 +22,8 @@ export type EmailTemplate =
   | { name: "payment_reminder"; vars: { salon: string; description: string; amount: string; dueDate: string; payTo?: string } }
   | { name: "invoice_notice"; vars: { salon: string; number: string; amount: string; date: string } }
   | { name: "owner_notice"; vars: { subject: string; body: string; salon?: string } }
-  | { name: "customer_otp"; vars: { salon: string; code: string; minutes: number } };
+  | { name: "customer_otp"; vars: { salon: string; code: string; minutes: number } }
+  | { name: "renewal_reminder"; vars: { salon: string; firstName: string; service: string; dueDate: string; link: string; phone?: string; optOutLink: string } };
 
 export type TemplateName = EmailTemplate["name"];
 
@@ -53,6 +54,8 @@ export const TEMPLATE_META: Record<TemplateName, { label: string; vars: string[]
   invoice_notice: { label: "Fatura bildirimi", vars: ["salon", "number", "amount", "date"], secret: false, editable: true },
   owner_notice: { label: "SaaS sahibi bilgilendirmesi", vars: ["subject", "body"], secret: false, editable: false },
   customer_otp: { label: "Müşteri portalı doğrulama kodu", vars: ["salon", "minutes"], secret: true, editable: false },
+  // Vazgeçme bağlantısı yalnızca o müşterinin bu işletmedeki hatırlatmalarını kapatır; yeniden deneme için değişkenler saklanır.
+  renewal_reminder: { label: "Yenilenme hatırlatması (salon müşterisine)", vars: ["salon", "firstName", "service", "dueDate"], secret: false, editable: false },
 };
 
 export interface TemplateOverride {
@@ -179,6 +182,16 @@ export function render(t: EmailTemplate, override?: TemplateOverride | null): { 
     case "invoice_notice":
       subject = `Faturanız: ${t.vars.number}`;
       paras = [`${esc(t.vars.salon)} adına ${esc(t.vars.date)} tarihli ${esc(t.vars.number)} numaralı faturanız düzenlendi.`, `Tutar: ${esc(t.vars.amount)} TL.`];
+      break;
+    case "renewal_reminder":
+      subject = `${t.vars.salon}: ${t.vars.service} yenileme zamanınız yaklaşıyor`;
+      paras = [
+        `Merhaba ${esc(t.vars.firstName)},`,
+        `${esc(t.vars.service)} işleminizin yenileme zamanı ${esc(t.vars.dueDate)} civarında. Size uygun bir saat için şimdiden randevu alabilirsiniz.`,
+        ...(t.vars.phone ? [`Randevu için ${esc(t.vars.salon)}: ${esc(t.vars.phone)}`] : []),
+        `<span style="font-size:12px;color:#777">Bu hatırlatmaları ${esc(t.vars.salon)} gönderiyor. Almak istemiyorsanız: <a href="${esc(t.vars.optOutLink)}">hatırlatmaları kapat</a> (${esc(t.vars.optOutLink)})</span>`,
+      ];
+      cta = { label: "Randevu al", link: t.vars.link };
       break;
     case "owner_notice":
       subject = t.vars.subject;

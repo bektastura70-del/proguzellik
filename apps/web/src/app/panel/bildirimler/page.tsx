@@ -6,7 +6,7 @@ import { useApi } from "@/lib/api";
 import { dateTimeTr, STATUS_TR } from "@/lib/format";
 
 type N = { id: string; recipient: string; template: string; status: string; scheduledFor: string; sentAt: string | null; error: string | null };
-const TEMPLATE_TR: Record<string, string> = { randevu_onay: "Randevu onayı", randevu_hatirlatma: "Hatırlatma (24 saat önce)", randevu_iptal: "İptal bildirimi", paket_hatirlatma: "Paket bitiş hatırlatması", tekrar_randevu: "Tekrar randevu zamanı", kampanya_duyuru: "Kampanya (ticari ileti)" };
+const TEMPLATE_TR: Record<string, string> = { randevu_onay: "Randevu onayı", randevu_hatirlatma: "Hatırlatma (24 saat önce)", randevu_iptal: "İptal bildirimi", paket_hatirlatma: "Paket bitiş hatırlatması", tekrar_randevu: "Tekrar randevu zamanı", kampanya_duyuru: "Kampanya (ticari ileti)", yenileme_hatirlatma: "Yenilenme hatırlatması" };
 
 export default function NotificationsPage() {
   const list = useApi<N[]>("/notifications");

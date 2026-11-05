@@ -17,6 +17,8 @@ const base = z.object({
   source: z.string().max(50).optional(),
   kvkkConsent: z.boolean().optional(),
   marketingConsent: z.boolean().optional(),
+  /** true: müşteri yenilenme hatırlatmalarını istemiyor (vazgeçme) */
+  renewalRemindersOptOut: z.boolean().optional(),
 });
 const listSchema = paginationSchema.extend({
   search: z.string().max(100).optional(),
