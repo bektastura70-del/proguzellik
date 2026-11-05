@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSession } from "@/components/panel/session";
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Empty, Field, Input, PageHeader, Spinner, Textarea, useToast } from "@/components/ui";
 import { api, ApiError, useApi } from "@/lib/api";
+import { SalonQrCard } from "@/components/panel/salon-qr";
 
 type Asset = { id: string; kind: string; mime: string; width: number; height: number };
 type Branding = {
@@ -160,6 +161,7 @@ export default function SalonAppSettingsPage() {
         </form>
 
         <div className="space-y-4">
+          {d.flags.customerPwaEnabled && <SalonQrCard slug={d.slug} salonName={d.branding.appName ?? d.salonName} />}
           <Card>
             <CardHeader title="Önizleme" />
             <CardBody>

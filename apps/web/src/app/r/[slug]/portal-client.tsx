@@ -8,6 +8,7 @@ import { addDays, dateTr, isoDay, STATUS_TR, timeTr, tl } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AppInfo, MyAppointment, MyPackage, papi, PortalError, Salon, Slot } from "./portal-api";
 import { disablePush } from "@/lib/web-push-client";
+import { AfterBookingInstall, InstallBanner } from "./install";
 import { AccountExtras } from "./portal-extras";
 
 type Tab = "book" | "mine" | "packages" | "account";
@@ -88,7 +89,7 @@ export function PortalClient({ slug, app }: { slug: string; app: AppInfo }) {
       <main className="mx-auto -mt-4 max-w-2xl space-y-4 px-4">
         {err && <Alert>{err}</Alert>}
         {!salon && !err && <div className="grid place-items-center py-16"><Spinner /></div>}
-        {salon && tab === "book" && <BookTab slug={slug} salon={salon} me={me} onLoggedIn={loadMe} onDone={() => setTab("mine")} />}
+        {salon && tab === "book" && <BookTab slug={slug} salon={salon} me={me} app={app} onLoggedIn={loadMe} onDone={() => setTab("mine")} onOpenAccount={() => setTab("account")} />}
         {salon && tab === "mine" && <MineTab slug={slug} me={me} onLoggedIn={loadMe} app={app} />}
         {salon && tab === "packages" && <PackagesTab slug={slug} me={me} onLoggedIn={loadMe} />}
         {salon && tab === "account" && <AccountTab slug={slug} me={me} app={app} onLoggedIn={loadMe} onLogout={() => setMe(null)} />}
@@ -229,7 +230,7 @@ function SlotPicker({ slug, serviceId, staffId, value, onChange }: { slug: strin
   );
 }
 
-function BookTab({ slug, salon, me, onLoggedIn, onDone }: { slug: string; salon: Salon; me: Me | null | undefined; onLoggedIn: () => void; onDone: () => void }) {
+function BookTab({ slug, salon, me, app, onLoggedIn, onDone, onOpenAccount }: { slug: string; salon: Salon; me: Me | null | undefined; app: AppInfo; onLoggedIn: () => void; onDone: () => void; onOpenAccount: () => void }) {
   const [serviceId, setServiceId] = useState<string | null>(null);
   const [staffId, setStaffId] = useState("");
   const [slot, setSlot] = useState<Slot | null>(null);
@@ -279,6 +280,7 @@ function BookTab({ slug, salon, me, onLoggedIn, onDone }: { slug: string; salon:
           <div><b>Tarih:</b> {dateTr(done.startsAt, { weekday: "long", day: "numeric", month: "long" })} {timeTr(done.startsAt)}</div>
           <div><b>Ücret:</b> {tl(done.price)}</div>
         </div>
+        <AfterBookingInstall slug={slug} app={app} onOpenAccount={onOpenAccount} />
         <Button className="mt-5 w-full bg-[var(--salon)] hover:opacity-90" onClick={onDone}>Randevularıma git</Button>
       </Card>
     );
@@ -286,6 +288,7 @@ function BookTab({ slug, salon, me, onLoggedIn, onDone }: { slug: string; salon:
 
   return (
     <>
+      <InstallBanner slug={slug} app={app} />
       <Card className="p-5">
         <h2 className="font-semibold">1. Hizmet seçin</h2>
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
