@@ -84,7 +84,9 @@ test.describe.serial("Yenilenme hatırlatması", () => {
       mkdirSync(SHOTS, { recursive: true });
       await page.screenshot({ path: `${SHOTS}/2-yaklasan-yenilemeler.png`, fullPage: true });
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.screenshot({ path: `${SHOTS}/2b-yaklasan-yenilemeler-telefon.png` });
+      await expect(page.getByText("Deniz Aydın").first()).toBeVisible();
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: `${SHOTS}/2b-yaklasan-yenilemeler-telefon.png`, fullPage: true });
       await page.setViewportSize({ width: 1440, height: 900 });
     }
 

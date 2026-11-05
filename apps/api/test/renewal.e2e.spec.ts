@@ -4,6 +4,7 @@ import request from "supertest";
 import { zonedTime } from "../src/common/time";
 import { loadEnv } from "../src/config/env";
 import { MockEmailProvider } from "../src/email/email.provider";
+import { EmailService } from "../src/email/email.service";
 import { JobsService } from "../src/jobs/jobs.service";
 import { NotificationQueue } from "../src/notifications/notification-queue";
 import { RenewalService, renewalOptOutToken } from "../src/notifications/renewal.service";
@@ -129,6 +130,12 @@ describe("Yenilenme hatırlatması", () => {
     expect(mail.to).toBe("selin@musteri.test");
     expect(mail.subject).toContain("Lazer Epilasyon");
     expect(mail.text).toContain(`/hatirlatma-kapat?t=${encodeURIComponent(renewalOptOutToken(A.tenant.id, mainCustomer.id))}`);
+    // E-posta kaydında değişkenler (vazgeçme belirteci) saklanmaz; e-posta merkezinden elle yeniden gönderilemez
+    const rec = await su.outboundEmail.findFirstOrThrow({ where: { template: "renewal_reminder", to: "selin@musteri.test" } });
+    expect(rec.payload).toBeNull();
+    await su.outboundEmail.update({ where: { id: rec.id }, data: { status: "FAILED" } });
+    await expect(app.get(EmailService).retry(rec.id)).rejects.toThrow("tek kullanımlık bağlantı");
+    await su.outboundEmail.update({ where: { id: rec.id }, data: { status: "SENT" } });
     expect((await su.notification.findUniqueOrThrow({ where: { id: emailNotif } })).status).toBe("SENT");
 
     const push = await su.notification.findFirstOrThrow({ where: { channel: "WEBPUSH", template: "yenileme_hatirlatma" } });

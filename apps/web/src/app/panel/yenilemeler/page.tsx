@@ -59,7 +59,37 @@ export default function RenewalsPage() {
       {list.data && !list.data.enabled && (
         <div className="mb-4"><Alert tone="brand">Otomatik hatırlatma kapalı; liste yine de görünür. Açmak için <Link href="/panel/ayarlar" className="underline">Ayarlar</Link> sayfasını kullanın.</Alert></div>
       )}
-      <Card>
+      {/* Telefonda kart görünümü: durum ve düğmeler yana kaydırmadan görünsün */}
+      <div className="space-y-3 sm:hidden">
+        {list.loading && !list.data ? <Spinner /> : list.data?.items.length === 0 ? (
+          <Card className="p-6 text-center text-sm text-neutral-500">Bu dönemde yenilemesi yaklaşan müşteri yok.</Card>
+        ) : list.data?.items.map((r) => {
+          const [label, tone] = REMINDER[r.reminder] ?? [r.reminder, "neutral"];
+          const book = new URLSearchParams({ yeni: "1", musteri: r.customer.id, hizmet: r.service.id });
+          return (
+            <Card key={`${r.customer.id}-${r.service.id}`} className="space-y-2 p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <Link href={`/panel/musteriler/${r.customer.id}`} className="font-medium hover:underline">{r.customer.name}</Link>
+                  <div className="text-xs text-neutral-500">{r.service.name}</div>
+                </div>
+                <Badge tone={tone}>{label}</Badge>
+              </div>
+              <div className="text-sm">
+                Yenileme: {day(r.dueDay)}{" "}
+                <span className={r.daysLeft < 0 ? "text-amber-700" : "text-neutral-500"}>
+                  ({r.daysLeft > 0 ? `${r.daysLeft} gün kaldı` : r.daysLeft === 0 ? "bugün" : `${-r.daysLeft} gün geçti`})
+                </span>
+              </div>
+              <div className="flex gap-2">
+                {r.customer.phone && <a href={`tel:${r.customer.phone}`} className={buttonVariants({ variant: "secondary", size: "sm", className: "flex-1" })}><Phone className="size-4" /> Ara</a>}
+                {!r.upcoming && <Link href={`/panel/takvim?${book}`} className={buttonVariants({ size: "sm", className: "flex-1" })}><CalendarPlus className="size-4" /> Randevu</Link>}
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+      <Card className="hidden sm:block">
         {list.loading && !list.data ? <div className="p-6"><Spinner /></div> : (
           <Table head={["Müşteri", "Hizmet", "Son işlem", "Yenileme", "Hatırlatma", ""]} empty="Bu dönemde yenilemesi yaklaşan müşteri yok. Hizmetler sayfasında tekrar süresi tanımlayın.">
             {list.data?.items.map((r) => {

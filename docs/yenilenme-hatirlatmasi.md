@@ -2,7 +2,9 @@
 
 Hizmetin tekrar süresi dolmadan (ör. saç boyama 45 gün) müşteriye önceden "yenileme zamanınız yaklaşıyor" hatırlatması gönderilir. Salon panelinde yenilemesi yaklaşan müşteriler listelenir. WhatsApp kullanılmaz. SMS sağlayıcısı yoktur ve eklenmedi.
 
-**Durum (05.11.2026):** Yalnızca yerelde. Canlıya alınmadı. Geliştirme veritabanına migration uygulanmadı (yalnızca test ve E2E veritabanlarında denendi). Gerçek alıcıya mesaj gönderilmedi.
+**Durum (05.11.2026):** Yalnızca yerelde. Canlıya alınmadı. Gerçek alıcıya mesaj gönderilmedi.
+
+**Geliştirme veritabanına migration uygulanmadı** (yalnızca test ve E2E veritabanlarında denendi). Bu yüzden yerelde API, `proguzellik` veritabanıyla başlatılırsa müşteri/hizmet/işletme sorguları "sütun yok" hatası verir. Yedek + geri yükleme doğrulaması + `npx prisma migrate deploy` onay bekliyor.
 
 ## Nasıl çalışır
 
@@ -70,13 +72,14 @@ Hizmetin tekrar süresi dolmadan (ör. saç boyama 45 gün) müşteriye önceden
   - `renewal-checks.ts`: gönderim anı denetimleri, e-posta değişkenleri, imza.
   - `renewals.controller.ts`: `GET /renewals`, `POST /public/renewal-reminders/opt-out`.
   - `notification-queue.ts`: EMAIL kanalı.
-- E-posta: yeni şablon `renewal_reminder` (düzenlenemez), mevcut `EmailService` ve `OutboundEmail` kaydı kullanılır.
+- E-posta: yeni şablon `renewal_reminder` (düzenlenemez, `secret`), mevcut `EmailService` ve `OutboundEmail` kaydı kullanılır.
+  - Şablon değişkenleri (vazgeçme belirteci dahil) e-posta kaydında saklanmaz ve SaaS sahibinin e-posta merkezinden **elle yeniden gönderilemez**. Yeniden deneme yalnızca kuyruktan yapılır; orada izin, vazgeçme, randevu ve tarih her denemede yeniden kontrol edilir.
   - SMTP yoksa bildirim SKIPPED olur, sahte "gönderildi" yazılmaz.
   - Geçici SMTP hatası yeniden denenir, son denemede FAILED olur.
 - Bildirim kayıtları `kind: MARKETING` ve `appointmentId` boştur (kaynak randevu tamamlandığı için randevu kontrolüne takılmasın diye).
 - Testler:
   - API: `test/renewal.e2e.spec.ts` (11 test). Tüm API: 480/480.
-  - Tarayıcı: `apps/e2e/tests/renewal.spec.ts` (E2E ortamında `RENEWAL_REMINDERS=1`).
+  - Tarayıcı: `apps/e2e/tests/renewal.spec.ts`. E2E ortamında `RENEWAL_REMINDERS=1` her teste açıktır; tüm tarayıcı testleri 190/190 geçti (26 atlanan ekran görüntüsü testi).
 - Bu testlerde e-posta ve push **test sağlayıcısıyla** çalışır, gerçek gönderim yoktur. Gerçek gönderim denemesi yalnızca onaylı bir test alıcısıyla yapılmalıdır (aşağıda).
 
 ## Canlıya alma planı (her adım ayrı onay ister, sunucu komutlarını Bektaş çalıştırır)
@@ -91,11 +94,13 @@ Hizmetin tekrar süresi dolmadan (ör. saç boyama 45 gün) müşteriye önceden
    - `migrate.js status` ile bekleyenleri gör. Canlıda bu sürümden önceki bekleyen migration'lar da olabilir, liste birlikte incelenmeli.
    - `migrate deploy`. Yalnızca sütun ekler, mevcut veriye dokunmaz, eski sürümle uyumludur.
 5. **Kod, özellik KAPALI:** `APP_VERSION` güncelle, `up -d api worker web`, duman testi. `RENEWAL_REMINDERS` tanımsız kaldığı için hiçbir davranış değişmez.
-6. **Kontrollü deneme:**
-   - Onaylı test alıcısı (Bektaş'ın verdiği e-posta) ile tek bir test işletmesinde `RENEWAL_REMINDERS=1`.
-   - İşletme ayarı açılır, test müşterisi (izinli, test e-postası) ve geçmiş tarihli tamamlanmış işlem hazırlanır.
-   - Gece görevi beklenir (ya da zorla çalıştırma onayıyla tetiklenir). Gelen e-posta ve vazgeçme bağlantısı kontrol edilir.
-7. **Açılış:** Gerçek işletmelerde ayarı işletme sahipleri açar.
-8. **Geri dönüş:**
+6. **Ortam anahtarını açma (dikkat: tüm işletmeler için):** `RENEWAL_REMINDERS=1` ortam değişkeni geneldir, işletme başına değildir.
+   - Açıldığı anda canlıdaki **her** salonun panelinde menü ve ayar görünür; her sahip/yönetici kendi salonunda açabilir. Hiçbir salonda kendiliğinden açılmaz.
+   - Yalnızca tek bir salonda pilot isteniyorsa önce SaaS sahibi panelinden işletme başına açılan bir izin bayrağı eklenmeli (PWA bayraklarıyla aynı yapı). Bu yapılmadı; istenirse eklenir.
+7. **Kontrollü deneme:**
+   - Bektaş'ın kendi test salonunda ayar açılır. Test müşterisi Bektaş'ın onayladığı test e-postasıyla, kampanya izni işaretli olarak eklenir; geçmiş tarihli tamamlanmış işlem hazırlanır.
+   - Gece görevi beklenir (ya da onayla zorla çalıştırılır). Gelen e-posta ve vazgeçme bağlantısı kontrol edilir.
+8. **Açılış:** Gerçek işletmelerde ayarı işletme sahipleri açar.
+9. **Geri dönüş:**
    - En hızlısı `RENEWAL_REMINDERS` satırını silip `up -d api worker`. Bekleyen hatırlatmalar gönderim anında SKIPPED olur.
    - Gerekirse `rollback.sh <önceki sürüm>`. Migration geriye uyumludur, veritabanı geri alınmaz.

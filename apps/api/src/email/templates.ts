@@ -54,8 +54,9 @@ export const TEMPLATE_META: Record<TemplateName, { label: string; vars: string[]
   invoice_notice: { label: "Fatura bildirimi", vars: ["salon", "number", "amount", "date"], secret: false, editable: true },
   owner_notice: { label: "SaaS sahibi bilgilendirmesi", vars: ["subject", "body"], secret: false, editable: false },
   customer_otp: { label: "Müşteri portalı doğrulama kodu", vars: ["salon", "minutes"], secret: true, editable: false },
-  // Vazgeçme bağlantısı yalnızca o müşterinin bu işletmedeki hatırlatmalarını kapatır; yeniden deneme için değişkenler saklanır.
-  renewal_reminder: { label: "Yenilenme hatırlatması (salon müşterisine)", vars: ["salon", "firstName", "service", "dueDate"], secret: false, editable: false },
+  // secret: değişkenler (vazgeçme belirteci) saklanmaz ve e-posta merkezinden elle yeniden gönderilemez.
+  // Yeniden deneme yalnızca kuyruktan yapılır; orada izin/vazgeçme/randevu/tarih her denemede yeniden denetlenir.
+  renewal_reminder: { label: "Yenilenme hatırlatması (salon müşterisine)", vars: ["salon", "firstName", "service", "dueDate"], secret: true, editable: false },
 };
 
 export interface TemplateOverride {
