@@ -26,8 +26,8 @@ export interface TrialApplicationInput {
   planCode?: string;
   note?: string;
   marketingConsent?: boolean;
-  /** Bal küpü: insan kullanıcı görmez; doluysa istek sessizce yok sayılır. */
-  website?: string;
+  /** Bal küpü: insan kullanıcı görmez; doluysa istek sessizce yok sayılır (denetim kaydı yalnız IP ile). */
+  hp?: string;
 }
 
 export interface ApproveInput {
@@ -74,7 +74,11 @@ export class TrialApplicationService {
     }
     const email = input.email.trim().toLowerCase();
     const accepted = { status: "VERIFICATION_SENT" as const, email, expiresInHours: APPLICATION_VERIFY_HOURS };
-    if (input.website) return accepted; // bot: hiçbir şey yazılmaz, e-posta gitmez
+    if (input.hp) {
+      // bot: başvuru yazılmaz, e-posta gitmez; yanlış pozitifler görünür olsun diye yalnız IP denetime düşer
+      await this.audit.logPlatform({ action: "trial_application.honeypot", ip: meta.ip });
+      return accepted;
+    }
     const phone = normalizePhone(input.phone);
 
     // Hesabı olan e-postaya aynı yanıt verilir (hesap varlığı sızdırılmaz); sahibine bilgi e-postası gider.

@@ -40,7 +40,7 @@ export function ApplicationForm({ plans }: { plans: PublicPlan[] }) {
           kvkkAccepted: f.get("kvkk") === "on",
           termsAccepted: f.get("terms") === "on",
           marketingConsent: f.get("marketing") === "on",
-          website: (f.get("website") as string) || undefined,
+          hp: (f.get("pg_hp") as string) || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -91,7 +91,7 @@ export function ApplicationForm({ plans }: { plans: PublicPlan[] }) {
       <Field label="Notunuz (isteğe bağlı)"><Textarea name="note" maxLength={1000} rows={3} placeholder="Size ne zaman ulaşalım, özel bir ihtiyacınız var mı?" /></Field>
       {/* Bal küpü: ekranda ve ekran okuyucuda görünmez; botlar doldurursa başvuru yok sayılır. */}
       <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
-        <label>Web sitesi<input name="website" type="text" tabIndex={-1} autoComplete="off" /></label>
+        <label>Bu alanı boş bırakın<input name="pg_hp" type="text" tabIndex={-1} autoComplete="off" /></label>
       </div>
       <div className="space-y-3 text-sm text-neutral-600">
         <label className="flex items-start gap-3">

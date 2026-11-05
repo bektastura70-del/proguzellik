@@ -115,9 +115,10 @@ describe("Deneme başvurusu (kayıt kapalıyken): başvuru → doğrulama → Ow
     });
 
     it("bal küpü dolu istek sessizce yok sayılır", async () => {
-      await http().post("/auth/trial-applications").send(form({ email: "bot@basvuru.test", website: "http://spam" })).expect(202);
+      await http().post("/auth/trial-applications").send(form({ email: "bot@basvuru.test", hp: "http://spam" })).expect(202);
       expect(await su.trialApplication.count({ where: { email: "bot@basvuru.test" } })).toBe(0);
       expect(outbox.some((m) => m.to === "bot@basvuru.test")).toBe(false);
+      expect(await su.auditLog.count({ where: { action: "trial_application.honeypot" } })).toBe(1);
     });
 
     it("hesabı olan e-posta sızdırılmaz: aynı yanıt, başvuru yazılmaz, sahibine bilgi gider", async () => {
@@ -199,6 +200,14 @@ describe("Deneme başvurusu (kayıt kapalıyken): başvuru → doğrulama → Ow
       const audit = await su.auditLog.findFirstOrThrow({ where: { action: "platform.trial_application_approved", entityId: id } });
       expect(audit.tenantId).toBe(t.id);
       expect(audit.metadata).toMatchObject({ edited: ["name"] });
+      // Sahip daveti kabul edince başvurudaki onaylar kullanıcıya bağlanır
+      const link = [...outbox].reverse().find((m) => m.to === "onay@basvuru.test" && /davet\?token=/.test(m.text))!.text;
+      const token = /davet\?token=([A-Za-z0-9_-]+)/.exec(link)![1];
+      const acc = await http().post("/auth/accept-invite").send({ token, password: TEST_PASSWORD, kvkkAccepted: true }).expect(200);
+      const userId = acc.body.user.id;
+      const consents = await su.userConsent.findMany({ where: { userId }, orderBy: { type: "asc" } });
+      expect(consents.map((c) => [c.type, c.granted])).toEqual([["KVKK_NOTICE", true], ["TERMS", true], ["MARKETING", false]]);
+      expect(consents[1].version).toMatch(/^\/kullanim-kosullari@/);
       // İkinci karar verilemez
       await admin.post(`/platform/trial-applications/${id}/approve`).send({ name: "Papatya Güzellik", ownerName: "Papatya Er", ownerEmail: "onay@basvuru.test" }).expect(409);
       await admin.post(`/platform/trial-applications/${id}/reject`).send({ reason: "geç" }).expect(409);

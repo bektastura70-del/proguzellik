@@ -553,6 +553,20 @@ export class AuthService {
         create: { tenantId: invite.tenantId, userId: user.id, role: invite.role },
         update: { role: invite.role, isActive: true },
       });
+      // Deneme başvurusundan açılan işletme: başvuruda verilen onaylar (KVKK, koşullar, ticari ileti) kullanıcıya bağlanır.
+      if (invite.role === "OWNER") {
+        const app = await tx.trialApplication.findFirst({ where: { tenantId: invite.tenantId, email: invite.email, status: "APPROVED" }, orderBy: { decidedAt: "desc" } });
+        if (app) {
+          const consent = { userId: user.id, ip: app.ip, userAgent: app.userAgent };
+          await tx.userConsent.createMany({
+            data: [
+              { ...consent, type: "KVKK_NOTICE", granted: true, version: app.kvkkNoticeVersion },
+              { ...consent, type: "TERMS", granted: true, version: app.termsVersion },
+              { ...consent, type: "MARKETING", granted: app.marketingConsent, version: MARKETING_VERSION },
+            ],
+          });
+        }
+      }
       await tx.auditLog.create({
         data: { tenantId: invite.tenantId, actorId: user.id, action: "tenant.invite_accepted", entity: "TenantInvite", entityId: invite.id, ip: meta.ip, metadata: { newAccount: !existing } },
       });

@@ -21,7 +21,7 @@ const applicationSchema = z.object({
   kvkkAccepted: z.literal(true, { error: "KVKK Aydınlatma Metni'ni okuduğunuzu onaylayın" }),
   termsAccepted: z.literal(true, { error: "Kullanım Koşulları'nı kabul edin" }),
   marketingConsent: z.boolean().optional(),
-  website: z.string().max(200).optional(),
+  hp: z.string().max(200).optional(),
 });
 const tokenSchema = z.object({ token: z.string().min(20).max(200) });
 const listSchema = z.object({

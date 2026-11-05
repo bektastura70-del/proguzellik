@@ -28,7 +28,10 @@ hesap oluşturma daveti gider.
 - Çift onay uygulanır: e-posta doğrulanmadan başvuru panele düşmez.
 - Hız sınırları: IP başına saatte 5 başvuru, e-posta başına saatte 3 başvuru, IP başına saatte 20 doğrulama.
   Aynı telefonla en fazla 3 açık başvuru olabilir.
-- Botlara karşı gizli alan (bal küpü) var: bu alan doluysa başvuru sessizce yok sayılır.
+- Botlara karşı gizli alan (bal küpü) var: bu alan doluysa başvuru sessizce yok sayılır. Yanlış pozitifler görünsün diye
+  denetime yalnızca IP ile `trial_application.honeypot` kaydı düşer.
+- Onaylar: sahip daveti kabul ettiğinde başvuruda verilen KVKK, Kullanım Koşulları ve ticari ileti tercihleri,
+  başvurunun sürüm ve IP bilgisiyle `UserConsent` tablosuna yazılır (kendi kendine kayıttaki gibi).
 - Hesap varlığı sızdırılmaz: kayıtlı bir e-postayla başvurulduğunda yanıt aynıdır, başvuru yazılmaz ve hesap
   sahibine "hesabınız zaten var" e-postası gider.
 - Canlıda SMTP yoksa başvuru hiçbir şey yazılmadan 503 ile reddedilir.
@@ -90,3 +93,5 @@ Owner paneli bayraktan bağımsızdır: mevcut başvurular bayrak kapatılsa da 
   sürelerini (doğrulanmamış başvuru 48 saat, reddedilen başvuru 30 gün) açıkça anmalı. Metin hukuki
   incelemeden geçmelidir.
 - Ret e-postası yok: istenirse metni onaylanınca şablon eklenir.
+- Onaylanan başvurular (telefon, not, IP) işletmeye bağlı olarak süresiz saklanıyor; bunlar için bir saklama süresi
+  kararı verilmeli.

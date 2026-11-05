@@ -162,7 +162,7 @@ function ApplicationDialog({ app, onClose, onDone }: { app: TrialApplication; on
     <Dialog open onClose={onClose} title={pending ? "Deneme başvurusunu onayla" : "Deneme başvurusu"}>
       <div className="space-y-4">
         {err && <Alert>{err}</Alert>}
-        <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-1 rounded-xl bg-sand-50 p-3 text-sm">
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-xl bg-sand-50 p-3 text-sm">
           <dt className="text-neutral-500">Başvuru</dt><dd>{when(app.createdAt)}{app.verifiedAt ? ` · doğrulandı ${when(app.verifiedAt)}` : ""}</dd>
           {app.city && <><dt className="text-neutral-500">Şehir</dt><dd>{app.city}</dd></>}
           {app.staffCount && <><dt className="text-neutral-500">Personel</dt><dd>{app.staffCount}</dd></>}
