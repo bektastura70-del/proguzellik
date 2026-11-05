@@ -42,6 +42,16 @@ test.describe("Deneme başvurusu", () => {
 
     const ctx = await browser.newContext({ storageState: authFile("platform") });
     const admin = await ctx.newPage();
+    // Üst çubuktaki bildirim düğmesi bekleyen başvuruyu gösterir ve Başvurular sekmesini açar
+    await admin.goto("/platform");
+    await expect(admin.getByTestId("notifications-count")).toBeVisible();
+    await admin.getByRole("button", { name: /^Bildirimler/ }).click();
+    const bell = admin.getByRole("dialog", { name: "Bildirimler" });
+    await expect(bell).toContainText(`Yeni deneme başvurusu: ${salon}`);
+    await shot(admin, "0-bildirimler");
+    await bell.getByRole("button", { name: "Tüm başvuruları gör" }).click();
+    await expect(admin.getByRole("tab", { name: /Başvurular/ })).toHaveAttribute("aria-selected", "true");
+    // E-postadaki bağlantı da doğrudan sekmeyi açar
     await admin.goto("/platform?sekme=basvurular");
     await expect(admin.getByRole("tab", { name: /Başvurular/ })).toHaveAttribute("aria-selected", "true");
     await expect(admin.getByTestId("pending-applications")).toBeVisible();
@@ -62,6 +72,18 @@ test.describe("Deneme başvurusu", () => {
     expect(sql(`SELECT status FROM "Tenant" WHERE name = '${salon}'`)).toBe("TRIAL");
     expect(sql(`SELECT a.status || ':' || (a."tenantId" IS NOT NULL) FROM "TrialApplication" a WHERE a.email = '${email}'`)).toBe("APPROVED:true");
     expect(lastEmail(email, `${salon} – ProGüzellik davetiniz`)).toMatch(/\/davet\?token=/);
+    // Yan menü: masaüstünde görünür; telefonda menü düğmesiyle açılır ve bölüm seçilince kapanır
+    await admin.goto("/platform");
+    await expect(admin.getByRole("tab", { name: "İşletmeler" })).toHaveAttribute("aria-selected", "true");
+    await shot(admin, "4-isletmeler");
+    await admin.setViewportSize({ width: 390, height: 844 });
+    await expect(admin.getByRole("tab", { name: "Paketler" })).toBeHidden();
+    await shot(admin, "5-mobil");
+    await admin.getByRole("button", { name: "Menüyü aç" }).click();
+    await shot(admin, "6-mobil-menu");
+    await admin.getByRole("tab", { name: "Paketler" }).click();
+    await expect(admin.getByRole("heading", { level: 1, name: "Paketler" })).toBeVisible();
+    await expect(admin.getByRole("tab", { name: "Paketler" })).toBeHidden();
     await ctx.close();
   });
 });

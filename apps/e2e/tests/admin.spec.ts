@@ -207,6 +207,7 @@ test.describe("SaaS sahibi paneli", () => {
     const name = `Fiyat ${code.slice(-5)}`;
     await page.goto("/platform");
     // Paket: açıklama, sınırlar, satışta
+    await page.getByRole("tab", { name: "Paketler" }).click();
     await page.getByRole("button", { name: "Yeni paket" }).click();
     const pd = page.getByRole("dialog");
     await pd.getByLabel("Paket kodu").fill(code);
@@ -292,6 +293,7 @@ test.describe("SaaS sahibi paneli", () => {
   test("yeni paket oluşturulur, deneme süresi uzatılır, abonelikler sekmesinde izlenir", async ({ page }) => {
     const code = `E2E_${Date.now().toString(36).toUpperCase()}`;
     await page.goto("/platform");
+    await page.getByRole("tab", { name: "Paketler" }).click();
     await page.getByRole("button", { name: "Yeni paket" }).click();
     const pd = page.getByRole("dialog");
     await pd.getByLabel("Paket kodu").fill(code);
@@ -307,7 +309,7 @@ test.describe("SaaS sahibi paneli", () => {
       data: { name, ownerName: "Deneme Sahip", ownerEmail: `${uniq("deneme").replace(" ", "-")}@ornek.test`, planCode: code, trialDays: 5 },
     });
     expect(created.status()).toBe(201);
-    await page.reload();
+    await page.goto("/platform");
     await page.getByLabel("İşletme ara").fill(name.split(" ").pop()!);
     const row = page.getByRole("row").filter({ hasText: name });
     await expect(row).toContainText(`Paket ${code}`);
@@ -323,7 +325,7 @@ test.describe("SaaS sahibi paneli", () => {
 
     await page.getByRole("tab", { name: "Abonelikler" }).click();
     await expect(page.getByText("Deneme", { exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Abonelikler" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Abonelikler" })).toBeVisible();
   });
 
   test("finans: şirket ayarı, cari hesap, kısmi tahsilat, fatura taslağı ve entegratörsüz kesim engeli", async ({ page }) => {

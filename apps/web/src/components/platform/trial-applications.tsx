@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Bell } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Badge, Button, Card, CardHeader, Dialog, Field, Input, Select, Spinner, Table, Td, Textarea, useToast } from "@/components/ui";
 import { api, ApiError, useApi } from "@/lib/api";
 import { dateTr } from "@/lib/format";
@@ -40,6 +41,54 @@ const phoneTr = (p: string) => (/^\+90(\d{3})(\d{3})(\d{2})(\d{2})$/.exec(p)?.sl
 
 /** Bekleyen başvuru sayısı (sekme rozeti için). */
 export const usePendingApplications = () => useApi<ListResponse>("/platform/trial-applications?status=PENDING");
+
+/** Üst çubuktaki bildirim düğmesi: onay bekleyen başvuru sayısı ve son başvurular; "Tümünü gör" Başvurular sekmesini açar. */
+export function NotificationsButton({ pending, count, onOpenAll }: { pending: TrialApplication[]; count: number; onOpenAll: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        aria-label={count ? `Bildirimler: ${count} onay bekleyen başvuru` : "Bildirimler"}
+        aria-expanded={open}
+        className="relative inline-flex size-9 items-center justify-center rounded-full border border-sand-200 bg-white text-neutral-700 hover:bg-sand-100"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Bell className="size-4" aria-hidden />
+        {count > 0 && <span data-testid="notifications-count" className="absolute -right-1 -top-1 inline-flex min-w-5 justify-center rounded-full bg-amber-500 px-1 text-xs font-semibold text-white">{count > 99 ? "99+" : count}</span>}
+      </button>
+      {open && (
+        <div role="dialog" aria-label="Bildirimler" className="absolute right-0 z-30 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-sand-200 bg-white p-2 shadow-lg">
+          <div className="px-2 py-1.5 text-sm font-semibold">Bildirimler</div>
+          {count === 0 ? (
+            <p className="px-2 pb-2 text-sm text-neutral-500">Onay bekleyen başvuru yok.</p>
+          ) : (
+            <ul className="max-h-80 overflow-y-auto">
+              {pending.slice(0, 8).map((a) => (
+                <li key={a.id}>
+                  <button type="button" className="w-full rounded-lg px-2 py-2 text-left hover:bg-sand-100" onClick={() => { setOpen(false); onOpenAll(); }}>
+                    <div className="text-sm font-medium">Yeni deneme başvurusu: {a.businessName}</div>
+                    <div className="text-xs text-neutral-500">{a.fullName} · {when(a.verifiedAt ?? a.createdAt)}</div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button type="button" className="mt-1 w-full rounded-lg px-2 py-2 text-sm font-medium text-brand-700 hover:bg-sand-100" onClick={() => { setOpen(false); onOpenAll(); }}>Tüm başvuruları gör</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Siteden gelen deneme başvuruları: bilgiler doldurulmuş olarak onay bekler; Onayla işletmeyi açar ve sahibine davet gönderir. */
 export function TrialApplicationsCard({ onOpenTenant, onChanged }: { onOpenTenant: (id: string) => void; onChanged: () => void }) {

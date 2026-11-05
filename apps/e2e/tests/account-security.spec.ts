@@ -196,7 +196,7 @@ test.describe("Oturum güvenliği", () => {
 test.describe("SaaS paneli: günlük görev", () => {
   test.use({ storageState: authFile("platform") });
   test("görev elle tetiklenir, kaydı görünür; aynı gün ikinci kez atlanır", async ({ page }) => {
-    await page.goto("/platform");
+    await page.goto("/platform?sekme=gorevler");
     await page.getByRole("button", { name: "Şimdi çalıştır" }).click();
     await expectToast(page, /Görev çalıştırıldı|Atlandı/);
     await page.getByRole("button", { name: "Şimdi çalıştır" }).click();
