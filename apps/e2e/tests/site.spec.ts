@@ -112,7 +112,11 @@ test.describe("Tanıtım sitesi", () => {
       if (site.company.address) await expect(imprint).toContainText("Şirket Adresi");
     }
     await page.goto("/kvkk");
-    await expect(page.getByRole("table")).toContainText("Anthropic");
+    await expect(page.getByRole("table").first()).toContainText("Anthropic");
+    // Deneme başvurusu notu: kodda uygulanan saklama süreleriyle aynı (48 saat / 30 gün)
+    await expect(page.getByTestId("legal-note")).toContainText("Ücretsiz deneme başvuruları");
+    await expect(page.getByTestId("legal-note")).toContainText("48 saat");
+    await expect(page.getByTestId("legal-note")).toContainText("30 gün");
     await page.goto("/kullanim-kosullari");
     await page.getByRole("link", { name: "Veri Saklama ve Hesap Kapatma Politikası" }).click();
     await expect(page).toHaveURL(/\/hesap-kapatma-ve-veri-silme$/);
