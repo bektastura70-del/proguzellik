@@ -105,6 +105,9 @@ type Detail = {
   invites: Invite[];
   subscriptions: AdminSubscription[];
   _count: { customers: number; staff: number; services: number };
+  renewalRemindersAllowed: boolean;
+  renewalRemindersEnabled: boolean;
+  renewalEnvOn: boolean;
 };
 
 const ROLE_TR: Record<string, string> = { OWNER: "Sahip", MANAGER: "Yönetici", RECEPTION: "Resepsiyon", STAFF: "Personel" };
@@ -185,6 +188,28 @@ export function TenantDetailDialog({ id, onClose, onChanged }: { id: string; onC
                 )}
               </div>
             )}
+          </section>
+
+          <section>
+            <h3 className="mb-2 text-sm font-semibold">Yenilenme hatırlatması (pilot)</h3>
+            <p className="mb-3 text-sm text-neutral-600">
+              İzin verilen salon, panelinde "Yaklaşan yenilemeler" listesini görür ve kendi ayarından müşterilere hatırlatmayı açabilir.
+              Salonun ayarı şu an: <b>{t.renewalRemindersEnabled ? "açık" : "kapalı"}</b>.
+              {!t.renewalEnvOn && " Sunucuda RENEWAL_REMINDERS açık değil; izin verseniz de salonda görünmez."}
+            </p>
+            <form
+              className="grid items-end gap-3 sm:grid-cols-4"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const f = new FormData(e.currentTarget);
+                const allowed = !t.renewalRemindersAllowed;
+                const ok = await run(() => api(`/platform/tenants/${t.id}/renewal-reminders`, { method: "POST", body: { allowed, reason: f.get("reason") } }), allowed ? "Yenilenme hatırlatmasına izin verildi" : "Yenilenme hatırlatması izni geri alındı");
+                if (ok) e.currentTarget?.reset();
+              }}
+            >
+              <Field label="İzin gerekçesi" className="sm:col-span-3"><Input name="reason" required minLength={3} maxLength={300} /></Field>
+              <Button variant={t.renewalRemindersAllowed ? "outline" : "default"}>{t.renewalRemindersAllowed ? "İzni geri al" : "İzin ver"}</Button>
+            </form>
           </section>
 
           <SubscriptionAdmin

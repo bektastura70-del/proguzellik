@@ -1,8 +1,8 @@
-import { BadRequestException, Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { timingSafeEqual } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
-import { loadEnv, renewalRemindersOn, webPushMode } from "../config/env";
+import { loadEnv, renewalAvailable, renewalRemindersOn, webPushMode } from "../config/env";
 import { toZoned, zonedTime } from "../common/time";
 import { PrismaService, Tx } from "../prisma/prisma.service";
 import { effectivePwa } from "../pwa/pwa-settings";
@@ -99,7 +99,7 @@ export class RenewalService {
 
   async run(now = new Date()) {
     if (!renewalRemindersOn(loadEnv())) return { renewalReminders: 0, errors: [] as string[] };
-    const tenants = await this.prisma.platform.tenant.findMany({ where: { status: { in: ["TRIAL", "ACTIVE"] }, renewalRemindersEnabled: true }, select: { id: true } });
+    const tenants = await this.prisma.platform.tenant.findMany({ where: { status: { in: ["TRIAL", "ACTIVE"] }, renewalRemindersEnabled: true, renewalRemindersAllowed: true }, select: { id: true } });
     let renewalReminders = 0;
     const errors: string[] = [];
     for (const { id } of tenants) {
@@ -116,8 +116,8 @@ export class RenewalService {
   async forTenant(tenantId: string, now = new Date()) {
     if (!renewalRemindersOn(loadEnv())) return 0;
     const created = await this.prisma.withTenant({ tenantId, userId: "" }, async (tx) => {
-      const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true, slug: true, timezone: true, renewalRemindersEnabled: true } });
-      if (!tenant.renewalRemindersEnabled) return [];
+      const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true, slug: true, timezone: true, renewalRemindersEnabled: true, renewalRemindersAllowed: true } });
+      if (!tenant.renewalRemindersEnabled || !tenant.renewalRemindersAllowed) return [];
       const tz = tenant.timezone;
       const local = toZoned(now, tz);
       const today = local.date;
@@ -169,7 +169,8 @@ export class RenewalService {
   /** Salon paneli: yenilenmesi yaklaşan (ve yakın zamanda geçmiş) müşteriler. */
   async list(ctx: { tenantId: string; userId: string }, days: number) {
     return this.prisma.withTenant(ctx, async (tx) => {
-      const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId }, select: { timezone: true, renewalRemindersEnabled: true } });
+      const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId }, select: { timezone: true, renewalRemindersEnabled: true, renewalRemindersAllowed: true } });
+      if (!renewalAvailable(tenant)) throw new NotFoundException("Bu özellik açık değil");
       const today = toZoned(new Date(), tenant.timezone).date;
       const rows = await cycles(tx, tenant.timezone, addDays(today, -LIST_OVERDUE_DAYS), addDays(today, days));
       const keys = rows.map((r) => `yenile:${r.appointmentId}:`);

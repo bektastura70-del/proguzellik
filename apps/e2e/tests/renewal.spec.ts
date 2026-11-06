@@ -42,8 +42,33 @@ test.describe.serial("Yenilenme hatırlatması", () => {
     expect(services.find((s) => s.name === svc)).toMatchObject({ rebookAfterDays: 45, renewalRemindDaysBefore: 7 });
   });
 
+  test("SaaS sahibi izin vermeden salon görmez; izin verince ayar ve menü çıkar", async ({ page, browser }) => {
+    await page.goto("/panel/ayarlar");
+    await expect(page.getByRole("heading", { name: "Ayarlar" })).toBeVisible();
+    await expect(page.getByLabel("Müşterilere yenilenme hatırlatması gönder")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Yaklaşan yenilemeler" })).toHaveCount(0);
+
+    const ctx = await browser.newContext({ storageState: authFile("platform") });
+    const admin = await ctx.newPage();
+    await admin.goto("/platform");
+    await admin.getByRole("row").filter({ hasText: "Işıltı Güzellik" }).getByRole("button", { name: "Yönet" }).click();
+    const dlg = admin.getByRole("dialog");
+    const section = dlg.locator("section").filter({ hasText: "Yenilenme hatırlatması (pilot)" });
+    await section.getByLabel("İzin gerekçesi").fill("Deneme salonu pilotu");
+    if (SHOTS) await section.screenshot({ path: `${SHOTS}/0-saas-pilot-izni.png` });
+    await section.getByRole("button", { name: "İzin ver" }).click();
+    await expectToast(admin, "Yenilenme hatırlatmasına izin verildi");
+    await expect(section.getByRole("button", { name: "İzni geri al" })).toBeVisible();
+    await ctx.close();
+    expect(sql(`SELECT "renewalRemindersAllowed" FROM "Tenant" WHERE id='${tenantId}'`)).toBe("t");
+    expect(sql(`SELECT count(*) FROM "AuditLog" WHERE "tenantId"='${tenantId}' AND action='platform.renewal_reminders_allowed_changed'`)).toBe("1");
+    // Diğer salonlar etkilenmez
+    expect(sql(`SELECT count(*) FROM "Tenant" WHERE "renewalRemindersAllowed" AND id<>'${tenantId}'`)).toBe("0");
+  });
+
   test("işletme ayarından açılır (varsayılan kapalı)", async ({ page }) => {
     await page.goto("/panel/ayarlar");
+    await expect(page.getByRole("link", { name: "Yaklaşan yenilemeler" })).toBeVisible();
     const box = page.getByLabel("Müşterilere yenilenme hatırlatması gönder");
     await expect(box).not.toBeChecked();
     await box.check();

@@ -9,7 +9,8 @@ import { JobsService } from "../src/jobs/jobs.service";
 import { NotificationQueue } from "../src/notifications/notification-queue";
 import { RenewalService, renewalOptOutToken } from "../src/notifications/renewal.service";
 import { RetentionService } from "../src/notifications/retention.service";
-import { addMember, api, createApp, createTenantWithUser, futureAt, login, owner, resetDb, setupSalon } from "./helpers";
+import * as bcrypt from "bcryptjs";
+import { addMember, api, createApp, createTenantWithUser, futureAt, login, owner, resetDb, enableMfa, setupSalon, TEST_PASSWORD } from "./helpers";
 import { enablePwa } from "./portal-helpers";
 
 const DAY = 86_400_000;
@@ -31,6 +32,7 @@ describe("Yenilenme hatırlatması", () => {
   let B: Awaited<ReturnType<typeof createTenantWithUser>>;
   let a: ReturnType<typeof api>;
   let b: ReturnType<typeof api>;
+  let admin: ReturnType<typeof api>;
   let s: Awaited<ReturnType<typeof setupSalon>>;
   let renewal: RenewalService;
   let queue: NotificationQueue;
@@ -50,9 +52,11 @@ describe("Yenilenme hatırlatması", () => {
     await resetDb(su);
     A = await createTenantWithUser(su, { name: "Yenileme Salon", email: "yen-a@test.local" });
     B = await createTenantWithUser(su, { name: "Diğer Salon", email: "yen-b@test.local" });
+    await su.user.create({ data: { email: "yen-admin@proguzellik.test", fullName: "Platform", passwordHash: await bcrypt.hash(TEST_PASSWORD, 4), isPlatformAdmin: true } });
     app = await createApp();
     a = api(app, await login(app, "yen-a@test.local"), A.tenant.id);
     b = api(app, await login(app, "yen-b@test.local"), B.tenant.id);
+    admin = api(app, (await enableMfa(app, "yen-admin@proguzellik.test")).token);
     s = await setupSalon(a);
     renewal = app.get(RenewalService);
     queue = app.get(NotificationQueue);
@@ -81,8 +85,26 @@ describe("Yenilenme hatırlatması", () => {
     await su.appointment.deleteMany({ where: { customerId: c.id } });
   });
 
-  it("ortam açık, işletme ayarı kapalıyken planlanmaz; ayarı açmak denetim kaydına yazılır", async () => {
+  it("ortam açık ama SaaS sahibi izin vermediyse salon göremez ve açamaz (pilot)", async () => {
     setFlag("1");
+    await a.get("/renewals").expect(404);
+    await a.patch("/settings").send({ renewalRemindersEnabled: true }).expect(409);
+    expect((await a.get("/settings").expect(200)).body.features).toEqual({ renewalReminders: false });
+    // Salon kendi izin alanını değiştiremez (sütun yetkisi yok; şemada da yok)
+    await a.patch("/settings").send({ renewalRemindersAllowed: true }).expect(200);
+    expect((await su.tenant.findUniqueOrThrow({ where: { id: A.tenant.id } })).renewalRemindersAllowed).toBe(false);
+    // SaaS sahibi işletme başına izin verir: gerekçe zorunlu, denetim kaydı yazılır; B etkilenmez
+    await admin.post(`/platform/tenants/${A.tenant.id}/renewal-reminders`).send({ allowed: true }).expect(400);
+    await a.post(`/platform/tenants/${A.tenant.id}/renewal-reminders`).send({ allowed: true, reason: "Pilot" }).expect(403);
+    const r = await admin.post(`/platform/tenants/${A.tenant.id}/renewal-reminders`).send({ allowed: true, reason: "Deneme salonu pilotu" }).expect(200);
+    expect(r.body).toEqual({ renewalRemindersAllowed: true, renewalRemindersEnabled: false, renewalEnvOn: true });
+    const log = await su.auditLog.findFirstOrThrow({ where: { tenantId: A.tenant.id, action: "platform.renewal_reminders_allowed_changed" } });
+    expect(log.metadata).toMatchObject({ reason: "Deneme salonu pilotu", after: { renewalRemindersAllowed: true } });
+    expect((await a.get("/settings").expect(200)).body.features).toEqual({ renewalReminders: true });
+    await b.get("/renewals").expect(404);
+  });
+
+  it("ortam açık, işletme ayarı kapalıyken planlanmaz; ayarı açmak denetim kaydına yazılır", async () => {
     const c = await customer("Ayarsiz", "05551110001");
     await done(c.id, daysBefore(40));
     expect(await renewal.forTenant(A.tenant.id, night)).toBe(0);
@@ -246,6 +268,7 @@ describe("Yenilenme hatırlatması", () => {
     expect(by("Selin Test").reminder).toBe("PENDING"); // kayıtları önceki testte silindi, e-postası kaldırıldı
 
     // Başka işletme: kendi verisi yok, A'nın müşterilerini görmez
+    await admin.post(`/platform/tenants/${B.tenant.id}/renewal-reminders`).send({ allowed: true, reason: "RLS denemesi" }).expect(200);
     expect((await b.get("/renewals").expect(200)).body.items).toEqual([]);
     await addMember(app, a, { email: "yen-staff@test.local", fullName: "Personel", role: "STAFF" });
     await api(app, await login(app, "yen-staff@test.local"), A.tenant.id).get("/renewals").expect(403);
@@ -258,5 +281,16 @@ describe("Yenilenme hatırlatması", () => {
     expect((await app.get(RetentionService).forTenant(A.tenant.id, night)).rebook).toBe(0);
     const run = await app.get(JobsService).runDaily({ now: night, force: true });
     expect(run).toMatchObject({ skipped: false, result: { renewalReminders: expect.any(Number), errors: [] } });
+  });
+  it("SaaS sahibi izni geri alırsa bekleyen hatırlatma gitmez, salon ayarı da kapanır", async () => {
+    const c = await customer("Izingeri", "05551110015");
+    await done(c.id, daysBefore(40));
+    expect(await renewal.forTenant(A.tenant.id, night)).toBe(1);
+    const n = await su.notification.findFirstOrThrow({ where: { customerId: c.id } });
+    const r = await admin.post(`/platform/tenants/${A.tenant.id}/renewal-reminders`).send({ allowed: false, reason: "Pilot bitti" }).expect(200);
+    expect(r.body).toMatchObject({ renewalRemindersAllowed: false, renewalRemindersEnabled: false });
+    expect(await deliver(n.id)).toBe("skipped");
+    expect((await su.notification.findUniqueOrThrow({ where: { id: n.id } })).error).toBe("İşletmede yenilenme hatırlatması kapalı");
+    await a.get("/renewals").expect(404);
   });
 });

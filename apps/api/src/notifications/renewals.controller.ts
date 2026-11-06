@@ -1,10 +1,9 @@
-import { Body, Controller, Get, HttpCode, NotFoundException, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Post, Query, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { z } from "zod";
 import { RateLimitService } from "../auth/rate-limit.service";
 import { CurrentTenant, Public, Roles, TenantInfo } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
-import { loadEnv, renewalRemindersOn } from "../config/env";
 import { RenewalService } from "./renewal.service";
 
 const listSchema = z.object({ days: z.coerce.number().int().min(1).max(90).default(30) });
@@ -18,7 +17,7 @@ export class RenewalsController {
   @Get()
   @Roles("OWNER", "MANAGER", "RECEPTION")
   list(@CurrentTenant() t: TenantInfo, @Query(new ZodPipe(listSchema)) q: z.infer<typeof listSchema>) {
-    if (!renewalRemindersOn(loadEnv())) throw new NotFoundException("Bu özellik açık değil");
+    // Ortam anahtarı + SaaS sahibinin işletme izni yoksa 404 (servis içinde denetlenir)
     return this.renewal.list(t, q.days);
   }
 }

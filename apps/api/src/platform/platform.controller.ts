@@ -9,6 +9,7 @@ import { SubscriptionsService } from "../billing/subscriptions.service";
 import { JobsService } from "../jobs/jobs.service";
 import { AuthUser, CurrentUser, PlatformAdmin } from "../common/decorators";
 import { ZodPipe } from "../common/zod.pipe";
+import { loadEnv, renewalRemindersOn } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 import { ManualSubscriptionService } from "./manual-subscription.service";
 import { PlanAdminService } from "./plan-admin.service";
@@ -162,6 +163,8 @@ const roleChange = z.object({ role: roleSchema });
 const resetSchema = z.object({ revokeSessions: z.boolean().default(false) });
 
 /** SaaS sahibi (platform yöneticisi) paneli. Tüm işletmeleri görür; RLS'yi atlayan ayrı rol kullanır. */
+const renewalAllowSchema = z.object({ allowed: z.boolean(), reason: z.string().trim().min(3, "Gerekçe yazın").max(300) });
+
 @PlatformAdmin()
 @Controller("platform")
 export class PlatformController {
@@ -247,7 +250,7 @@ export class PlatformController {
       take: 10,
       select: inviteSelect,
     });
-    return { ...t, invites: [...t.invites, ...closed] };
+    return { ...t, invites: [...t.invites, ...closed], renewalEnvOn: renewalRemindersOn(loadEnv()) };
   }
 
   /** Yeni güzellik merkezi: işletme deneme sürecinde açılır, sahibine e-posta daveti gider (SMTP yoksa bekler). */
@@ -283,6 +286,29 @@ export class PlatformController {
   @HttpCode(200)
   reactivate(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Req() req: Request) {
     return this.tenantAdmin.reactivate(id, u.id, req.ip);
+  }
+
+  /**
+   * Yenilenme hatırlatması pilotu: SaaS sahibi işletme başına izin verir/geri alır (gerekçe zorunlu, denetim kaydı).
+   * İzin geri alınınca işletmenin kendi ayarı da kapanır; yeniden izin verilse bile hatırlatma kendiliğinden başlamaz.
+   */
+  @Post("tenants/:id/renewal-reminders")
+  @HttpCode(200)
+  async setRenewalAllowed(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(renewalAllowSchema)) b: z.infer<typeof renewalAllowSchema>) {
+    return this.prisma.platform.$transaction(async (tx) => {
+      const cur = await tx.tenant.findUnique({ where: { id }, select: { renewalRemindersAllowed: true, renewalRemindersEnabled: true } });
+      if (!cur) throw new NotFoundException("İşletme bulunamadı");
+      const updated = await tx.tenant.update({
+        where: { id },
+        data: { renewalRemindersAllowed: b.allowed, ...(b.allowed ? {} : { renewalRemindersEnabled: false }) },
+        select: { renewalRemindersAllowed: true, renewalRemindersEnabled: true },
+      });
+      await this.audit.log(tx, {
+        tenantId: id, actorId: u.id, action: "platform.renewal_reminders_allowed_changed", entity: "Tenant", entityId: id,
+        metadata: { before: cur, after: updated, reason: b.reason },
+      });
+      return { ...updated, renewalEnvOn: renewalRemindersOn(loadEnv()) };
+    });
   }
 
   // ---- Manuel abonelik (gerçek tahsilat değildir; SubscriptionGrant defterine ve denetim kaydına yazılır) ----

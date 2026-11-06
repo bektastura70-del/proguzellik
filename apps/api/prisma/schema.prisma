@@ -45,6 +45,8 @@ model Tenant {
   packageReminderDays  Int           @default(7)
   /// Yenilenme hatırlatması (uygulama bildirimi + e-posta) bu işletmede açık mı? Ortamda RENEWAL_REMINDERS=1 de gerekir.
   renewalRemindersEnabled Boolean    @default(false)
+  /// SaaS sahibi bu işletmede yenilenme hatırlatmasına izin verdi mi (pilot). İşletme kendi ayarını yalnızca izin varsa açabilir.
+  renewalRemindersAllowed Boolean    @default(false)
   suspendedAt          DateTime?
   suspendedReason      String?
   suspendedFromStatus  TenantStatus?

@@ -316,7 +316,7 @@ test.describe("SaaS sahibi paneli", () => {
     await row.getByRole("button", { name: "Yönet" }).click();
     const dlg = page.getByRole("dialog");
     await dlg.getByLabel("Uzatılacak gün").fill("10");
-    await dlg.getByLabel("Gerekçe").fill("E2E kurulum desteği");
+    await dlg.getByLabel("Gerekçe", { exact: true }).fill("E2E kurulum desteği");
     await dlg.getByRole("button", { name: "Süreyi uzat" }).click();
     await expectToast(page, "Deneme süresi uzatıldı");
     const end = new Date(Date.now() + 15 * 86_400_000).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/Istanbul" });

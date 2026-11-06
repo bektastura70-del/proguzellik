@@ -32,8 +32,12 @@ Hizmetin tekrar süresi dolmadan (ör. saç boyama 45 gün) müşteriye önceden
 
 ## Açma / kapama (varsayılan KAPALI)
 
-1. **Ortam:** `RENEWAL_REMINDERS=1` (api + worker). Tanımsızsa her ortamda kapalıdır. Bu durumda panel menüsü ve ayar görünmez, `/renewals` 404 döner, işletme ayarı açılamaz (409).
-2. **İşletme:** Ayarlar → "Yenilenme hatırlatması" (sahip/yönetici). Varsayılan kapalıdır. Her değişiklik `tenant.renewal_reminders_changed` olarak denetim kaydına yazılır.
+Üç kat birlikte açık olmalı:
+
+1. **Ortam:** `RENEWAL_REMINDERS=1` (api + worker). Tanımsızsa her ortamda kapalıdır.
+2. **SaaS sahibi izni (pilot):** /platform → salon → "Yenilenme hatırlatması (pilot)" → gerekçe yazıp "İzin ver" (`renewalRemindersAllowed`). Varsayılan hiçbir salonda izin yoktur. Değişiklik `platform.renewal_reminders_allowed_changed` olarak denetim kaydına yazılır. İzin geri alınınca salonun kendi ayarı da kapanır ve bekleyen hatırlatmalar gönderilmez.
+   - İzin yoksa salon panelinde menü ve ayar görünmez, `/renewals` 404 döner, işletme ayarı açılamaz (409). Salon bu izni kendisi değiştiremez (veritabanı yetkisi yok).
+3. **İşletme:** Ayarlar → "Yenilenme hatırlatması" (sahip/yönetici). Varsayılan kapalıdır. Her değişiklik `tenant.renewal_reminders_changed` olarak denetim kaydına yazılır.
 
 ## Salon paneli
 
@@ -63,7 +67,7 @@ Hizmetin tekrar süresi dolmadan (ör. saç boyama 45 gün) müşteriye önceden
 
 ## Teknik özet
 
-- Migration `20261105160000_renewal_reminders`. Yalnızca sütun ekler, yeni tablo yoktur, RLS politikaları aynen geçerlidir:
+- Migration'lar `20261105160000_renewal_reminders` ve `20261106090000_renewal_pilot` (`Tenant.renewalRemindersAllowed`, varsayılan false). Yalnızca sütun ekler, yeni tablo yoktur, RLS politikaları aynen geçerlidir:
   - `Tenant.renewalRemindersEnabled` (varsayılan false; `app_tenant`'a sütun bazlı UPDATE yetkisi verildi).
   - `Customer.renewalRemindersOptOutAt`.
   - `Service.renewalRemindDaysBefore` (CHECK 1–60).
@@ -94,13 +98,12 @@ Hizmetin tekrar süresi dolmadan (ör. saç boyama 45 gün) müşteriye önceden
    - `migrate.js status` ile bekleyenleri gör. Canlıda bu sürümden önceki bekleyen migration'lar da olabilir, liste birlikte incelenmeli.
    - `migrate deploy`. Yalnızca sütun ekler, mevcut veriye dokunmaz, eski sürümle uyumludur.
 5. **Kod, özellik KAPALI:** `APP_VERSION` güncelle, `up -d api worker web`, duman testi. `RENEWAL_REMINDERS` tanımsız kaldığı için hiçbir davranış değişmez.
-6. **Ortam anahtarını açma (dikkat: tüm işletmeler için):** `RENEWAL_REMINDERS=1` ortam değişkeni geneldir, işletme başına değildir.
-   - Açıldığı anda canlıdaki **her** salonun panelinde menü ve ayar görünür; her sahip/yönetici kendi salonunda açabilir. Hiçbir salonda kendiliğinden açılmaz.
-   - Yalnızca tek bir salonda pilot isteniyorsa önce SaaS sahibi panelinden işletme başına açılan bir izin bayrağı eklenmeli (PWA bayraklarıyla aynı yapı). Bu yapılmadı; istenirse eklenir.
-7. **Kontrollü deneme:**
-   - Bektaş'ın kendi test salonunda ayar açılır. Test müşterisi Bektaş'ın onayladığı test e-postasıyla, kampanya izni işaretli olarak eklenir; geçmiş tarihli tamamlanmış işlem hazırlanır.
+6. **Ortam anahtarını açma:** `RENEWAL_REMINDERS=1`. SaaS sahibi izni olmayan salonlarda hiçbir şey görünmez, yani bu adım tek başına hiçbir salonu etkilemez.
+7. **Kontrollü deneme (pilot):**
+   - /platform'dan yalnızca Deneme salonuna izin verilir, salonun Ayarlar sayfasından hatırlatma açılır. Test müşterisi Bektaş'ın onayladığı test e-postasıyla, kampanya izni işaretli olarak eklenir; geçmiş tarihli tamamlanmış işlem hazırlanır.
    - Gece görevi beklenir (ya da onayla zorla çalıştırılır). Gelen e-posta ve vazgeçme bağlantısı kontrol edilir.
-8. **Açılış:** Gerçek işletmelerde ayarı işletme sahipleri açar.
+8. **Açılış:** Pilot başarılıysa SaaS sahibi diğer salonlara izin verir; hatırlatmayı her salonun sahibi kendi ayarından açar.
 9. **Geri dönüş:**
-   - En hızlısı `RENEWAL_REMINDERS` satırını silip `up -d api worker`. Bekleyen hatırlatmalar gönderim anında SKIPPED olur.
+   - Tek salon için: /platform'dan izni geri al (kod ya da sunucu işlemi gerekmez).
+   - Tümü için: `RENEWAL_REMINDERS` satırını silip `up -d api worker`. Bekleyen hatırlatmalar gönderim anında SKIPPED olur.
    - Gerekirse `rollback.sh <önceki sürüm>`. Migration geriye uyumludur, veritabanı geri alınmaz.

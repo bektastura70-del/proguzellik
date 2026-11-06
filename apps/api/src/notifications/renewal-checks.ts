@@ -28,8 +28,8 @@ export async function renewalSkipReason(db: PrismaClient, n: Notification, now =
   if (!renewalRemindersOn(loadEnv())) return "Yenilenme hatırlatması kapalı";
   const ref = (n.payload as { renewal?: RenewalRef } | null)?.renewal;
   if (!ref) return "Geçersiz hatırlatma kaydı";
-  const tenant = await db.tenant.findUnique({ where: { id: n.tenantId }, select: { status: true, renewalRemindersEnabled: true, timezone: true } });
-  if (!tenant || !tenant.renewalRemindersEnabled || !["TRIAL", "ACTIVE"].includes(tenant.status)) return "İşletmede yenilenme hatırlatması kapalı";
+  const tenant = await db.tenant.findUnique({ where: { id: n.tenantId }, select: { status: true, renewalRemindersEnabled: true, renewalRemindersAllowed: true, timezone: true } });
+  if (!tenant || !tenant.renewalRemindersEnabled || !tenant.renewalRemindersAllowed || !["TRIAL", "ACTIVE"].includes(tenant.status)) return "İşletmede yenilenme hatırlatması kapalı";
   if (toZoned(now, tenant.timezone).date >= ref.dueDay) return "Yenileme tarihi geldi/geçti";
   const c = await db.customer.findFirst({ where: { id: ref.customerId, tenantId: n.tenantId }, select: { marketingConsent: true, renewalRemindersOptOutAt: true, anonymizedAt: true } });
   if (!c || c.anonymizedAt) return "Müşteri yok";

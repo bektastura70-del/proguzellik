@@ -130,6 +130,9 @@ export const pwaEnabled = (env: Pick<Env, "PWA_ENABLED" | "NODE_ENV">) =>
 /** Yenilenme hatırlatması bu ortamda açık mı? Yalnızca RENEWAL_REMINDERS=1 ile (varsayılan kapalı). */
 export const renewalRemindersOn = (env: Pick<Env, "RENEWAL_REMINDERS">) => env.RENEWAL_REMINDERS === "1";
 
+/** Bu işletme yenilenme hatırlatmasını kullanabilir mi: ortam açık + SaaS sahibi izin vermiş (pilot). */
+export const renewalAvailable = (t: { renewalRemindersAllowed: boolean }) => renewalRemindersOn(loadEnv()) && t.renewalRemindersAllowed;
+
 /** Etkin Web Push kipi. Canlıda açıkça "live" seçilmedikçe ve VAPID anahtarları yoksa gönderim yapılmaz. */
 export const webPushMode = (env: Pick<Env, "WEB_PUSH_MODE" | "NODE_ENV" | "VAPID_PUBLIC_KEY" | "VAPID_PRIVATE_KEY" | "VAPID_SUBJECT">): "off" | "mock" | "live" => {
   const mode = env.WEB_PUSH_MODE ?? (env.NODE_ENV === "production" ? "off" : "mock");
