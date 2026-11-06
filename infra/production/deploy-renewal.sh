@@ -44,7 +44,7 @@ log "5/8 Bekleyen veritabanı değişiklikleri (yalnızca 2 yenilenme migration'
 sed -i "s/^APP_VERSION=.*/APP_VERSION=$NEW/" .env
 status=$(docker compose run --rm migrate node dist/cli/migrate.js status 2>&1 || true)
 echo "$status"
-pending=$(echo "$status" | grep -oE '[0-9]{14}_[a-z0-9_]+' | sort -u | tr '\n' ' ')
+pending=$(echo "$status" | { grep -oE '[0-9]{14}_[a-z0-9_]+' || true; } | sort -u | tr '\n' ' ')
 if [[ "$pending" != "20261105160000_renewal_reminders 20261106090000_renewal_pilot " ]]; then
   sed -i "s/^APP_VERSION=.*/APP_VERSION=$OLD/" .env
   cp "docker-compose.yml.bak-$STAMP-$NEW" docker-compose.yml
