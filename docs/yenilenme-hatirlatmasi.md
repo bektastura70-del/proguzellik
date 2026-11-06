@@ -100,10 +100,27 @@ Hizmetin tekrar süresi dolmadan (ör. saç boyama 45 gün) müşteriye önceden
 5. **Kod, özellik KAPALI:** `APP_VERSION` güncelle, `up -d api worker web`, duman testi. `RENEWAL_REMINDERS` tanımsız kaldığı için hiçbir davranış değişmez.
 6. **Ortam anahtarını açma:** `RENEWAL_REMINDERS=1`. SaaS sahibi izni olmayan salonlarda hiçbir şey görünmez, yani bu adım tek başına hiçbir salonu etkilemez.
 7. **Kontrollü deneme (pilot):**
-   - /platform'dan yalnızca Deneme salonuna izin verilir, salonun Ayarlar sayfasından hatırlatma açılır. Test müşterisi Bektaş'ın onayladığı test e-postasıyla, kampanya izni işaretli olarak eklenir; geçmiş tarihli tamamlanmış işlem hazırlanır.
+   - /platform'dan yalnızca Deneme salonuna izin verilir, salonun Ayarlar sayfasından hatırlatma açılır. Test hizmeti: tekrar süresi 2 gün, 1 gün önce hatırlat. Test müşterisi Bektaş'ın onayladığı test e-postasıyla (bektastura70@gmail.com), kampanya izni işaretli olarak eklenir; bugün bu hizmetle bir randevu açılıp "Tamamlandı" yapılır. Ertesi gece 03:00 görevi hatırlatmayı planlar, e-posta 11:00'de gider.
    - Gece görevi beklenir (ya da onayla zorla çalıştırılır). Gelen e-posta ve vazgeçme bağlantısı kontrol edilir.
 8. **Açılış:** Pilot başarılıysa SaaS sahibi diğer salonlara izin verir; hatırlatmayı her salonun sahibi kendi ayarından açar.
 9. **Geri dönüş:**
    - Tek salon için: /platform'dan izni geri al (kod ya da sunucu işlemi gerekmez).
    - Tümü için: `RENEWAL_REMINDERS` satırını silip `up -d api worker`. Bekleyen hatırlatmalar gönderim anında SKIPPED olur.
    - Gerekirse `rollback.sh <önceki sürüm>`. Migration geriye uyumludur, veritabanı geri alınmaz.
+
+### Komutlar (9edffa2)
+
+Mac'te, depo kökünde (imajlar `docker build --platform linux/amd64` ile hazır):
+
+```bash
+V=9edffa2
+docker save proguzellik-api:$V proguzellik-web:$V | gzip | ssh prososyalmedya 'gunzip | docker load'
+scp infra/production/docker-compose.yml prososyalmedya:/opt/proguzellik/infra/production/docker-compose.yml.$V
+scp infra/production/deploy-renewal.sh infra/production/enable-renewal-pilot.sh prososyalmedya:/opt/proguzellik/infra/production/
+```
+
+Sunucuda (adım 2–5, özellik kapalı): `bash /opt/proguzellik/infra/production/deploy-renewal.sh 9edffa2`.
+Betik, bekleyen migration'lar tam olarak iki yenilenme migration'ı değilse hiçbir şey değiştirmeden durur.
+
+Sunucuda (adım 6, ayrı onay): `bash /opt/proguzellik/infra/production/enable-renewal-pilot.sh`.
+Ardından /platform'da (2FA) yalnızca Deneme salonuna gerekçeyle izin verilir ve o salonun Ayarlar sayfasından açılır.
