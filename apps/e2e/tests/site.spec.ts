@@ -98,17 +98,16 @@ test.describe("Tanıtım sitesi", () => {
     }
   });
 
-  test("iyzico kriterleri: taslak mesafeli satış ve teslimat/iade sayfaları, footer'da ödeme logoları", async ({ page }) => {
+  test("iyzico kriterleri: mesafeli satış ve teslimat/iade sayfaları, footer'da ödeme logoları", async ({ page }) => {
     for (const path of ["/mesafeli-satis-sozlesmesi", "/teslimat-ve-iade-sartlari"]) {
       await page.goto(path);
       const main = page.locator("main");
       await expect(main, path).not.toContainText(/\[[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜa-zçğıöşü ]{3,}\]/);
-      // Hukuk onayı gelene kadar taslak uyarısı görünür ve künyede yürürlük tarihi yerine taslak tarihi yer alır.
-      await expect(main, path).toContainText("Bu metin bir şablondur");
+      await expect(main, path).not.toContainText(/Yayın öncesi not|sözleşme taslağıdır|Bu metin bir şablondur/);
       const imprint = page.getByTestId("legal-imprint");
       await expect(imprint).toContainText("BEKTAŞ TURA REKLAM MEDYA VE BİLGİ TEKNOLOJİLERİ LİMİTED ŞİRKETİ");
-      await expect(imprint).toContainText(/Taslak Tarihi\s*07\.11\.2026/);
-      await expect(imprint).not.toContainText("Yürürlük Tarihi");
+      await expect(imprint).toContainText(/Yürürlük Tarihi\s*07\.11\.2026/);
+      await expect(imprint).toContainText("MERSİS Numarası");
       const logos = page.getByTestId("payment-logos");
       await expect(logos).toBeVisible();
       expect(await logos.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);

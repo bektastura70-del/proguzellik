@@ -13,3 +13,5 @@ export const LEGAL_MERSIS = "0162122755900001";
 export const LEGAL_EFFECTIVE_DATE = "04.11.2026";
 export const LEGAL_UPDATED_DATE = "04.11.2026";
 export const LEGAL_DOC_VERSION = "1.0";
+/** Mesafeli Satış Sözleşmesi ile Teslimat ve İade Şartları'nın künyesi (Bektaş Tura 07.11.2026'da yayına onay verdi). */
+export const IYZICO_DOCS_DATES = { effective: "07.11.2026", updated: "07.11.2026", version: "1.0" };

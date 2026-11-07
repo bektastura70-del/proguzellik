@@ -1,7 +1,7 @@
-// Claude taslağı, 07.11.2026, hukuk onayı bekliyor.
+// Claude taslağı, 07.11.2026. Bektaş Tura aynı gün hukukçu incelemesi beklemeden uyarısız yayına onay verdi;
+// hukukçu incelemesi hâlâ önerilir.
 // Diğer hukuki metinlerden farklı olarak bu metin Bektaş Tura'nın belgesinden gelmez; yalnızca onaylı
 // Kullanım Koşulları (md. 1, 3, 5), Faturalandırma ve Hesap Kapatma politikalarındaki hükümlere dayanır.
-// Hukukçu onayından sonra bu not ve sayfadaki taslak uyarısı kaldırılır.
 export const DELIVERY_TITLE = "Teslimat ve İade Şartları";
 
 export const DELIVERY_BODY = `## 1. Hizmetin Niteliği

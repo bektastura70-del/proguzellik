@@ -23,9 +23,9 @@ export function LegalPage({ title, children, draft = false, imprint }: { title: 
 
 /**
  * Hizmet sağlayıcı künyesi. Adres, vergi ve telefon Şirket ayarları'ndan gelir; girilmemiş satır gösterilmez.
- * `draftDate` verilirse (hukuk onayı bekleyen taslak) yürürlük/sürüm satırları yerine yalnız taslak tarihi gösterilir.
+ * `dates` verilirse ortak künye tarihleri yerine o belgenin yürürlük/güncelleme/sürüm bilgisi gösterilir.
  */
-export async function LegalImprint({ draftDate, hideDates = false }: { draftDate?: string; hideDates?: boolean } = {}) {
+export async function LegalImprint({ dates, hideDates = false }: { dates?: { effective: string; updated: string; version: string }; hideDates?: boolean } = {}) {
   const { company } = await getSiteInfo();
   const tax = [company.taxOffice, company.taxNumber].filter(Boolean).join(" / ");
   const rows: [string, React.ReactNode][] = [
@@ -38,8 +38,10 @@ export async function LegalImprint({ draftDate, hideDates = false }: { draftDate
   if (company.address) rows.push(["Şirket Adresi", company.address]);
   if (tax) rows.push(["Vergi Dairesi ve Vergi Numarası", tax]);
   if (LEGAL_MERSIS) rows.push(["MERSİS Numarası", LEGAL_MERSIS]);
-  if (draftDate) rows.push(["Taslak Tarihi", draftDate]);
-  else if (!hideDates) rows.push(["Yürürlük Tarihi", LEGAL_EFFECTIVE_DATE], ["Son Güncelleme Tarihi", LEGAL_UPDATED_DATE], ["Belge Sürümü", LEGAL_DOC_VERSION]);
+  if (!hideDates) {
+    const d = dates ?? { effective: LEGAL_EFFECTIVE_DATE, updated: LEGAL_UPDATED_DATE, version: LEGAL_DOC_VERSION };
+    rows.push(["Yürürlük Tarihi", d.effective], ["Son Güncelleme Tarihi", d.updated], ["Belge Sürümü", d.version]);
+  }
   return (
     <dl className="grid gap-x-4 gap-y-1 rounded-xl border border-sand-200 bg-white p-4 text-sm sm:grid-cols-[max-content_1fr]" data-testid="legal-imprint">
       {rows.map(([k, v]) => (
