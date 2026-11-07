@@ -125,7 +125,8 @@ describe("iyzico Abonelik akışı (sahte iyzico ile)", () => {
   let a: ReturnType<typeof api>;
   const http = () => request(app.getHttpServer());
   const env = loadEnv() as { IYZICO_SECRET_KEY?: string; IYZICO_MERCHANT_ID?: string };
-  const billing = { fullName: "Ayşe Yılmaz", identityNumber: "11111111111", gsmNumber: "0505 000 00 00", city: "Karaman", address: "Merkez Mah. 1. Sok. No:1" };
+  const billingInfo = { fullName: "Ayşe Yılmaz", identityNumber: "11111111111", gsmNumber: "0505 000 00 00", city: "Karaman", address: "Merkez Mah. 1. Sok. No:1" };
+  const terms = { acceptedTerms: true, termsVersion: "1.0 (07.11.2026)" };
 
   beforeAll(async () => {
     await resetDb(su);
@@ -156,12 +157,12 @@ describe("iyzico Abonelik akışı (sahte iyzico ile)", () => {
   });
 
   it("fatura bilgisi eksik/yanlışsa form açılmaz", async () => {
-    await a.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: { ...billing, identityNumber: "12" } }).expect(400);
+    await a.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: { ...billingInfo, identityNumber: "12" }, ...terms }).expect(400);
     expect(fake.checkouts.size).toBe(0);
   });
 
   it("ödeme formu: iyzico planı KDV dahil tutarla ve denemesiz açılır, tekrar kullanılır", async () => {
-    const r = await a.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing }).expect(201);
+    const r = await a.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo, ...terms }).expect(201);
     expect(r.body).toMatchObject({ amount: "1200.00", netAmount: "1000.00", vatRate: "20.00" });
     expect(r.body.checkoutFormContent).toContain("<script>");
     expect(fake.plans).toHaveLength(1);
@@ -173,7 +174,7 @@ describe("iyzico Abonelik akışı (sahte iyzico ile)", () => {
     // Fatura bilgisi bizde saklanmaz
     const row = await su.iyzicoCheckout.findUniqueOrThrow({ where: { token } });
     expect(JSON.stringify(row)).not.toContain("11111111111");
-    await a.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing }).expect(201);
+    await a.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo, ...terms }).expect(201);
     expect(fake.plans).toHaveLength(1);
     expect(fake.products).toHaveLength(1);
   });
@@ -187,7 +188,7 @@ describe("iyzico Abonelik akışı (sahte iyzico ile)", () => {
 
   it("ödeme tamamlanınca: sonuç iyzico'dan doğrulanır, abonelik açılır, aynı dönüş iki kez işlenmez", async () => {
     // önceki test bu oturumu başarısız kapattı; yeni oturum açılır
-    await a.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing }).expect(201);
+    await a.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo, ...terms }).expect(201);
     token = [...fake.checkouts.keys()].pop()!;
     subRef = fake.pay(token);
     const r = await http().post("/billing/iyzico/callback").send({ token }).expect(200);
@@ -205,7 +206,7 @@ describe("iyzico Abonelik akışı (sahte iyzico ile)", () => {
   });
 
   it("aktif abonelik varken yeni ödeme formu açılmaz", async () => {
-    const r = await a.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "YEARLY", billing }).expect(409);
+    const r = await a.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "YEARLY", billing: billingInfo, ...terms }).expect(409);
     expect(r.body.code).toBe("SUBSCRIPTION_ACTIVE");
   });
 
@@ -246,7 +247,7 @@ describe("iyzico Abonelik akışı (sahte iyzico ile)", () => {
   it("tutar uyuşmazlığında abonelik açılmaz ve iyzico aboneliği iptal edilir", async () => {
     const B = await createTenantWithUser(su, { name: "Tutar Salon", email: "tutar@test.local", status: "TRIAL" });
     const b = api(app, await login(app, "tutar@test.local"), B.tenant.id);
-    await b.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing }).expect(201);
+    await b.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo, ...terms }).expect(201);
     const tk = [...fake.checkouts.keys()].pop()!;
     fake.chargeOverride = 1.0;
     const ref = fake.pay(tk);
@@ -258,10 +259,60 @@ describe("iyzico Abonelik akışı (sahte iyzico ile)", () => {
     expect((await su.tenant.findUniqueOrThrow({ where: { id: B.tenant.id } })).status).toBe("TRIAL");
   });
 
+  it("sözleşme onayı olmadan form açılmaz; onay sürümü denetim kaydına yazılır", async () => {
+    const D = await createTenantWithUser(su, { name: "Onay Salon", email: "onay@test.local", status: "TRIAL" });
+    const d = api(app, await login(app, "onay@test.local"), D.tenant.id);
+    await d.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo }).expect(400);
+    await d.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo, acceptedTerms: false, termsVersion: "1.0" }).expect(400);
+    await d.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo, ...terms }).expect(201);
+    const log = await su.auditLog.findFirstOrThrow({ where: { tenantId: D.tenant.id, action: "iyzico.checkout_started" } });
+    expect((log.metadata as { termsAccepted: { version: string } }).termsAccepted.version).toBe("1.0 (07.11.2026)");
+  });
+
+  it("dönüş hiç gelmezse: ödenmiş oturum günlük görevde açılır, ödenmemiş eski oturum kapanır", async () => {
+    const E = await createTenantWithUser(su, { name: "Donus Salon", email: "donus@test.local", status: "TRIAL" });
+    const e = api(app, await login(app, "donus@test.local"), E.tenant.id);
+    await e.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo, ...terms }).expect(201);
+    const paidTok = [...fake.checkouts.keys()].pop()!;
+    await e.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo, ...terms }).expect(201);
+    const unpaidTok = [...fake.checkouts.keys()].pop()!;
+    const ref = fake.pay(paidTok);
+    await subs.runLifecycle(new Date(Date.now() + 2 * 3_600_000));
+    const s = await su.subscription.findFirstOrThrow({ where: { tenantId: E.tenant.id, status: "ACTIVE" } });
+    expect(s.providerRef).toBe(ref);
+    expect((await su.tenant.findUniqueOrThrow({ where: { id: E.tenant.id } })).status).toBe("ACTIVE");
+    expect((await su.iyzicoCheckout.findUniqueOrThrow({ where: { token: unpaidTok } })).status).toBe("FAILED");
+  });
+
+  it("ilk çekim bildirimi dönüşten önce gelirse oturum tamamlanır", async () => {
+    const F = await createTenantWithUser(su, { name: "Bildirim Salon", email: "bildirim@test.local", status: "TRIAL" });
+    const f = api(app, await login(app, "bildirim@test.local"), F.tenant.id);
+    await f.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo, ...terms }).expect(201);
+    const tk = [...fake.checkouts.keys()].pop()!;
+    const ref = fake.pay(tk);
+    const order = fake.subs.get(ref)!.orders[0].referenceCode;
+    const body = { orderReferenceCode: order, customerReferenceCode: `cus-${tk}`, subscriptionReferenceCode: ref, iyziReferenceCode: "evt-first", iyziEventType: "subscription.order.success" };
+    await http().post("/billing/iyzico/webhook").set("X-IYZ-SIGNATURE-V3", sign(body.iyziEventType, ref, order, body.customerReferenceCode)).send(body).expect(200);
+    expect((await su.tenant.findUniqueOrThrow({ where: { id: F.tenant.id } })).status).toBe("ACTIVE");
+    expect(await su.subscriptionPayment.count({ where: { tenantId: F.tenant.id } })).toBe(1);
+  });
+
+  it("iyzico aboneliği açıldı ama ilk ödeme başarısızsa: referans saklanır ve iyzico'da iptal edilir", async () => {
+    const G = await createTenantWithUser(su, { name: "Basarisiz Salon", email: "basarisiz@test.local", status: "TRIAL" });
+    const g = api(app, await login(app, "basarisiz@test.local"), G.tenant.id);
+    await g.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo, ...terms }).expect(201);
+    const tk = [...fake.checkouts.keys()].pop()!;
+    const ref = fake.pay(tk);
+    fake.subs.get(ref)!.orders[0].orderStatus = "FAILED";
+    expect((await http().post("/billing/iyzico/callback").send({ token: tk }).expect(200)).body.ok).toBe(false);
+    expect(fake.cancelled).toContain(ref);
+    expect((await su.iyzicoCheckout.findUniqueOrThrow({ where: { token: tk } })).subscriptionReferenceCode).toBe(ref);
+  });
+
   it("yıllık paket ayrı iyzico planıyla satılır", async () => {
     const C = await createTenantWithUser(su, { name: "Yillik Salon", email: "yil@test.local", status: "TRIAL" });
     const c = api(app, await login(app, "yil@test.local"), C.tenant.id);
-    const r = await c.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "YEARLY", billing }).expect(201);
+    const r = await c.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "YEARLY", billing: billingInfo, ...terms }).expect(201);
     expect(r.body.amount).toBe("13200.00");
     expect(fake.plans.find((p) => p.interval === "YEARLY")?.price).toBe("13200.00");
     expect(app.get(IyzicoBillingService).enabled).toBe(true);
@@ -276,7 +327,7 @@ describe("iyzico kapalıyken", () => {
     const app = await createApp((b) => b.overrideProvider(PaymentProvider).useValue(new MockPaymentProvider()));
     try {
       const t = api(app, await login(app, "kapali@test.local"), T.tenant.id);
-      const r = await t.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: { fullName: "Ad Soyad", identityNumber: "11111111111", gsmNumber: "05050000000", city: "Karaman", address: "Adres 12345" } });
+      const r = await t.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: { fullName: "Ad Soyad", identityNumber: "11111111111", gsmNumber: "05050000000", city: "Karaman", address: "Adres 12345" }, acceptedTerms: true, termsVersion: "1.0" });
       expect(r.status).toBe(503);
     } finally {
       await app.close();

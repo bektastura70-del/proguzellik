@@ -259,6 +259,11 @@ export class SubscriptionsService {
       });
     }
 
+    // 2b) Dönüşü gelmemiş iyzico ödeme oturumları (ödendiyse abonelik açılır)
+    await guard("iyzico-pending", async () => {
+      await this.iyzico.reconcilePending(now);
+    });
+
     // 3) Dönemi biten aktif abonelikler: iptal ya da otomatik yenileme
     const due = await db.subscription.findMany({ where: { status: "ACTIVE", currentPeriodEnd: { lte: now } }, include: { plan: true, tenant: true } });
     for (const s of due) {

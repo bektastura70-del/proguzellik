@@ -6,6 +6,7 @@ import { useSession } from "@/components/panel/session";
 import { Alert, Button, Card, CardBody, CardHeader, Field, Input, PageHeader, Spinner } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { tl } from "@/lib/format";
+import { IYZICO_DOCS_DATES } from "@/content/legal/meta";
 
 type Plan = { code: string; name: string; maxStaff: number; monthlyPrice: string | null; yearlyPrice: string | null; vatRate: string | null };
 type Sub = { onlinePayment: boolean; checkoutKind?: "iyzico" | "token" };
@@ -90,6 +91,8 @@ function PaymentInner() {
                         planCode: plan.code,
                         billingCycle: cycle,
                         billing: { fullName: f.get("fullName"), identityNumber: f.get("identityNumber"), gsmNumber: f.get("gsmNumber"), city: f.get("city"), address: f.get("address") },
+                        acceptedTerms: true,
+                        termsVersion: `${IYZICO_DOCS_DATES.version} (${IYZICO_DOCS_DATES.updated})`,
                       },
                     });
                     setStarted(r);

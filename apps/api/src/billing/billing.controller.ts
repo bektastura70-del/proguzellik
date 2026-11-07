@@ -23,6 +23,8 @@ const iyzicoCheckoutSchema = z.object({
     city: z.string().trim().min(2).max(50),
     address: z.string().trim().min(5).max(300),
   }),
+  acceptedTerms: z.literal(true, { error: "Mesafeli Satış Sözleşmesi ve Teslimat ve İade Şartları onaylanmalı" }),
+  termsVersion: z.string().trim().min(1).max(40),
 });
 
 const iyzicoCallbackSchema = z.object({ token: z.string().min(10).max(200) });

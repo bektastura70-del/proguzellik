@@ -33,8 +33,9 @@ function SubscriptionInner() {
   return (
     <>
       <PageHeader title="Abonelik" />
-      {result === "basarili" && <div className="mb-4"><Alert tone="green">{q.get("m") || "Ödeme alındı, aboneliğiniz başladı."}</Alert></div>}
-      {result === "basarisiz" && <div className="mb-4"><Alert>{q.get("m") || "Ödeme tamamlanamadı."} Kartınızdan çekim yapıldıysa bizimle iletişime geçin.</Alert></div>}
+      {result === "basarili" && <div className="mb-4"><Alert tone="green">Ödeme alındı, aboneliğiniz başladı.</Alert></div>}
+      {result === "bekliyor" && <div className="mb-4"><Alert tone="amber">Ödemeniz doğrulanıyor. Birkaç dakika sonra bu sayfayı yenileyin.</Alert></div>}
+      {result === "basarisiz" && <div className="mb-4"><Alert>Ödeme tamamlanamadı. Kartınızdan çekim yapıldıysa bizimle iletişime geçin: {s.contact.email}{s.contact.phone ? ` · ${s.contact.phone}` : ""}</Alert></div>}
       <div className="grid gap-6 lg:grid-cols-3">
         <Card>
           <CardHeader title="Mevcut paket" />

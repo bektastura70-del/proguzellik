@@ -10,9 +10,13 @@ Durum (07.11.2026): kod hazır, **yalnız iyzico sandbox (test) ortamında** ça
 5. iyzico tarayıcıyı `/api/odeme/iyzico/donus` adresine döndürür → API sonucu iyzico'dan sorgular, plan ve tutarı doğrular, aboneliği açar (`provider = iyzico`). Tutar farklıysa abonelik açılmaz, iyzico aboneliği iptal edilir.
 6. Sonraki aylık/yıllık çekimleri iyzico yapar ve `/api/webhooks/iyzico` adresine bildirim gönderir. İmza (`X-IYZ-SIGNATURE-V3`) doğrulanır, durum yine iyzico API'sinden okunur, her çekim bir kez kaydedilir.
 7. Günlük görev iyzico aboneliklerinde **asla çekim denemez**; yalnız iyzico'daki durumu okur. Dönem bitti ve ödeme yoksa abonelik "ödeme bekliyor" olur; ödeme süresi (grace) dolarsa iyzico aboneliği de iptal edilir.
-8. Salon iptal ederse iyzico'da sonraki çekimler hemen durdurulur, erişim dönem sonuna kadar sürer.
+8. Ödeme yapılıp dönüş gelmezse (sekme kapandı vb.) günlük görev ve ilk çekim bildirimi bekleyen oturumu iyzico'dan sorgulayıp aboneliği açar; bir saatten eski ödenmemiş oturum kapanır. iyzico'da açılıp bizde açılmayan her abonelik (tutar/plan uyuşmazlığı, başarısız ilk çekim, aynı anda ikinci ödeme) iyzico'da iptal edilir ve referansı saklanır.
+9. Sözleşme onayı sunucuda denetim kaydına yazılır (`iyzico.checkout_started`, metin sürümüyle).
+10. Salon iptal ederse iyzico'da sonraki çekimler hemen durdurulur, erişim dönem sonuna kadar sürer.
 
 ## Sandbox kurulumu (yerel)
+Önce yerel `/platform` → Paketler'de fiyat sürümlerini onaylayın (yerel veritabanında onaylı fiyat yoksa "Seç" düğmesi görünmez).
+
 `apps/api/.env` (git'e girmez):
 ```
 PAYMENT_MODE=iyzico
@@ -28,5 +32,7 @@ Bildirim (webhook) testi için iyzico'nun ulaşabileceği bir adres gerekir (yer
 - Aktif abonelikte paket/dönem değişikliği (iyzico "upgrade") yok; salon bize ulaşır.
 - Fiyat değişikliği mevcut iyzico abonelerine otomatik yansımaz (yeni sürüm yeni planla yeni satışlarda geçerli).
 - Kart güncelleme formu yok.
+- iyzico tarafında elle iade (tutar uyuşmazlığı, ikinci ödeme) SaaS sahibince iyzico panelinden yapılır; denetim kaydında işaretlenir.
+- Bildirim gerçek iyzico'dan yerel bilgisayara ulaşamaz; yerelde yalnız ilk ödeme ve günlük görev eşitlemesi denenebilir.
 - Resmî fatura (e-Fatura/e-Arşiv) entegratör bağlanınca kesilecek; şu an kesilmez.
 - Mesafeli satış ve iade metinlerinin avukat kontrolü önerilir.

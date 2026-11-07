@@ -17,8 +17,8 @@ async function back(req: NextRequest) {
   } catch {
     token = "";
   }
-  let ok = false;
-  let message = "Ödeme sonucu alınamadı";
+  // Sonuç yalnız sabit kodla taşınır; adres çubuğundan panelde serbest metin gösterilmez.
+  let result: "basarili" | "basarisiz" | "bekliyor" = "basarisiz";
   if (/^[\w-]{10,200}$/.test(token)) {
     try {
       const res = await fetch(`${API_URL}/billing/iyzico/callback`, {
@@ -27,14 +27,13 @@ async function back(req: NextRequest) {
         body: JSON.stringify({ token }),
         cache: "no-store",
       });
-      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string };
-      ok = res.ok && j.ok === true;
-      if (j.message) message = String(j.message).slice(0, 200);
+      const j = (await res.json().catch(() => ({}))) as { ok?: boolean; pending?: boolean };
+      result = res.ok && j.ok === true ? "basarili" : j.pending ? "bekliyor" : "basarisiz";
     } catch {
-      message = "Ödeme sonucu doğrulanamadı; birkaç dakika sonra abonelik sayfasını yenileyin";
+      result = "bekliyor";
     }
   }
-  const q = new URLSearchParams({ odeme: ok ? "basarili" : "basarisiz", m: message });
+  const q = new URLSearchParams({ odeme: result });
   // Göreli adres: ters vekil arkasında doğru alan adına döner.
   return new Response(null, { status: 303, headers: { Location: `/panel/abonelik?${q}`, "Cache-Control": "no-store" } });
 }

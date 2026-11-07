@@ -23,6 +23,9 @@ export interface IyzicoBillingInput {
   billingCycle: BillingCycle;
   /** Fatura bilgileri iyzico'ya iletilir, bizde saklanmaz. */
   billing: { fullName: string; identityNumber: string; gsmNumber: string; city: string; address: string };
+  /** Mesafeli Satış Sözleşmesi ve Teslimat/İade Şartları onayı (sunucuda denetim kaydına yazılır) */
+  acceptedTerms: true;
+  termsVersion: string;
 }
 
 export interface WebhookBody {
@@ -158,7 +161,7 @@ export class IyzicoBillingService {
         pricingPlanReferenceCode: link.pricingPlanReferenceCode,
       },
     });
-    await this.audit.logPlatform({ tenantId: t.tenantId, actorId: t.userId, action: "iyzico.checkout_started", metadata: { env, plan: plan.code, cycle: b.billingCycle, gross: gross.toFixed(2) } });
+    await this.audit.logPlatform({ tenantId: t.tenantId, actorId: t.userId, action: "iyzico.checkout_started", metadata: { env, plan: plan.code, cycle: b.billingCycle, gross: gross.toFixed(2), conversationId, termsAccepted: { version: b.termsVersion, at: new Date().toISOString(), docs: ["mesafeli-satis-sozlesmesi", "teslimat-ve-iade-sartlari"] } } });
     return { checkoutFormContent: form.checkoutFormContent, tokenExpireTime: form.tokenExpireTime ?? null, amount: gross.toFixed(2), netAmount: net.toFixed(2), vatRate: price.vatRate.toFixed(2) };
   }
 
@@ -166,7 +169,7 @@ export class IyzicoBillingService {
    * iyzico ödeme formundan dönüş. Token yalnız bizim açtığımız bekleyen oturumla eşleşirse işlenir;
    * sonuç iyzico API'sinden okunur ve tutar/plan doğrulanır. Aynı token ikinci kez gelirse ilk sonuç döner.
    */
-  async completeCallback(token: string): Promise<{ ok: boolean; message: string }> {
+  async completeCallback(token: string): Promise<{ ok: boolean; message: string; pending?: boolean }> {
     const db = this.prisma.platform;
     const co = await db.iyzicoCheckout.findUnique({ where: { token } });
     if (!co) return { ok: false, message: "Ödeme oturumu bulunamadı" };
@@ -181,15 +184,26 @@ export class IyzicoBillingService {
       if (e instanceof IyzicoError && e.errorCode !== "NOT_CONFIGURED") return this.failCheckout(co.id, co.tenantId, e.message || "Ödeme alınamadı");
       throw e;
     }
-    if (result.pricingPlanReferenceCode !== co.pricingPlanReferenceCode) return this.failCheckout(co.id, co.tenantId, "Ödeme planı eşleşmedi");
-    if (result.subscriptionStatus !== "ACTIVE") return this.failCheckout(co.id, co.tenantId, "Abonelik başlatılamadı");
+    // iyzico'da bir abonelik oluştuysa ve biz açmıyorsak: referans saklanır ve iyzico'da iptal edilir (çekim sürmesin).
+    const reject = async (msg: string) => {
+      if (result.referenceCode) await this.safeCancel(result.referenceCode, co.tenantId);
+      return this.failCheckout(co.id, co.tenantId, msg, result.referenceCode);
+    };
+    if (result.pricingPlanReferenceCode !== co.pricingPlanReferenceCode) return reject("Ödeme planı eşleşmedi");
+    if (result.subscriptionStatus !== "ACTIVE") return reject("Abonelik başlatılamadı");
     const detail = await this.client.getSubscription(result.referenceCode);
     const paid = paidOrders(detail).sort((a, b) => (a.startPeriod ?? 0) - (b.startPeriod ?? 0))[0];
-    if (!paid) return this.failCheckout(co.id, co.tenantId, "İlk ödeme alınamadı");
+    if (!paid) {
+      // Çekim henüz sonuçlanmadıysa oturum açık kalır; günlük görev ve bildirim sonra tamamlar.
+      if (detail.orders.some((o) => o.orderStatus === "WAITING")) {
+        await db.iyzicoCheckout.update({ where: { id: co.id }, data: { subscriptionReferenceCode: result.referenceCode } });
+        return { ok: false, pending: true, message: "Ödemeniz doğrulanıyor; birkaç dakika sonra sayfayı yenileyin" };
+      }
+      return reject("İlk ödeme alınamadı");
+    }
     if (!amountEq(paid.price, co.grossAmount)) {
       await this.audit.logPlatform({ tenantId: co.tenantId, action: "iyzico.amount_mismatch", metadata: { expected: co.grossAmount.toFixed(2), got: paid.price, ref: result.referenceCode } });
-      await this.safeCancel(result.referenceCode, co.tenantId);
-      return this.failCheckout(co.id, co.tenantId, "Tahsil edilen tutar beklenenden farklı; abonelik açılmadı, iade için bizimle iletişime geçin");
+      return reject("Tahsil edilen tutar beklenenden farklı; abonelik açılmadı, iade için bizimle iletişime geçin");
     }
 
     const now = new Date();
@@ -232,17 +246,51 @@ export class IyzicoBillingService {
       // Aynı anda iki ödeme: ikinci iyzico aboneliği hemen iptal edilir, iade SaaS sahibince yapılır.
       await this.safeCancel(result.referenceCode, co.tenantId);
       await this.audit.logPlatform({ tenantId: co.tenantId, action: "iyzico.duplicate_subscription", metadata: { ref: result.referenceCode, order: paid.referenceCode, gross: co.grossAmount.toFixed(2) } });
-      return this.failCheckout(co.id, co.tenantId, "Zaten aktif bir aboneliğiniz var; ikinci ödeme için iade sağlanacak, bizimle iletişime geçin");
+      return this.failCheckout(co.id, co.tenantId, "Zaten aktif bir aboneliğiniz var; ikinci ödeme için iade sağlanacak, bizimle iletişime geçin", result.referenceCode);
     }
     for (const old of outcome.replaced) if (old.provider === IYZICO && old.providerRef) await this.safeCancel(old.providerRef, co.tenantId);
     if ("already" in outcome) return outcome.already ? { ok: true, message: "Ödeme alındı" } : { ok: false, message: "Ödeme alınamadı" };
     return { ok: true, message: "Ödeme alındı, aboneliğiniz başladı" };
   }
 
-  private async failCheckout(id: string, tenantId: string, error: string) {
-    await this.prisma.platform.iyzicoCheckout.updateMany({ where: { id, status: "PENDING" }, data: { status: "FAILED", error, completedAt: new Date() } });
-    await this.audit.logPlatform({ tenantId, action: "subscription.payment_failed", metadata: { provider: IYZICO, error } });
+  private async failCheckout(id: string, tenantId: string, error: string, subscriptionReferenceCode?: string) {
+    await this.prisma.platform.iyzicoCheckout.updateMany({ where: { id, status: "PENDING" }, data: { status: "FAILED", error, completedAt: new Date(), ...(subscriptionReferenceCode ? { subscriptionReferenceCode } : {}) } });
+    await this.audit.logPlatform({ tenantId, action: "subscription.payment_failed", metadata: { provider: IYZICO, error, ref: subscriptionReferenceCode ?? null } });
     return { ok: false, message: error };
+  }
+
+  /**
+   * Dönüşü hiç gelmeyen ödeme oturumları (sekme kapandı, bağlantı koptu): iyzico'da ödenmişse abonelik açılır.
+   * Bir saatten eski ve iyzico'da tamamlanmamış oturum kapatılır. Günlük görev ve bilinmeyen abonelik bildirimi çağırır.
+   */
+  async reconcilePending(now = new Date(), minAgeMs = 60_000) {
+    if (!this.enabled) return { completed: 0, closed: 0 };
+    const db = this.prisma.platform;
+    const pending = await db.iyzicoCheckout.findMany({
+      where: { status: "PENDING", environment: this.client.environment!, token: { not: null }, createdAt: { gte: new Date(now.getTime() - 7 * 86_400_000), lte: new Date(now.getTime() - minAgeMs) } },
+      orderBy: { createdAt: "asc" },
+      take: 100,
+    });
+    let completed = 0;
+    let closed = 0;
+    for (const co of pending) {
+      try {
+        const r = await this.client.retrieveCheckout(co.token!);
+        if (r.subscriptionStatus === "ACTIVE" && r.referenceCode) {
+          if ((await this.completeCallback(co.token!)).ok) completed++;
+        } else if (now.getTime() - co.createdAt.getTime() > 3_600_000) {
+          await this.failCheckout(co.id, co.tenantId, "Ödeme tamamlanmadı");
+          closed++;
+        }
+      } catch (e) {
+        // iyzico tamamlanmamış formu hata ile bildirebilir: bir saat sonra kapatılır, öncesinde tekrar denenir.
+        if (e instanceof IyzicoError && now.getTime() - co.createdAt.getTime() > 3_600_000) {
+          await this.failCheckout(co.id, co.tenantId, "Ödeme tamamlanmadı");
+          closed++;
+        } else this.logger.warn(`Ödeme oturumu eşitlenemedi (${co.id}): ${(e as Error).message}`);
+      }
+    }
+    return { completed, closed };
   }
 
   private async safeCancel(ref: string, tenantId: string) {
@@ -302,7 +350,14 @@ export class IyzicoBillingService {
 
   private async syncByRef(ref: string) {
     const sub = await this.prisma.platform.subscription.findFirst({ where: { provider: IYZICO, providerRef: ref }, orderBy: { createdAt: "desc" } });
-    if (!sub) return "bilinmeyen abonelik";
+    if (!sub) {
+      // İlk çekim bildirimi dönüşten önce geldiyse ya da dönüş hiç gelmediyse: bekleyen oturumlar tamamlanır.
+      await this.reconcilePending(new Date(), 0);
+      const again = await this.prisma.platform.subscription.findFirst({ where: { provider: IYZICO, providerRef: ref }, orderBy: { createdAt: "desc" } });
+      if (again) return this.syncSubscription(again);
+      await this.audit.logPlatform({ action: "iyzico.webhook_unknown_subscription", metadata: { ref } });
+      return "bilinmeyen abonelik";
+    }
     return this.syncSubscription(sub);
   }
 
