@@ -90,7 +90,12 @@ export function SiteFooter() {
           </ul>
         </nav>
       </div>
-      <p className="mx-auto mt-8 max-w-6xl px-5 text-xs text-neutral-500">© {new Date().getFullYear()} ProGüzellik</p>
+      <div className="mx-auto mt-8 flex max-w-6xl flex-col gap-4 px-5 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-neutral-500">© {new Date().getFullYear()} ProGüzellik</p>
+        {/* iyzico'nun resmi logo paketindeki footer bandı (docs.iyzico.com/ek-bilgiler/iyzico-logo-paketi); değiştirmeden kullanılır. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/odeme/iyzico-ile-ode-logo-bandi.svg" width={429} height={32} alt="iyzico ile Öde, Mastercard, Visa, American Express ve Troy" className="h-6 w-auto max-w-full object-contain object-left sm:h-7" data-testid="payment-logos" />
+      </div>
     </footer>
   );
 }
