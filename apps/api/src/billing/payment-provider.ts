@@ -85,9 +85,29 @@ export class MockPaymentProvider extends PaymentProvider {
   }
 }
 
+/**
+ * iyzico Abonelik: tahsilatı iyzico yapar (ödeme formu + aylık/yıllık otomatik çekim, bildirimle haber verir).
+ * Bu sınıf yalnız "ödeme açık mı" bilgisini taşır; belirteçle tahsilat (charge) desteklenmez.
+ * Bu sürümde yalnız sandbox; canlıda (NODE_ENV=production) her zaman kapalı.
+ */
+export class IyzicoPaymentProvider extends PaymentProvider {
+  readonly name = "iyzico";
+  constructor(private readonly configured: () => boolean) {
+    super();
+  }
+  get acceptsPayments() {
+    return !isProductionRuntime() && this.configured();
+  }
+  async charge(): Promise<ChargeResult> {
+    return { ok: false, error: "iyzico aboneliğinde tahsilatı iyzico yapar; belirteçle ödeme desteklenmez" };
+  }
+}
+
 /** Ortama göre sağlayıcı seçimi: canlıda test sağlayıcısı yerine "ödeme kapalı" kullanılır. */
-export function paymentProviderFor(env: { NODE_ENV: string; PAYMENT_MODE: string }): PaymentProvider {
+export function paymentProviderFor(env: { NODE_ENV: string; PAYMENT_MODE: string }, iyzicoConfigured: () => boolean = () => false): PaymentProvider {
+  // Canlıda online ödeme ayrı onay verilene kadar kapalıdır (iyzico dahil).
   if (env.NODE_ENV === "production") return new DisabledPaymentProvider();
   if (env.PAYMENT_MODE === "mock") return new MockPaymentProvider();
+  if (env.PAYMENT_MODE === "iyzico") return new IyzicoPaymentProvider(iyzicoConfigured);
   return new DisabledPaymentProvider();
 }

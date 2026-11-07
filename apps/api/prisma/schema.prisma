@@ -1428,3 +1428,65 @@ model InAppNotification {
   @@index([tenantId, userId, createdAt])
   @@index([tenantId, identityId, createdAt])
 }
+
+/// iyzico Abonelik: onaylı fiyat sürümü + dönem için iyzico'da açılan ödeme planı (KDV dahil tutarla).
+/// Fiyat değişince yeni sürüm → yeni iyzico planı; mevcut aboneler eski planda kalır.
+model IyzicoPlanLink {
+  id                       String       @id @default(uuid()) @db.Uuid
+  /// "sandbox" | "live"
+  environment              String
+  planCode                 String
+  planPriceId              String       @db.Uuid
+  billingCycle             BillingCycle
+  productReferenceCode     String
+  pricingPlanReferenceCode String       @unique
+  /// iyzico'nun karttan çektiği tutar (KDV dahil)
+  grossAmount              Decimal      @db.Decimal(12, 2)
+  createdAt                DateTime     @default(now())
+
+  @@unique([environment, planPriceId, billingCycle])
+}
+
+enum IyzicoCheckoutStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+/// iyzico ödeme formu oturumu. Kart bilgisi hiç tutulmaz; yalnız iyzico belirteci ve referanslar.
+model IyzicoCheckout {
+  id                        String               @id @default(uuid()) @db.Uuid
+  tenantId                  String               @db.Uuid
+  userId                    String               @db.Uuid
+  environment               String
+  conversationId            String               @unique
+  token                     String?              @unique
+  planCode                  String
+  billingCycle              BillingCycle
+  planPriceId               String               @db.Uuid
+  netAmount                 Decimal              @db.Decimal(12, 2)
+  vatRate                   Decimal              @db.Decimal(5, 2)
+  grossAmount               Decimal              @db.Decimal(12, 2)
+  pricingPlanReferenceCode  String
+  status                    IyzicoCheckoutStatus @default(PENDING)
+  subscriptionReferenceCode String?
+  customerReferenceCode     String?
+  error                     String?
+  subscriptionId            String?              @db.Uuid
+  createdAt                 DateTime             @default(now())
+  completedAt               DateTime?
+
+  @@index([tenantId, createdAt])
+}
+
+/// iyzico abonelik bildirimleri (webhook). Aynı bildirim iki kez işlenmez.
+model IyzicoWebhookEvent {
+  id                        String    @id @default(uuid()) @db.Uuid
+  iyziReferenceCode         String    @unique
+  eventType                 String
+  subscriptionReferenceCode String
+  orderReferenceCode        String
+  receivedAt                DateTime  @default(now())
+  processedAt               DateTime?
+  result                    String?
+}

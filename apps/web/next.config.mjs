@@ -21,6 +21,29 @@ const securityHeaders = [
   },
 ];
 
+/**
+ * Yalnız iyzico ödeme sayfası: iyzico'nun ödeme formu kendi alan adlarından betik, çerçeve ve istek yükler.
+ * Sitenin geri kalanında sıkı politika aynen kalır.
+ */
+const IYZICO = "https://*.iyzipay.com https://*.iyzico.com";
+const paymentPageHeaders = [
+  {
+    key: "Content-Security-Policy",
+    value: [
+      "default-src 'self'",
+      `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${IYZICO}`,
+      `style-src 'self' 'unsafe-inline' ${IYZICO}`,
+      `img-src 'self' data: blob: ${IYZICO}`,
+      `font-src 'self' data: ${IYZICO}`,
+      `connect-src 'self' ${IYZICO}`,
+      `frame-src ${IYZICO}`,
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      `form-action 'self' ${IYZICO}`,
+    ].join("; "),
+  },
+];
+
 /** @type {import("next").NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -33,7 +56,11 @@ const nextConfig = {
     ];
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    // Sonraki eşleşme aynı başlığı ezer: ödeme sayfası yalnız CSP'de gevşetilir.
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      { source: "/panel/abonelik/odeme", headers: paymentPageHeaders },
+    ];
   },
 };
 

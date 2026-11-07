@@ -41,7 +41,15 @@ const schema = z.object({
   EMAIL_FROM: z.string().default("ProGüzellik <no-reply@proguzellik.local>"),
   APP_URL: z.string().optional(),
   // Ödeme: yalnızca test sağlayıcısı uygulanmıştır; canlıda (NODE_ENV=production) online ödeme her zaman kapalıdır.
-  PAYMENT_MODE: z.enum(["mock"]).default("mock"),
+  // "iyzico": iyzico Abonelik + ödeme formu. Bu sürümde yalnız SANDBOX adresine izin verilir; canlıda (NODE_ENV=production) yine kapalıdır.
+  PAYMENT_MODE: z.enum(["mock", "iyzico"]).default("mock"),
+  IYZICO_API_KEY: z.string().optional(),
+  IYZICO_SECRET_KEY: z.string().optional(),
+  IYZICO_BASE_URL: z.string().default("https://sandbox-api.iyzipay.com"),
+  /** Bildirim (webhook) imzası doğrulaması için iyzico üye işyeri numarası */
+  IYZICO_MERCHANT_ID: z.string().optional(),
+  /** Ödeme sonucu iyzico'nun döneceği API adresi (ör. https://alanadi/api). Tanımsızsa APP_URL + /api kullanılır. */
+  IYZICO_CALLBACK_BASE: z.string().optional(),
   // e-Fatura/e-Arşiv: yetkili entegratör bağlanana kadar "none" (fatura yalnızca taslak/kayıt olarak tutulur).
   EINVOICE_PROVIDER: z.enum(["none"]).default("none"),
   // Zamanlanmış görevler
@@ -166,6 +174,7 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
   if (env.WHATSAPP_MODE === "cloud") {
     for (const k of ["WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN"] as const) if (!env[k]) err(`${k} gerekli`);
   }
+  if (env.PAYMENT_MODE === "iyzico") warn("PAYMENT_MODE=iyzico canlıda henüz kapalıdır (ayrı onayla açılacak); online ödeme alınmaz");
   if (env.PAYMENT_MODE === "mock") warn("PAYMENT_MODE=mock: canlıda online ödeme kapalı; abonelikler yalnızca SaaS sahibi panelinden manuel tanımlanır");
   if (env.MARKETING_MESSAGES === "1") warn("MARKETING_MESSAGES=1: işletmeler toplu kampanya mesajı gönderebilir (İYS kaydı işletmelerin sorumluluğunda)");
   if (env.META_MODE === "mock") warn("META_MODE=mock: işletmelerin WhatsApp/Instagram bağlantıları doğrulanamaz, mesaj alınıp gönderilmez");

@@ -4,6 +4,8 @@ import { BillingController } from "./billing.controller";
 import { loadEnv } from "../config/env";
 import { PaymentProvider, paymentProviderFor } from "./payment-provider";
 import { PlanStaffLimit, SubscriptionsService } from "./subscriptions.service";
+import { HttpIyzicoClient, IyzicoClient } from "./iyzico/iyzico.client";
+import { IyzicoBillingService } from "./iyzico/iyzico-billing.service";
 
 @Global()
 @Module({
@@ -11,9 +13,11 @@ import { PlanStaffLimit, SubscriptionsService } from "./subscriptions.service";
   providers: [
     SubscriptionsService,
     // Gerçek sağlayıcı entegre edilene kadar: geliştirme/testte test sağlayıcısı, canlıda online ödeme kapalı.
-    { provide: PaymentProvider, useFactory: () => paymentProviderFor(loadEnv()) },
+    { provide: IyzicoClient, useClass: HttpIyzicoClient },
+    { provide: PaymentProvider, useFactory: (iyzico: IyzicoClient) => paymentProviderFor(loadEnv(), () => iyzico.environment != null), inject: [IyzicoClient] },
+    IyzicoBillingService,
     { provide: StaffLimitPolicy, useClass: PlanStaffLimit },
   ],
-  exports: [SubscriptionsService, StaffLimitPolicy, PaymentProvider],
+  exports: [SubscriptionsService, StaffLimitPolicy, PaymentProvider, IyzicoClient, IyzicoBillingService],
 })
 export class BillingModule {}

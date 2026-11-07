@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useSession } from "@/components/panel/session";
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Dialog, Field, Input, PageHeader, Select, Spinner, Table, Td, statusTone, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -13,22 +14,27 @@ type Sub = {
   subscription: { billingCycle: string; currentPeriodEnd: string; cancelAtPeriodEnd: boolean; status: string; source: "PROVIDER" | "MANUAL"; isComplimentary: boolean; priceAmount: string | null; vatRate: string | null } | null;
   payments: { id: string; amount: string; status: string; description: string; createdAt: string; provider: string }[];
   onlinePayment: boolean;
+  checkoutKind?: "iyzico" | "token";
   contact: { email: string; phone: string | null };
 };
 
-export default function SubscriptionPage() {
+function SubscriptionInner() {
   const { can, refresh } = useSession();
   const toast = useToast();
   const sub = useApi<Sub>("/subscription");
   const plans = useApi<Plan[]>("/plans");
   const [buy, setBuy] = useState<Plan | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const q = useSearchParams();
+  const result = q.get("odeme");
 
   if (!sub.data) return sub.error ? <Alert>{sub.error.message}</Alert> : <Spinner />;
   const s = sub.data;
   return (
     <>
       <PageHeader title="Abonelik" />
+      {result === "basarili" && <div className="mb-4"><Alert tone="green">{q.get("m") || "Ödeme alındı, aboneliğiniz başladı."}</Alert></div>}
+      {result === "basarisiz" && <div className="mb-4"><Alert>{q.get("m") || "Ödeme tamamlanamadı."} Kartınızdan çekim yapıldıysa bizimle iletişime geçin.</Alert></div>}
       <div className="grid gap-6 lg:grid-cols-3">
         <Card>
           <CardHeader title="Mevcut paket" />
@@ -85,10 +91,26 @@ export default function SubscriptionPage() {
       <Card className="mt-6">
         <CardHeader title="Ödeme geçmişi" />
         <Table head={["Tarih", "Açıklama", "Tutar", "Durum", "Sağlayıcı"]} empty="Ödeme yok">
-          {s.payments.map((p) => <tr key={p.id}><Td>{dateTr(p.createdAt)}</Td><Td>{p.description}</Td><Td>{tl(p.amount)}</Td><Td>{p.status === "PAID" ? "Ödendi" : p.status}</Td><Td>{p.provider === "mock" ? "Test" : p.provider}</Td></tr>)}
+          {s.payments.map((p) => <tr key={p.id}><Td>{dateTr(p.createdAt)}</Td><Td>{p.description}</Td><Td>{tl(p.amount)}</Td><Td>{p.status === "PAID" ? "Ödendi" : p.status}</Td><Td>{p.provider === "mock" ? "Test" : p.provider === "iyzico" ? "iyzico" : p.provider}</Td></tr>)}
         </Table>
       </Card>
-      {buy && s.onlinePayment && (
+      {buy && s.onlinePayment && s.checkoutKind === "iyzico" && (
+        <Dialog open onClose={() => setBuy(null)} title={`${buy.name} paketi`}>
+          <form className="space-y-4" onSubmit={(e) => {
+            e.preventDefault();
+            const f = new FormData(e.currentTarget);
+            // Tam sayfa geçişi: ödeme sayfası iyzico formu için kendi güvenlik başlıklarıyla yüklenir.
+            window.location.assign(`/panel/abonelik/odeme?paket=${encodeURIComponent(buy.code)}&donem=${f.get("cycle") === "YEARLY" ? "YEARLY" : "MONTHLY"}`);
+          }}>
+            <Field label="Ödeme dönemi">
+              <Select name="cycle"><option value="MONTHLY">Aylık · {tl(buy.monthlyPrice!)} + KDV</option>{Number(buy.yearlyPrice) > 0 && <option value="YEARLY">Yıllık · {tl(buy.yearlyPrice!)} + KDV</option>}</Select>
+            </Field>
+            <p className="text-xs text-neutral-500">Kart bilgileri bir sonraki adımda iyzico&apos;nun güvenli formunda girilir.</p>
+            <Button className="w-full">Ödemeye geç</Button>
+          </form>
+        </Dialog>
+      )}
+      {buy && s.onlinePayment && s.checkoutKind !== "iyzico" && (
         <Dialog open onClose={() => setBuy(null)} title={`${buy.name} paketi`}>
           <form className="space-y-4" onSubmit={async (e) => {
             e.preventDefault();
@@ -111,5 +133,13 @@ export default function SubscriptionPage() {
         </Dialog>
       )}
     </>
+  );
+}
+
+export default function SubscriptionPage() {
+  return (
+    <Suspense fallback={<Spinner />}>
+      <SubscriptionInner />
+    </Suspense>
   );
 }

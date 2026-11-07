@@ -9,6 +9,7 @@ import { PrismaService, Tx } from "../prisma/prisma.service";
 import { StaffLimitPolicy } from "../staff/staff.service";
 import { approvedVersionsOf, cycleAmount, priceForNewSale, priceForRenewal, publicPlanView, withVat } from "./plan-pricing";
 import { PaymentProvider } from "./payment-provider";
+import { IYZICO, IyzicoBillingService } from "./iyzico/iyzico-billing.service";
 
 /** Deneme bitişine kaç gün kala hatırlatma gönderilir (büyükten küçüğe). */
 export const TRIAL_REMINDER_THRESHOLDS = [7, 3, 1] as const;
@@ -43,6 +44,7 @@ export class SubscriptionsService {
     private readonly payments: PaymentProvider,
     private readonly audit: AuditService,
     private readonly email: EmailService,
+    private readonly iyzico: IyzicoBillingService,
   ) {}
 
   /**
@@ -111,6 +113,8 @@ export class SubscriptionsService {
         payments,
         /** false: online ödeme kapalı (canlıda gerçek sağlayıcı yok); paket SaaS sahibi tarafından tanımlanır. */
         onlinePayment: this.payments.acceptsPayments && pricingPublic(env),
+        /** "iyzico": iyzico ödeme formu (kart bilgisi iyzico sayfasında girilir); "token": test sağlayıcısı */
+        checkoutKind: this.payments.name === IYZICO ? "iyzico" : "token",
         /** Abonelik için iletişim (online ödeme kapalıyken paket SaaS sahibince tanımlanır) */
         contact: { email: company?.email ?? env.SUPPORT_EMAIL, phone: company?.phone ?? null },
       };
@@ -125,6 +129,9 @@ export class SubscriptionsService {
     }
     if (!this.payments.acceptsPayments) {
       throw new ServiceUnavailableException({ message: "Online ödeme henüz aktif değil. Paket için bizimle iletişime geçin.", code: "ONLINE_PAYMENT_DISABLED" });
+    }
+    if (this.payments.name === IYZICO) {
+      throw new ConflictException({ message: "Ödeme iyzico ödeme formuyla yapılır", code: "USE_IYZICO_CHECKOUT" });
     }
     const db = this.prisma.platform;
     const user = await db.user.findUniqueOrThrow({ where: { id: t.userId } });
@@ -192,6 +199,8 @@ export class SubscriptionsService {
     if (!sub) throw new NotFoundException("Aktif abonelik yok");
     // Manuel abonelik SaaS sahibince yönetilir; iptali de onun defterinden yapılır.
     if (sub.source === "MANUAL") throw new ConflictException("Bu abonelik yönetici tarafından tanımlandı; iptal için bizimle iletişime geçin");
+    // iyzico: sonraki otomatik çekimler iyzico'da durdurulur; erişim dönem sonuna kadar sürer.
+    if (sub.provider === IYZICO) await this.iyzico.cancelAtProvider(sub);
     await this.audit.logPlatform({ tenantId: t.tenantId, actorId: t.userId, action: "subscription.cancel_requested" });
     return db.subscription.update({ where: { id: sub.id }, data: { cancelAtPeriodEnd: true } });
   }
@@ -267,7 +276,23 @@ export class SubscriptionsService {
           await this.expireManual(s, r, link);
           return;
         }
+        // iyzico tahsilatı kendisi yapar: burada asla çekim denenmez, yalnız iyzico'daki durum okunur.
+        if (s.provider === IYZICO) {
+          const res = await this.iyzico.syncSubscription(s, now);
+          if (res.startsWith("yenilendi")) r.renewed++;
+          else if (res === "ödeme bekliyor") r.renewalFailed++;
+          return;
+        }
         await this.renew(s, now, r, link);
+      });
+    }
+
+    // 3b) Ödeme bekleyen iyzico abonelikleri: bildirim kaçtıysa iyzico'nun sonraki başarılı denemesi buradan yakalanır.
+    const iyzicoPastDue = await db.subscription.findMany({ where: { status: "PAST_DUE", provider: IYZICO } });
+    for (const s of iyzicoPastDue) {
+      await guard(`iyzico-sync ${s.id}`, async () => {
+        const res = await this.iyzico.syncSubscription(s, now);
+        if (res.startsWith("yenilendi")) r.renewed++;
       });
     }
 
@@ -278,7 +303,10 @@ export class SubscriptionsService {
       await guard(`grace ${t.id}`, async () => {
         const u = await db.tenant.updateMany({ where: { id: t.id, status: "PAST_DUE" }, data: { status: "CANCELLED" } });
         if (u.count === 0) return;
+        const lapsed = await db.subscription.findMany({ where: { tenantId: t.id, status: { in: ["ACTIVE", "PAST_DUE"] }, provider: IYZICO } });
         await db.subscription.updateMany({ where: { tenantId: t.id, status: { in: ["ACTIVE", "PAST_DUE"] } }, data: { status: "CANCELLED" } });
+        // iyzico'da otomatik çekim sürmesin.
+        for (const s of lapsed) await this.iyzico.cancelAfterLapse(s);
         r.cancelledAfterGrace++;
         await this.audit.logPlatform({ tenantId: t.id, action: "lifecycle.cancelled_after_grace" });
         await this.mail(t.id, { name: "subscription_cancelled", vars: { salon: t.name, link } }, `grace-cancelled:${t.id}:${t.pastDueSince!.toISOString()}`);
