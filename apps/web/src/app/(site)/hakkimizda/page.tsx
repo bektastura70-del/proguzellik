@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import { LegalImprint } from "@/components/legal";
 import { PageIntro, TrialCta } from "@/components/site/cta";
 
+/** Şirket bilgileri Şirket ayarları'ndan her istekte okunur. */
+export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Hakkımızda", description: "ProGüzellik, güzellik salonlarının randevu, müşteri, kasa ve stok işlerini tek panelde toplayan Türkçe bir bulut yazılımdır.", alternates: { canonical: "/hakkimizda" } };
 
 export default function About() {
@@ -16,6 +19,8 @@ export default function About() {
           <li><strong>Güvenlik varsayılan olarak açık.</strong> İki adımlı doğrulama, rol bazlı yetkiler ve işlem kayıtları her pakette bulunur.</li>
           <li><strong>KVKK&apos;ya uygun çalışma.</strong> Onay kayıtları, veri dışa aktarma ve anonimleştirme araçları panelde hazırdır.</li>
         </ul>
+        <h2 className="pt-4 font-display text-2xl font-semibold text-ink">Şirket bilgileri</h2>
+        <LegalImprint hideDates />
       </section>
       <TrialCta />
     </>

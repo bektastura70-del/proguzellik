@@ -4,6 +4,8 @@ export const LEGAL_PROVIDER = "BEKTAŞ TURA REKLAM MEDYA VE BİLGİ TEKNOLOJİLE
 export const LEGAL_BRAND = "Pro Güzellik";
 export const LEGAL_WEBSITE = "https://proguzellik.com";
 export const LEGAL_EMAIL = "info@proguzellik.com";
+/** MERSİS numarası (Bektaş Tura'dan). Boşken künyede gösterilmez. */
+export const LEGAL_MERSIS = "";
 /**
  * Belge künyesindeki tarih ve sürüm (Bektaş Tura, 04.11.2026). Metin değiştiğinde güncellenir;
  * yürürlük tarihi değişirse api/src/auth/auth.service.ts içindeki KVKK_NOTICE_VERSION / TERMS_VERSION da güncellenmelidir.

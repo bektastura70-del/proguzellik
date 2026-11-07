@@ -19,6 +19,8 @@ const PAGES = [
   ["/faturalandirma-politikasi", /Faturalandırma ve Ödeme Belgeleri Politikası/],
   ["/hesap-kapatma-ve-veri-silme", /Hesap Kapatma, Veri Teslimi ve Veri Silme Politikası/],
   ["/sorumluluk-sinirlari", /Sorumluluk Sınırları ve Hizmet Güvenceleri/],
+  ["/mesafeli-satis-sozlesmesi", /Mesafeli Satış Sözleşmesi/],
+  ["/teslimat-ve-iade-sartlari", /Teslimat ve İade Şartları/],
 ] as const;
 
 test.describe("Tanıtım sitesi", () => {
@@ -94,6 +96,32 @@ test.describe("Tanıtım sitesi", () => {
         }
       }
     }
+  });
+
+  test("iyzico kriterleri: taslak mesafeli satış ve teslimat/iade sayfaları, footer'da ödeme logoları", async ({ page }) => {
+    for (const path of ["/mesafeli-satis-sozlesmesi", "/teslimat-ve-iade-sartlari"]) {
+      await page.goto(path);
+      const main = page.locator("main");
+      await expect(main, path).not.toContainText(/\[[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜa-zçğıöşü ]{3,}\]/);
+      // Hukuk onayı gelene kadar taslak uyarısı görünür ve künyede yürürlük tarihi yerine taslak tarihi yer alır.
+      await expect(main, path).toContainText("Bu metin bir şablondur");
+      const imprint = page.getByTestId("legal-imprint");
+      await expect(imprint).toContainText("BEKTAŞ TURA REKLAM MEDYA VE BİLGİ TEKNOLOJİLERİ LİMİTED ŞİRKETİ");
+      await expect(imprint).toContainText(/Taslak Tarihi\s*07\.11\.2026/);
+      await expect(imprint).not.toContainText("Yürürlük Tarihi");
+      const logos = page.getByTestId("payment-logos");
+      await expect(logos).toBeVisible();
+      expect(await logos.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+    }
+    await page.goto("/");
+    const footer = page.locator("footer");
+    await footer.getByRole("link", { name: "Mesafeli Satış Sözleşmesi" }).click();
+    await expect(page).toHaveURL(/\/mesafeli-satis-sozlesmesi$/);
+    await page.locator("main").getByRole("link", { name: "Teslimat ve İade Şartları" }).click();
+    await expect(page).toHaveURL(/\/teslimat-ve-iade-sartlari$/);
+    await page.goto("/hakkimizda");
+    await expect(page.getByTestId("legal-imprint")).toContainText("BEKTAŞ TURA REKLAM MEDYA VE BİLGİ TEKNOLOJİLERİ LİMİTED ŞİRKETİ");
+    await expect(page.getByTestId("legal-imprint")).not.toContainText("Yürürlük Tarihi");
   });
 
   test("hukuki metinlerde yer tutucu ve taslak notu yok; künye Şirket ayarları'ndan gelir", async ({ page }) => {

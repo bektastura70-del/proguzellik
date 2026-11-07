@@ -1,4 +1,4 @@
-import { LEGAL_BRAND, LEGAL_DOC_VERSION, LEGAL_EFFECTIVE_DATE, LEGAL_UPDATED_DATE, LEGAL_EMAIL, LEGAL_PROVIDER, LEGAL_WEBSITE } from "@/content/legal/meta";
+import { LEGAL_BRAND, LEGAL_DOC_VERSION, LEGAL_EFFECTIVE_DATE, LEGAL_UPDATED_DATE, LEGAL_EMAIL, LEGAL_MERSIS, LEGAL_PROVIDER, LEGAL_WEBSITE } from "@/content/legal/meta";
 import { getSiteInfo } from "@/lib/site";
 
 /**
@@ -21,8 +21,11 @@ export function LegalPage({ title, children, draft = false, imprint }: { title: 
   );
 }
 
-/** Hizmet sağlayıcı künyesi. Adres ve vergi bilgisi Şirket ayarları'ndan gelir; girilmemiş satır gösterilmez. */
-export async function LegalImprint() {
+/**
+ * Hizmet sağlayıcı künyesi. Adres, vergi ve telefon Şirket ayarları'ndan gelir; girilmemiş satır gösterilmez.
+ * `draftDate` verilirse (hukuk onayı bekleyen taslak) yürürlük/sürüm satırları yerine yalnız taslak tarihi gösterilir.
+ */
+export async function LegalImprint({ draftDate, hideDates = false }: { draftDate?: string; hideDates?: boolean } = {}) {
   const { company } = await getSiteInfo();
   const tax = [company.taxOffice, company.taxNumber].filter(Boolean).join(" / ");
   const rows: [string, React.ReactNode][] = [
@@ -31,9 +34,12 @@ export async function LegalImprint() {
     ["Web Sitesi", <a key="w" href={LEGAL_WEBSITE} className="text-brand-700">{LEGAL_WEBSITE}</a>],
     ["İletişim", <a key="e" href={`mailto:${LEGAL_EMAIL}`} className="text-brand-700">{LEGAL_EMAIL}</a>],
   ];
+  if (company.phone) rows.push(["Telefon", <a key="t" href={`tel:${company.phone.replace(/\s/g, "")}`} className="text-brand-700">{company.phone}</a>]);
   if (company.address) rows.push(["Şirket Adresi", company.address]);
   if (tax) rows.push(["Vergi Dairesi ve Vergi Numarası", tax]);
-  rows.push(["Yürürlük Tarihi", LEGAL_EFFECTIVE_DATE], ["Son Güncelleme Tarihi", LEGAL_UPDATED_DATE], ["Belge Sürümü", LEGAL_DOC_VERSION]);
+  if (LEGAL_MERSIS) rows.push(["MERSİS Numarası", LEGAL_MERSIS]);
+  if (draftDate) rows.push(["Taslak Tarihi", draftDate]);
+  else if (!hideDates) rows.push(["Yürürlük Tarihi", LEGAL_EFFECTIVE_DATE], ["Son Güncelleme Tarihi", LEGAL_UPDATED_DATE], ["Belge Sürümü", LEGAL_DOC_VERSION]);
   return (
     <dl className="grid gap-x-4 gap-y-1 rounded-xl border border-sand-200 bg-white p-4 text-sm sm:grid-cols-[max-content_1fr]" data-testid="legal-imprint">
       {rows.map(([k, v]) => (
