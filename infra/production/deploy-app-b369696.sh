@@ -31,6 +31,9 @@ grep -q " OK " /opt/proguzellik/backups/last-status || fail "Yedek başarısız"
 tail -6 /opt/proguzellik/backups/backup.log | grep -E "Kaynak|Yedek  |migration|TAMAM" || true
 
 log "3/8 Çalışan sürümün imajını arşivle"
+# e389c8c yalnız web yayınıydı; api/worker 9edffa2 imajıyla çalışıyor (içerik aynı). Etiket silinmişse yeniden verilir
+# ki arşiv ve rollback.sh $OLD her iki imajı bulsun.
+docker image inspect proguzellik-api:$OLD >/dev/null 2>&1 || docker tag proguzellik-api:9edffa2 proguzellik-api:$OLD
 ./archive-image.sh "$OLD"
 
 log "4/8 Ayar dosyasını yedekle, sürümü güncelle"
