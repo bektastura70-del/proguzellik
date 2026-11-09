@@ -170,8 +170,9 @@ export class HttpIyzicoClient extends IyzicoClient {
   }
 
   async getSubscription(ref: string) {
-    const r = await this.call<{ data: { items?: IyzicoSubscriptionDetail[] } }>("GET", `/v2/subscription/subscriptions/${encodeURIComponent(ref)}`);
-    const item = r.data.items?.find((i) => i.referenceCode === ref) ?? r.data.items?.[0];
+    // Gerçek sandbox yanıtı aboneliği doğrudan "data" içinde döndürüyor (09.11.2026); doküman sayfalı "items" listesi gösteriyor. İkisi de desteklenir.
+    const r = await this.call<{ data: IyzicoSubscriptionDetail & { items?: IyzicoSubscriptionDetail[] } }>("GET", `/v2/subscription/subscriptions/${encodeURIComponent(ref)}`);
+    const item = r.data.items ? (r.data.items.find((i) => i.referenceCode === ref) ?? r.data.items[0]) : r.data.referenceCode === ref ? r.data : undefined;
     if (!item) throw new IyzicoError("Abonelik bulunamadı", "NOT_FOUND");
     return { ...item, orders: item.orders ?? [] };
   }

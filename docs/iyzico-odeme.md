@@ -27,6 +27,12 @@ IYZICO_MERCHANT_ID=<sandbox üye işyeri no>
 ```
 Bildirim (webhook) testi için iyzico'nun ulaşabileceği bir adres gerekir (yerelde yoksa günlük görev durumu iyzico'dan okuyarak telafi eder). Bildirim imzası özelliğinin hesapta açılması için iyzico'ya (entegrasyon@iyzico.com) başvurulması gerekebilir.
 
+## Sandbox deneme sonucu (09.11.2026)
+- Akıllı paket, aylık, 3.600 TL (3.000 + %20 KDV), iyzico test kartıyla ödendi: abonelik açıldı, ödeme kaydı tek sefer, iyzico panelinde abonelik ACTIVE.
+- iyzico ödeme formunda abonelik için "iyzico ile üyeliğimi başlat ve kartımı sakla" kutusu işaretlenmeden ödeme alınmıyor (iyzico kuralı).
+- iyzico `.local` uzantılı e-postayı ve geçersiz cep numarasını reddeder (gerçek salonlarda sorun değil).
+- Abonelik detayı gerçekte `data` içinde doğrudan geliyor (doküman `items` listesi gösteriyor); istemci ikisini de okuyor. Detayda bir sonraki dönem `WAITING` olarak hazır bekliyor.
+
 ## Bilinçli sınırlar (sonraki işler)
 - Canlı iyzico adresi (`api.iyzipay.com`) bu sürümde reddedilir.
 - Aktif abonelikte paket/dönem değişikliği (iyzico "upgrade") yok; salon bize ulaşır.

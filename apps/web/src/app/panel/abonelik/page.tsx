@@ -83,7 +83,7 @@ function SubscriptionInner() {
                 ) : (
                   <div className="mt-3 text-sm text-neutral-500">Fiyat yakında açıklanacak</div>
                 )}
-                {can("OWNER") && s.onlinePayment && p.monthlyPrice != null && <Button className="mt-4 w-full" size="sm" variant={p.code === s.plan.code ? "outline" : "default"} onClick={() => setBuy(p)}>{p.code === s.plan.code && s.status === "ACTIVE" ? "Yenile" : "Seç"}</Button>}
+                {can("OWNER") && s.onlinePayment && p.monthlyPrice != null && !(s.checkoutKind === "iyzico" && s.subscription?.status === "ACTIVE") && <Button className="mt-4 w-full" size="sm" variant={p.code === s.plan.code ? "outline" : "default"} onClick={() => setBuy(p)}>{p.code === s.plan.code && s.status === "ACTIVE" ? "Yenile" : "Seç"}</Button>}
               </CardBody>
             </Card>
           ))}
