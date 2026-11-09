@@ -60,6 +60,7 @@ const nextConfig = {
     return [
       { source: "/:path*", headers: securityHeaders },
       { source: "/panel/abonelik/odeme", headers: paymentPageHeaders },
+      { source: "/satin-al/odeme", headers: paymentPageHeaders },
     ];
   },
 };

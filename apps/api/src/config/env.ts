@@ -70,6 +70,11 @@ const schema = z.object({
    */
   TRIAL_APPLICATIONS_ENABLED: z.enum(["0", "1"]).optional(),
   /**
+   * Siteden denemesiz doğrudan paket satın alma (e-posta doğrulama + iyzico ödemesi; işletme ödeme başarılı olunca açılır).
+   * Tanımsızsa: canlıda kapalı, diğer ortamlarda açık. Deneme başvuru formunu ve genel kaydı etkilemez.
+   */
+  PURCHASE_ENABLED: z.enum(["0", "1"]).optional(),
+  /**
    * Tanımsız/boş (önerilen): SaaS sahibinin onayladığı fiyatlar sitede ve işletme panelinde görünür; canlıda online satın alma kapalı.
    * 1 = ayrıca online satın alma ve otomatik yenileme açık. 0 = acil durum: onaylı olsa bile tüm tutarlar gizlenir.
    */
@@ -129,6 +134,10 @@ export const registrationEnabled = (env: Pick<Env, "REGISTRATION_ENABLED" | "NOD
 /** Deneme başvuru formu açık mı? Canlıda yalnızca TRIAL_APPLICATIONS_ENABLED=1 ile. Kayıt açıkken form yerine kendi kendine kayıt kullanılır. */
 export const trialApplicationsEnabled = (env: Pick<Env, "TRIAL_APPLICATIONS_ENABLED" | "REGISTRATION_ENABLED" | "NODE_ENV">) =>
   !registrationEnabled(env) && (env.TRIAL_APPLICATIONS_ENABLED ? env.TRIAL_APPLICATIONS_ENABLED === "1" : env.NODE_ENV !== "production");
+
+/** Siteden doğrudan satın alma açık mı? Canlıda yalnızca PURCHASE_ENABLED=1 ile (ödeme ve fiyat koşulları ayrıca aranır). */
+export const purchaseEnabled = (env: Pick<Env, "PURCHASE_ENABLED" | "NODE_ENV">) =>
+  env.PURCHASE_ENABLED ? env.PURCHASE_ENABLED === "1" : env.NODE_ENV !== "production";
 
 /**
  * Davet e-postası gerçekten iletilebilir mi? Canlıda yalnızca SMTP ile. Aksi hâlde davet "teslim bekliyor"
@@ -205,6 +214,11 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
   if (env.REGISTRATION_ENABLED === "1") warn("REGISTRATION_ENABLED=1: herkese açık işletme kaydı açık");
   if (raw.DISABLE_RATE_LIMIT === "1") err("DISABLE_RATE_LIMIT canlıda kullanılamaz");
   if (env.TRIAL_APPLICATIONS_ENABLED === "1") warn("TRIAL_APPLICATIONS_ENABLED=1: sitede deneme başvuru formu açık (onay SaaS sahibinde)");
+  if (env.PURCHASE_ENABLED === "1") {
+    warn("PURCHASE_ENABLED=1: siteden doğrudan paket satın alma açık (işletme ödeme başarılı olunca açılır)");
+    if (env.PAYMENT_MODE !== "iyzico") warn("PURCHASE_ENABLED=1 ama PAYMENT_MODE iyzico değil: satın alma formu kapalı görünür");
+    if (env.EMAIL_MODE !== "smtp") warn("PURCHASE_ENABLED=1 ama EMAIL_MODE smtp değil: doğrulama e-postası gönderilemez, satın alma alınmaz");
+  }
   if (env.PWA_ENABLED === "1") warn("PWA_ENABLED=1: PWA özellikleri SaaS sahibi panelinden işletme başına açılabilir");
   if (env.WEB_PUSH_MODE === "live") {
     for (const k of ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"] as const) if (!env[k]) err(`WEB_PUSH_MODE=live için ${k} gerekli`);

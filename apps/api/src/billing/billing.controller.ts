@@ -12,7 +12,7 @@ const checkoutSchema = z.object({
   paymentToken: z.string().min(3).max(200),
 });
 
-const iyzicoCheckoutSchema = z.object({
+export const iyzicoCheckoutSchema = z.object({
   planCode: planCodeSchema,
   billingCycle: z.enum(["MONTHLY", "YEARLY"]),
   billing: z.object({

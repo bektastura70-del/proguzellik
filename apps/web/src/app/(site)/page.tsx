@@ -5,7 +5,7 @@ import { TrialCta } from "@/components/site/cta";
 import { PricingCards } from "@/components/site/pricing";
 import { FEATURES } from "@/components/site/content";
 import { buttonVariants } from "@/components/ui/button-variants";
-import { getPlans, getSiteInfo, SITE_URL } from "@/lib/site";
+import { getPlans, getPurchaseOpen, getSiteInfo, SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -22,7 +22,7 @@ const STRIP = [
 ];
 
 export default async function Home() {
-  const [plans, site] = await Promise.all([getPlans(), getSiteInfo()]);
+  const [plans, site, purchase] = await Promise.all([getPlans(), getSiteInfo(), getPurchaseOpen()]);
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
@@ -97,7 +97,7 @@ export default async function Home() {
       <section id="paketler" className="mx-auto max-w-6xl px-5 py-16" aria-labelledby="paketler-baslik">
         <h2 id="paketler-baslik" className="text-center font-display text-3xl font-semibold">Paketler</h2>
         <p className="mb-10 mt-2 text-center text-neutral-600">Personel sayınıza göre seçin; deneme süresince seçtiğiniz paketin özellikleri açıktır.</p>
-        <PricingCards plans={plans} vat={site.vat} />
+        <PricingCards plans={plans} vat={site.vat} purchase={purchase} />
       </section>
 
       <TrialCta />

@@ -7,22 +7,11 @@ import { Alert, Button, Card, CardBody, CardHeader, Field, Input, PageHeader, Sp
 import { api, useApi } from "@/lib/api";
 import { tl } from "@/lib/format";
 import { IYZICO_DOCS_DATES } from "@/content/legal/meta";
+import { mountIyzicoForm } from "@/lib/iyzico-form";
 
 type Plan = { code: string; name: string; maxStaff: number; monthlyPrice: string | null; yearlyPrice: string | null; vatRate: string | null };
 type Sub = { onlinePayment: boolean; checkoutKind?: "iyzico" | "token" };
 type Started = { checkoutFormContent: string; amount: string; netAmount: string; vatRate: string };
-
-/** iyzico'nun döndürdüğü form içeriğini (betikler) sayfaya yükler; kart bilgisi iyzico'nun formunda girilir. */
-function mountIyzicoForm(html: string) {
-  const tpl = document.createElement("template");
-  tpl.innerHTML = html;
-  tpl.content.querySelectorAll("script").forEach((old) => {
-    const s = document.createElement("script");
-    for (const a of Array.from(old.attributes)) s.setAttribute(a.name, a.value);
-    s.text = old.text;
-    document.body.appendChild(s);
-  });
-}
 
 function PaymentInner() {
   const q = useSearchParams();

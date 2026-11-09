@@ -10,6 +10,7 @@ import { RetentionService } from "../notifications/retention.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { LowStockService } from "../stock/low-stock.service";
 import { purgeTrialApplications } from "../platform/trial-application.service";
+import { purgePurchaseRequests } from "../billing/purchase.service";
 
 export const DAILY_JOB = "subscription-lifecycle";
 const STALE_RUNNING_MS = 60 * 60_000;
@@ -89,6 +90,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       const expiredSignups = (await db.signupRequest.deleteMany({ where: { expiresAt: { lt: now } } })).count;
       // Deneme başvuruları: doğrulanmamış ve süresi dolmuş olanlar ile eski reddedilenler silinir
       const applications = await purgeTrialApplications(db, now);
+      // Siteden satın alma: süresi dolmuş bekleyen kayıtlar silinir (ödemesi iyzico'da doğrulanmayı bekleyenler 8 güne kadar korunur)
+      const expiredPurchases = await purgePurchaseRequests(db, now);
       // Paket bitişi / tekrar randevu hatırlatmaları (işletmelerin WhatsApp numarasından)
       const ret = await this.retention.run(now);
       // Yenilenme hatırlatmaları (uygulama bildirimi + e-posta; RENEWAL_REMINDERS=1 ve işletme ayarı açıksa)
@@ -99,6 +102,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         ...lifecycle,
         paymentReminders: pay.paymentReminders,
         expiredSignups,
+        expiredPurchases,
         ...applications,
         packageReminders: ret.packageReminders,
         rebookReminders: ret.rebookReminders,

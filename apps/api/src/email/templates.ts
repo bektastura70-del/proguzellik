@@ -8,6 +8,10 @@ export type EmailTemplate =
   | { name: "trial_application_verify"; vars: { fullName: string; salon: string; link: string; hours: number } }
   | { name: "trial_application_received"; vars: { salon: string; link: string } }
   | { name: "signup_exists"; vars: { fullName: string; link: string } }
+  | { name: "purchase_verify"; vars: { fullName: string; salon: string; plan: string; link: string; hours: number } }
+  | { name: "purchase_exists"; vars: { fullName: string; link: string } }
+  | { name: "purchase_completed"; vars: { fullName: string; salon: string; plan: string; amount: string; until: string; link: string } }
+  | { name: "purchase_received"; vars: { salon: string; plan: string; amount: string; link: string } }
   | { name: "mfa_enabled"; vars: { fullName: string } }
   | { name: "mfa_reset"; vars: { fullName: string } }
   | { name: "tenant_invite"; vars: { fullName: string; salon: string; link: string; days: number; role?: string } }
@@ -40,6 +44,10 @@ export const TEMPLATE_META: Record<TemplateName, { label: string; vars: string[]
   trial_application_verify: { label: "Deneme başvurusu: e-posta doğrulama", vars: ["fullName", "salon", "hours"], secret: true, editable: false },
   trial_application_received: { label: "Deneme başvurusu: SaaS sahibine bildirim", vars: ["salon"], secret: false, editable: false },
   signup_exists: { label: "Kayıt denemesi: hesap zaten var", vars: ["fullName"], secret: false, editable: false },
+  purchase_verify: { label: "Paket satın alma: e-posta doğrulama", vars: ["fullName", "salon", "plan", "hours"], secret: true, editable: false },
+  purchase_exists: { label: "Paket satın alma denemesi: hesap zaten var", vars: ["fullName"], secret: false, editable: false },
+  purchase_completed: { label: "Paket satın alındı: hesap açıldı", vars: ["fullName", "salon", "plan", "amount", "until"], secret: false, editable: false },
+  purchase_received: { label: "Paket satın alındı: SaaS sahibine bildirim", vars: ["salon", "plan", "amount"], secret: false, editable: false },
   mfa_enabled: { label: "2FA açıldı", vars: ["fullName"], secret: false, editable: false },
   mfa_reset: { label: "2FA sıfırlandı", vars: ["fullName"], secret: false, editable: false },
   tenant_invite: { label: "Kullanıcı daveti", vars: ["fullName", "salon", "days", "role"], secret: true, editable: false },
@@ -117,6 +125,26 @@ export function render(t: EmailTemplate, override?: TemplateOverride | null): { 
       subject = "ProGüzellik hesabınız zaten var";
       paras = [`Merhaba ${esc(t.vars.fullName)},`, "Bu e-posta adresiyle yeni bir ücretsiz deneme başvurusu yapıldı; ancak adına kayıtlı bir hesap zaten var. Yeni hesap açılmadı.", "Parolanızı hatırlamıyorsanız giriş sayfasındaki “Parolamı unuttum” bağlantısını kullanın. Bu başvuruyu siz yapmadıysanız bir işlem yapmanız gerekmez."];
       cta = { label: "Giriş yap", link: t.vars.link };
+      break;
+    case "purchase_verify":
+      subject = "Paket satın alımınız için e-postanızı doğrulayın";
+      paras = [`Merhaba ${esc(t.vars.fullName)},`, `${esc(t.vars.salon)} için ProGüzellik ${esc(t.vars.plan)} paketi satın alma isteğinizi aldık. Ödeme adımına geçmek için e-posta adresinizi doğrulayın.`, "Hesabınız yalnız ödemeniz başarıyla alındığında açılır; ödeme yapılmazsa hesap açılmaz.", `Bağlantı ${t.vars.hours} saat geçerlidir. Bu isteği siz yapmadıysanız e-postayı dikkate almayın.`];
+      cta = { label: "E-postamı doğrula ve ödemeye geç", link: t.vars.link };
+      break;
+    case "purchase_exists":
+      subject = "ProGüzellik hesabınız zaten var";
+      paras = [`Merhaba ${esc(t.vars.fullName)},`, "Bu e-posta adresiyle sitemizden yeni bir paket satın alma isteği yapıldı; ancak adına kayıtlı bir hesap zaten var. Yeni hesap açılmadı ve ödeme alınmadı.", "Paketinizi hesabınıza giriş yaparak Abonelik sayfasından satın alabilirsiniz. Parolanızı hatırlamıyorsanız giriş sayfasındaki “Parolamı unuttum” bağlantısını kullanın."];
+      cta = { label: "Giriş yap", link: t.vars.link };
+      break;
+    case "purchase_completed":
+      subject = "Ödemeniz alındı, ProGüzellik hesabınız açıldı";
+      paras = [`Merhaba ${esc(t.vars.fullName)},`, `${esc(t.vars.salon)} için ${esc(t.vars.plan)} paketi ödemeniz (${esc(t.vars.amount)} TL, KDV dahil) alındı ve hesabınız açıldı. Dönem sonu: ${esc(t.vars.until)}.`, "Satın alırken belirlediğiniz e-posta ve parolayla giriş yapabilirsiniz. Abonelik her dönem aynı karttan otomatik yenilenir; Abonelik sayfasından istediğiniz zaman iptal edebilirsiniz."];
+      cta = { label: "Giriş yap", link: t.vars.link };
+      break;
+    case "purchase_received":
+      subject = `Yeni paket satışı: ${t.vars.salon}`;
+      paras = [`${esc(t.vars.salon)} siteden ${esc(t.vars.plan)} paketini satın aldı (${esc(t.vars.amount)} TL, KDV dahil). İşletme ve sahip hesabı otomatik açıldı.`, "Faturayı düzenlemeyi unutmayın (e-Fatura entegrasyonu henüz yok)."];
+      cta = { label: "İşletmeyi görüntüle", link: t.vars.link };
       break;
     case "tenant_invite":
       subject = `${t.vars.salon} – ProGüzellik davetiniz`;

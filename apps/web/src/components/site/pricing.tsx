@@ -9,7 +9,7 @@ const pct = (v: string) => `%${Number(v).toLocaleString("tr-TR")}`;
  * Paket kartları: ad, açıklama, sınırlar ve özellikler veritabanından gelir.
  * Tutar yalnız SaaS sahibinin onayladığı fiyat sürümünden gelir (KDV hariç); onaylı fiyatı olmayan pakette "Fiyat yakında" yazar.
  */
-export function PricingCards({ plans }: { plans: SitePlan[]; vat?: SiteInfo["vat"] }) {
+export function PricingCards({ plans, purchase = false }: { plans: SitePlan[]; vat?: SiteInfo["vat"]; purchase?: boolean }) {
   if (!plans.length) return <p className="text-center text-sm text-neutral-500">Paket bilgisi şu an yüklenemedi. Lütfen daha sonra tekrar deneyin.</p>;
   const anyPrice = plans.some((p) => p.monthlyPrice != null);
   return (
@@ -42,7 +42,13 @@ export function PricingCards({ plans }: { plans: SitePlan[]; vat?: SiteInfo["vat
                 <li key={f} className="flex gap-2"><span aria-hidden className="text-brand-600">✓</span>{FEATURE_TR[f] ?? f}</li>
               ))}
             </ul>
-            <Link href={`/ucretsiz-deneme?paket=${p.code}`} className={buttonVariants({ className: "mt-6 w-full", variant: "outline" })}>14 Gün Ücretsiz Dene</Link>
+            {purchase && p.monthlyPrice != null && p.vatRate != null && (
+              <div className="mt-6 grid gap-2" data-testid={`buy-${p.code}`}>
+                <Link href={`/satin-al?paket=${p.code}&donem=MONTHLY`} className={buttonVariants({ className: "w-full" })}>Aylık satın al</Link>
+                {Number(p.yearlyPrice) > 0 && <Link href={`/satin-al?paket=${p.code}&donem=YEARLY`} className={buttonVariants({ className: "w-full", variant: "outline" })}>Yıllık satın al</Link>}
+              </div>
+            )}
+            <Link href={`/ucretsiz-deneme?paket=${p.code}`} className={buttonVariants({ className: purchase ? "mt-2 w-full" : "mt-6 w-full", variant: purchase ? "ghost" : "outline" })}>14 Gün Ücretsiz Dene</Link>
           </article>
         ))}
       </div>

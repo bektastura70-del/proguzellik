@@ -1,9 +1,11 @@
 import { BadGatewayException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
-import { BillingCycle, Prisma, Subscription } from "@prisma/client";
+import { BillingCycle, Plan, Prisma, PurchaseRequest, Subscription } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { AuditService } from "../../audit/audit.service";
 import { TenantInfo } from "../../common/decorators";
+import { MARKETING_VERSION, slugify } from "../../auth/auth.service";
 import { appUrl, iyzicoAllTenants, iyzicoPilotTenants, loadEnv, pricingPublic } from "../../config/env";
+import { randomToken } from "../../security/crypto";
 import { EmailService } from "../../email/email.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { PaymentProvider } from "../payment-provider";
@@ -27,6 +29,11 @@ export interface IyzicoBillingInput {
   acceptedTerms: true;
   termsVersion: string;
 }
+
+export type IyzicoBillingInfo = IyzicoBillingInput["billing"];
+
+/** Ödeme formunun dönüş adresi: mevcut işletmenin paneli ya da siteden satın alma sonucu. */
+export const CALLBACK_PATHS = { panel: "/api/odeme/iyzico/donus", purchase: "/api/odeme/iyzico/satin-al" } as const;
 
 export interface WebhookBody {
   orderReferenceCode?: string;
@@ -72,9 +79,88 @@ export class IyzicoBillingService {
     if (!pricingPublic(loadEnv())) throw new ServiceUnavailableException({ message: "Paket fiyatları henüz açıklanmadı. Paket için bizimle iletişime geçin.", code: "PRICING_NOT_ANNOUNCED" });
   }
 
-  private callbackUrl() {
+  private callbackUrl(kind: keyof typeof CALLBACK_PATHS) {
     const env = loadEnv();
-    return `${(env.IYZICO_CALLBACK_BASE ?? appUrl(env)).replace(/\/$/, "")}/api/odeme/iyzico/donus`;
+    return `${(env.IYZICO_CALLBACK_BASE ?? appUrl(env)).replace(/\/$/, "")}${CALLBACK_PATHS[kind]}`;
+  }
+
+  /** Satılabilir paket + onaylı fiyat + dönem tutarı (KDV hariç ve dahil). */
+  async saleQuote(planCode: string, cycle: BillingCycle) {
+    const db = this.prisma.platform;
+    const plan = await db.plan.findUnique({ where: { code: planCode } });
+    if (!plan || !plan.isActive || !plan.isPublic) throw new NotFoundException("Paket bulunamadı");
+    const price = priceForNewSale(await approvedVersionsOf(db, [plan.code]), new Date());
+    if (!price) throw new ConflictException({ message: "Bu paketin onaylı fiyatı yok. Paket için bizimle iletişime geçin.", code: "PRICE_NOT_APPROVED" });
+    const net = cycleAmount(price, cycle);
+    if (!net.gt(0)) throw new ConflictException("Bu pakette bu ödeme dönemi yok");
+    return { plan, price, net, gross: withVat(net, price.vatRate).gross };
+  }
+
+  /** iyzico ödeme formunu açar ve oturumu kaydeder (işletmeye ya da satın alma kaydına bağlı). */
+  private async openForm(p: {
+    owner: { tenantId: string; userId: string } | { purchaseRequestId: string };
+    email: string;
+    businessName: string;
+    quote: Awaited<ReturnType<IyzicoBillingService["saleQuote"]>>;
+    cycle: BillingCycle;
+    billing: IyzicoBillingInfo;
+    callback: keyof typeof CALLBACK_PATHS;
+  }) {
+    const env = this.client.environment!;
+    const { plan, price, net, gross } = p.quote;
+    const link = await this.planLink(env, plan, price, p.cycle);
+    const conversationId = `pg-${randomUUID()}`;
+    const parts = p.billing.fullName.trim().split(/\s+/);
+    const surname = parts.length > 1 ? parts.pop()! : parts[0];
+    const name = parts.join(" ") || surname;
+    const gsm = p.billing.gsmNumber.replace(/[\s()-]/g, "").replace(/^0/, "+90").replace(/^90/, "+90").replace(/^5/, "+905");
+    let form: { token: string; checkoutFormContent: string; tokenExpireTime?: number };
+    try {
+      form = await this.client.initCheckout({
+        conversationId,
+        callbackUrl: this.callbackUrl(p.callback),
+        pricingPlanReferenceCode: link.pricingPlanReferenceCode,
+        customer: {
+          name,
+          surname,
+          email: p.email,
+          gsmNumber: gsm,
+          identityNumber: p.billing.identityNumber,
+          billingAddress: { contactName: p.billing.fullName.trim(), city: p.billing.city.trim(), country: "Turkey", address: `${p.businessName}, ${p.billing.address.trim()}` },
+        },
+      });
+    } catch (e) {
+      throw new BadGatewayException((e as Error).message || "iyzico ödeme formu açılamadı");
+    }
+    await this.prisma.platform.iyzicoCheckout.create({
+      data: {
+        ...p.owner,
+        environment: env,
+        conversationId,
+        token: form.token,
+        planCode: plan.code,
+        billingCycle: p.cycle,
+        planPriceId: price.id,
+        netAmount: net,
+        vatRate: price.vatRate,
+        grossAmount: gross,
+        pricingPlanReferenceCode: link.pricingPlanReferenceCode,
+      },
+    });
+    return { conversationId, env, result: { checkoutFormContent: form.checkoutFormContent, tokenExpireTime: form.tokenExpireTime ?? null, amount: gross.toFixed(2), netAmount: net.toFixed(2), vatRate: price.vatRate.toFixed(2) } };
+  }
+
+  /**
+   * Siteden doğrudan satın alma: işletme henüz yok, oturum satın alma kaydına bağlanır.
+   * Ön koşullar (e-posta doğrulandı, hesap/telefon çakışması yok, bayrak açık) PurchaseService'te denetlenir.
+   */
+  async startPurchaseCheckout(req: PurchaseRequest, billing: IyzicoBillingInfo, termsVersion: string, ip?: string) {
+    this.assertEnabled();
+    const quote = await this.saleQuote(req.planCode, req.billingCycle);
+    if (quote.plan.maxStaff < 1) throw new ConflictException("Bu paket satışta değil");
+    const { conversationId, env, result } = await this.openForm({ owner: { purchaseRequestId: req.id }, email: req.email, businessName: req.businessName, quote, cycle: req.billingCycle, billing, callback: "purchase" });
+    await this.audit.logPlatform({ action: "purchase.checkout_started", ip, entity: "PurchaseRequest", entityId: req.id, metadata: { env, plan: quote.plan.code, cycle: req.billingCycle, gross: quote.gross.toFixed(2), conversationId, termsAccepted: { version: termsVersion, at: new Date().toISOString(), docs: ["mesafeli-satis-sozlesmesi", "teslimat-ve-iade-sartlari"] } } });
+    return result;
   }
 
   /** Onaylı fiyat sürümü + dönem için iyzico ödeme planı (bir kez açılır, sonra yeniden kullanılır). */
@@ -92,9 +178,9 @@ export class IyzicoBillingService {
         const again = await tx.iyzicoPlanLink.findUnique({ where: { environment_planPriceId_billingCycle: { environment: env, planPriceId: price.id, billingCycle: cycle } } });
         if (again) return again;
         const sibling = await tx.iyzicoPlanLink.findFirst({ where: { environment: env, planCode: plan.code } });
-        const productRef = sibling?.productReferenceCode ?? (await this.client.createProduct(`ProGüzellik ${plan.name}`, `ProGüzellik ${plan.name} paketi`)).referenceCode;
+        const productRef = sibling?.productReferenceCode ?? (await this.productFor(plan.name));
         const cycleName = cycle === "MONTHLY" ? "Aylık" : "Yıllık";
-        const p = await this.client.createPricingPlan(productRef, { name: `${plan.name} ${cycleName} v${price.version ?? 0}`, price: gross.toFixed(2), interval: cycle });
+        const p = await this.pricingPlanFor(productRef, { name: `${plan.name} ${cycleName} v${price.version ?? 0}`, price: gross.toFixed(2), interval: cycle });
         const link = await tx.iyzicoPlanLink.create({
           data: { environment: env, planCode: plan.code, planPriceId: price.id, billingCycle: cycle, productReferenceCode: productRef, pricingPlanReferenceCode: p.referenceCode, grossAmount: gross },
         });
@@ -105,19 +191,44 @@ export class IyzicoBillingService {
     );
   }
 
+  /** Paketin iyzico ürünü: yoksa açılır; iyzico "zaten var" derse (kaydı bizde olmayan ürün) adıyla bulunup kullanılır. */
+  private async productFor(planName: string) {
+    const name = `ProGüzellik ${planName}`;
+    try {
+      return (await this.client.createProduct(name, `ProGüzellik ${planName} paketi`)).referenceCode;
+    } catch (e) {
+      if (!(e instanceof IyzicoError) || e.errorCode !== "201001") throw e;
+      const found = await this.client.findProduct(name);
+      if (!found) throw e;
+      return found.referenceCode;
+    }
+  }
+
+  /**
+   * Ödeme planı açılır; iyzico aynı adla plan olduğunu söylerse (kaydı bizde yok) yalnız tutar ve dönem
+   * birebir aynıysa kullanılır, aksi hâlde yanlış tutar çekilmesin diye hata verilir.
+   */
+  private async pricingPlanFor(productRef: string, p: { name: string; price: string; interval: BillingCycle }) {
+    try {
+      return await this.client.createPricingPlan(productRef, p);
+    } catch (e) {
+      if (!(e instanceof IyzicoError) || e.errorCode !== "201051") throw e;
+      const found = await this.client.findPricingPlan(productRef, p.name);
+      if (!found || found.interval !== p.interval || !amountEq(found.price, new Prisma.Decimal(p.price))) {
+        throw new ConflictException("iyzico'da aynı adla farklı tutarlı bir ödeme planı var; SaaS sahibine bildirin");
+      }
+      return { referenceCode: found.referenceCode };
+    }
+  }
+
   async startCheckout(t: TenantInfo, b: IyzicoBillingInput) {
     this.assertEnabled();
     if (!this.allowedFor(t.tenantId)) throw new ServiceUnavailableException({ message: "Online ödeme henüz aktif değil. Paket için bizimle iletişime geçin.", code: "ONLINE_PAYMENT_DISABLED" });
-    const env = this.client.environment!;
     const db = this.prisma.platform;
     const user = await db.user.findUniqueOrThrow({ where: { id: t.userId } });
     if (!user.emailVerifiedAt) throw new ForbiddenException({ message: "Ödeme yapmadan önce e-posta adresinizi doğrulayın", code: "EMAIL_NOT_VERIFIED" });
-    const plan = await db.plan.findUnique({ where: { code: b.planCode } });
-    if (!plan || !plan.isActive || !plan.isPublic) throw new NotFoundException("Paket bulunamadı");
-    const price = priceForNewSale(await approvedVersionsOf(db, [plan.code]), new Date());
-    if (!price) throw new ConflictException({ message: "Bu paketin onaylı fiyatı yok. Paket için bizimle iletişime geçin.", code: "PRICE_NOT_APPROVED" });
-    const net = cycleAmount(price, b.billingCycle);
-    if (!net.gt(0)) throw new ConflictException("Bu pakette bu ödeme dönemi yok");
+    const quote = await this.saleQuote(b.planCode, b.billingCycle);
+    const { plan } = quote;
     const activeStaff = await db.staffMember.count({ where: { tenantId: t.tenantId, isActive: true } });
     if (activeStaff > plan.maxStaff) throw new ConflictException(`${plan.name} paketi en fazla ${plan.maxStaff} aktif personel destekler (şu an ${activeStaff}).`);
     const active = await db.subscription.findFirst({ where: { tenantId: t.tenantId, status: "ACTIVE" } });
@@ -128,49 +239,9 @@ export class IyzicoBillingService {
       });
     }
     const tenant = await db.tenant.findUniqueOrThrow({ where: { id: t.tenantId } });
-    const link = await this.planLink(env, plan, price, b.billingCycle);
-    const { gross } = withVat(net, price.vatRate);
-    const conversationId = `pg-${randomUUID()}`;
-    const parts = b.billing.fullName.trim().split(/\s+/);
-    const surname = parts.length > 1 ? parts.pop()! : parts[0];
-    const name = parts.join(" ") || surname;
-    const gsm = b.billing.gsmNumber.replace(/[\s()-]/g, "").replace(/^0/, "+90").replace(/^90/, "+90").replace(/^5/, "+905");
-    let form: { token: string; checkoutFormContent: string; tokenExpireTime?: number };
-    try {
-      form = await this.client.initCheckout({
-        conversationId,
-        callbackUrl: this.callbackUrl(),
-        pricingPlanReferenceCode: link.pricingPlanReferenceCode,
-        customer: {
-          name,
-          surname,
-          email: user.email,
-          gsmNumber: gsm,
-          identityNumber: b.billing.identityNumber,
-          billingAddress: { contactName: b.billing.fullName.trim(), city: b.billing.city.trim(), country: "Turkey", address: `${tenant.name}, ${b.billing.address.trim()}` },
-        },
-      });
-    } catch (e) {
-      throw new BadGatewayException((e as Error).message || "iyzico ödeme formu açılamadı");
-    }
-    await db.iyzicoCheckout.create({
-      data: {
-        tenantId: t.tenantId,
-        userId: t.userId,
-        environment: env,
-        conversationId,
-        token: form.token,
-        planCode: plan.code,
-        billingCycle: b.billingCycle,
-        planPriceId: price.id,
-        netAmount: net,
-        vatRate: price.vatRate,
-        grossAmount: gross,
-        pricingPlanReferenceCode: link.pricingPlanReferenceCode,
-      },
-    });
-    await this.audit.logPlatform({ tenantId: t.tenantId, actorId: t.userId, action: "iyzico.checkout_started", metadata: { env, plan: plan.code, cycle: b.billingCycle, gross: gross.toFixed(2), conversationId, termsAccepted: { version: b.termsVersion, at: new Date().toISOString(), docs: ["mesafeli-satis-sozlesmesi", "teslimat-ve-iade-sartlari"] } } });
-    return { checkoutFormContent: form.checkoutFormContent, tokenExpireTime: form.tokenExpireTime ?? null, amount: gross.toFixed(2), netAmount: net.toFixed(2), vatRate: price.vatRate.toFixed(2) };
+    const { conversationId, env, result } = await this.openForm({ owner: { tenantId: t.tenantId, userId: t.userId }, email: user.email, businessName: tenant.name, quote, cycle: b.billingCycle, billing: b.billing, callback: "panel" });
+    await this.audit.logPlatform({ tenantId: t.tenantId, actorId: t.userId, action: "iyzico.checkout_started", metadata: { env, plan: plan.code, cycle: b.billingCycle, gross: quote.gross.toFixed(2), conversationId, termsAccepted: { version: b.termsVersion, at: new Date().toISOString(), docs: ["mesafeli-satis-sozlesmesi", "teslimat-ve-iade-sartlari"] } } });
+    return result;
   }
 
   /**
@@ -218,18 +289,23 @@ export class IyzicoBillingService {
     const start = paid.startPeriod ? new Date(paid.startPeriod) : now;
     const end = paid.endPeriod ? new Date(paid.endPeriod) : addCycle(start, co.billingCycle);
     const plan = await db.plan.findUniqueOrThrow({ where: { code: co.planCode } });
+    if (co.purchaseRequestId) {
+      return this.completePurchase({ ...co, purchaseRequestId: co.purchaseRequestId }, plan, { ref: result.referenceCode, customerRef: result.customerReferenceCode ?? null, orderRef: paid.referenceCode, start, end });
+    }
+    const tenantId = co.tenantId;
+    if (!tenantId) return reject("Ödeme oturumu bir işletmeye bağlı değil");
     const outcome = await db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${"subscription:" + co.tenantId}))::text`;
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${"subscription:" + tenantId}))::text`;
       const fresh = await tx.iyzicoCheckout.findUniqueOrThrow({ where: { id: co.id } });
       if (fresh.status !== "PENDING") return { already: fresh.status === "COMPLETED", replaced: [] as Subscription[] };
-      const active = await tx.subscription.findFirst({ where: { tenantId: co.tenantId, status: "ACTIVE" } });
+      const active = await tx.subscription.findFirst({ where: { tenantId: tenantId, status: "ACTIVE" } });
       if (active) return { conflict: true as const, replaced: [] as Subscription[] };
       // Önceki ödenmemiş (PAST_DUE) abonelikler kapanır; iyzico tarafındakiler aşağıda iptal edilir.
-      const replaced = await tx.subscription.findMany({ where: { tenantId: co.tenantId, status: "PAST_DUE" } });
-      await tx.subscription.updateMany({ where: { tenantId: co.tenantId, status: "PAST_DUE" }, data: { status: "CANCELLED" } });
+      const replaced = await tx.subscription.findMany({ where: { tenantId: tenantId, status: "PAST_DUE" } });
+      await tx.subscription.updateMany({ where: { tenantId: tenantId, status: "PAST_DUE" }, data: { status: "CANCELLED" } });
       const sub = await tx.subscription.create({
         data: {
-          tenantId: co.tenantId,
+          tenantId: tenantId,
           planCode: co.planCode,
           billingCycle: co.billingCycle,
           currentPeriodStart: start,
@@ -242,26 +318,104 @@ export class IyzicoBillingService {
         },
       });
       await tx.subscriptionPayment.create({
-        data: { tenantId: co.tenantId, subscriptionId: sub.id, amount: co.grossAmount, netAmount: co.netAmount, vatRate: co.vatRate, status: "PAID", provider: IYZICO, providerRef: paid.referenceCode, description: `${plan.name} paketi`, idempotencyKey: `iyzico:order:${paid.referenceCode}` },
+        data: { tenantId: tenantId, subscriptionId: sub.id, amount: co.grossAmount, netAmount: co.netAmount, vatRate: co.vatRate, status: "PAID", provider: IYZICO, providerRef: paid.referenceCode, description: `${plan.name} paketi`, idempotencyKey: `iyzico:order:${paid.referenceCode}` },
       });
-      await tx.savedPaymentMethod.deleteMany({ where: { tenantId: co.tenantId } });
-      await tx.tenant.update({ where: { id: co.tenantId }, data: { status: "ACTIVE", planCode: co.planCode, pastDueSince: null, limitExceededAt: null } });
+      await tx.savedPaymentMethod.deleteMany({ where: { tenantId: tenantId } });
+      await tx.tenant.update({ where: { id: tenantId }, data: { status: "ACTIVE", planCode: co.planCode, pastDueSince: null, limitExceededAt: null } });
       await tx.iyzicoCheckout.update({ where: { id: co.id }, data: { status: "COMPLETED", completedAt: now, subscriptionReferenceCode: result.referenceCode, customerReferenceCode: result.customerReferenceCode ?? null, subscriptionId: sub.id } });
-      await tx.auditLog.create({ data: { tenantId: co.tenantId, actorId: co.userId, action: "subscription.activated", metadata: { provider: IYZICO, env: co.environment, plan: co.planCode, cycle: co.billingCycle, planPriceId: co.planPriceId, net: co.netAmount.toFixed(2), gross: co.grossAmount.toFixed(2), vatRate: co.vatRate.toFixed(2) } } });
+      await tx.auditLog.create({ data: { tenantId: tenantId, actorId: co.userId, action: "subscription.activated", metadata: { provider: IYZICO, env: co.environment, plan: co.planCode, cycle: co.billingCycle, planPriceId: co.planPriceId, net: co.netAmount.toFixed(2), gross: co.grossAmount.toFixed(2), vatRate: co.vatRate.toFixed(2) } } });
       return { created: sub, replaced };
     });
     if ("conflict" in outcome) {
       // Aynı anda iki ödeme: ikinci iyzico aboneliği hemen iptal edilir, iade SaaS sahibince yapılır.
-      await this.safeCancel(result.referenceCode, co.tenantId);
-      await this.audit.logPlatform({ tenantId: co.tenantId, action: "iyzico.duplicate_subscription", metadata: { ref: result.referenceCode, order: paid.referenceCode, gross: co.grossAmount.toFixed(2) } });
-      return this.failCheckout(co.id, co.tenantId, "Zaten aktif bir aboneliğiniz var; ikinci ödeme için iade sağlanacak, bizimle iletişime geçin", result.referenceCode);
+      await this.safeCancel(result.referenceCode, tenantId);
+      await this.audit.logPlatform({ tenantId: tenantId, action: "iyzico.duplicate_subscription", metadata: { ref: result.referenceCode, order: paid.referenceCode, gross: co.grossAmount.toFixed(2) } });
+      return this.failCheckout(co.id, tenantId, "Zaten aktif bir aboneliğiniz var; ikinci ödeme için iade sağlanacak, bizimle iletişime geçin", result.referenceCode);
     }
-    for (const old of outcome.replaced) if (old.provider === IYZICO && old.providerRef) await this.safeCancel(old.providerRef, co.tenantId);
+    for (const old of outcome.replaced) if (old.provider === IYZICO && old.providerRef) await this.safeCancel(old.providerRef, tenantId);
     if ("already" in outcome) return outcome.already ? { ok: true, message: "Ödeme alındı" } : { ok: false, message: "Ödeme alınamadı" };
     return { ok: true, message: "Ödeme alındı, aboneliğiniz başladı" };
   }
 
-  private async failCheckout(id: string, tenantId: string, error: string, subscriptionReferenceCode?: string) {
+  /**
+   * Siteden satın alma ödemesi doğrulandı: işletme, sahip hesabı, onay kayıtları ve abonelik tek işlemde açılır,
+   * satın alma kaydı (parola özeti dahil) silinir. E-posta/telefon bu arada başka bir hesapta kullanıldıysa
+   * hiçbir hesap açılmaz; iyzico aboneliği iptal edilir ve iade için kayıt düşülür.
+   */
+  private async completePurchase(
+    co: Prisma.IyzicoCheckoutGetPayload<object> & { purchaseRequestId: string },
+    plan: Plan,
+    r: { ref: string; customerRef: string | null; orderRef: string; start: Date; end: Date },
+  ): Promise<{ ok: boolean; message: string }> {
+    const db = this.prisma.platform;
+    const now = new Date();
+    const outcome = await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${"purchase:" + co.purchaseRequestId}))::text`;
+      const fresh = await tx.iyzicoCheckout.findUniqueOrThrow({ where: { id: co.id } });
+      if (fresh.status !== "PENDING") return { already: fresh.status === "COMPLETED" } as const;
+      const req = await tx.purchaseRequest.findUnique({ where: { id: co.purchaseRequestId } });
+      if (!req) return { conflict: "Satın alma kaydı bulunamadı" } as const;
+      // Deneme kaydıyla aynı kilit: aynı e-postayla eşzamanlı iki hesap açılmaz.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${"signup:" + req.email}))::text`;
+      if (await tx.user.findUnique({ where: { email: req.email }, select: { id: true } })) return { conflict: "Bu e-posta adresiyle başka bir hesap açılmış" } as const;
+      if (await tx.tenant.findFirst({ where: { phone: req.phone, status: { not: "CANCELLED" } }, select: { id: true } })) return { conflict: "Bu telefon numarası başka bir işletmede kullanılıyor" } as const;
+      let slug = slugify(req.businessName) || "isletme";
+      if (await tx.tenant.findUnique({ where: { slug } })) slug = `${slug}-${randomToken().slice(0, 6).toLowerCase().replace(/[^a-z0-9]/g, "x")}`;
+      const tenant = await tx.tenant.create({ data: { name: req.businessName, slug, status: "ACTIVE", planCode: co.planCode, phone: req.phone, email: req.email } });
+      const user = await tx.user.create({ data: { email: req.email, passwordHash: req.passwordHash, fullName: req.fullName, phone: req.phone, emailVerifiedAt: req.verifiedAt ?? now } });
+      await tx.membership.create({ data: { tenantId: tenant.id, userId: user.id, role: "OWNER" } });
+      const consent = { userId: user.id, ip: req.ip, userAgent: req.userAgent };
+      await tx.userConsent.createMany({
+        data: [
+          { ...consent, type: "KVKK_NOTICE", granted: true, version: req.kvkkNoticeVersion, createdAt: req.createdAt },
+          { ...consent, type: "TERMS", granted: true, version: req.termsVersion, createdAt: req.createdAt },
+          { ...consent, type: "MARKETING", granted: req.marketingConsent, version: MARKETING_VERSION, createdAt: req.createdAt },
+        ],
+      });
+      const sub = await tx.subscription.create({
+        data: { tenantId: tenant.id, planCode: co.planCode, billingCycle: co.billingCycle, currentPeriodStart: r.start, currentPeriodEnd: r.end, provider: IYZICO, providerRef: r.ref, planPriceId: co.planPriceId, priceAmount: co.netAmount, vatRate: co.vatRate },
+      });
+      await tx.subscriptionPayment.create({
+        data: { tenantId: tenant.id, subscriptionId: sub.id, amount: co.grossAmount, netAmount: co.netAmount, vatRate: co.vatRate, status: "PAID", provider: IYZICO, providerRef: r.orderRef, description: `${plan.name} paketi`, idempotencyKey: `iyzico:order:${r.orderRef}` },
+      });
+      await tx.iyzicoCheckout.update({ where: { id: co.id }, data: { status: "COMPLETED", completedAt: now, tenantId: tenant.id, userId: user.id, subscriptionReferenceCode: r.ref, customerReferenceCode: r.customerRef, subscriptionId: sub.id } });
+      // Aynı e-postanın diğer bekleyen satın alma kayıtları da gereksizleşti (veri minimizasyonu).
+      await tx.purchaseRequest.deleteMany({ where: { email: req.email } });
+      const meta = { provider: IYZICO, env: co.environment, plan: co.planCode, cycle: co.billingCycle, planPriceId: co.planPriceId, net: co.netAmount.toFixed(2), gross: co.grossAmount.toFixed(2), vatRate: co.vatRate.toFixed(2) };
+      await tx.auditLog.create({ data: { tenantId: tenant.id, actorId: user.id, ip: req.ip, action: "tenant.registered", metadata: { via: "purchase", plan: co.planCode, requestedAt: req.createdAt.toISOString(), verifiedAt: req.verifiedAt?.toISOString() ?? null } } });
+      await tx.auditLog.create({ data: { tenantId: tenant.id, actorId: user.id, action: "subscription.activated", metadata: meta } });
+      return { tenant, user } as const;
+    });
+    if ("already" in outcome) return outcome.already ? { ok: true, message: "Ödeme alındı" } : { ok: false, message: "Ödeme alınamadı" };
+    if ("conflict" in outcome) {
+      await this.safeCancel(r.ref, null);
+      await this.audit.logPlatform({ action: "purchase.conflict_refund_needed", entity: "PurchaseRequest", entityId: co.purchaseRequestId, metadata: { reason: outcome.conflict ?? "", ref: r.ref, order: r.orderRef, gross: co.grossAmount.toFixed(2) } });
+      await this.notifyPlatform(`İade gerekiyor: siteden satın alma (${co.grossAmount.toFixed(2)} TL)`, `Ödeme alındı ancak hesap açılamadı: ${outcome.conflict}. iyzico aboneliği iptal edildi (${r.ref}); sipariş ${r.orderRef} için iade yapın.`);
+      return this.failCheckout(co.id, null, `${outcome.conflict}; hesap açılmadı. Ödemeniz iade edilecek, bizimle iletişime geçin.`, r.ref);
+    }
+    const env = loadEnv();
+    const gross = co.grossAmount.toFixed(2);
+    const { tenant, user } = outcome;
+    try {
+      await this.email.send(user.email, { name: "purchase_completed", vars: { fullName: user.fullName, salon: tenant.name, plan: plan.name, amount: gross, until: r.end.toISOString().slice(0, 10), link: `${appUrl(env)}/giris` } }, { dedupeKey: `purchase-completed:${co.id}`, tenantId: tenant.id });
+      const company = await db.platformCompany.findUnique({ where: { id: 1 }, select: { email: true } });
+      await this.email.send(company?.email || env.SUPPORT_EMAIL, { name: "purchase_received", vars: { salon: tenant.name, plan: plan.name, amount: gross, link: `${appUrl(env)}/platform?sekme=isletmeler` } }, { dedupeKey: `purchase-received:${co.id}` });
+    } catch (e) {
+      this.logger.warn(`Satın alma e-postası gönderilemedi: ${(e as Error).message}`);
+    }
+    return { ok: true, message: "Ödeme alındı, hesabınız açıldı" };
+  }
+
+  private async notifyPlatform(subject: string, body: string) {
+    try {
+      const company = await this.prisma.platform.platformCompany.findUnique({ where: { id: 1 }, select: { email: true } });
+      await this.email.send(company?.email || loadEnv().SUPPORT_EMAIL, { name: "owner_notice", vars: { subject, body } });
+    } catch {
+      /* denetim kaydında görünür */
+    }
+  }
+
+  private async failCheckout(id: string, tenantId: string | null, error: string, subscriptionReferenceCode?: string) {
     await this.prisma.platform.iyzicoCheckout.updateMany({ where: { id, status: "PENDING" }, data: { status: "FAILED", error, completedAt: new Date(), ...(subscriptionReferenceCode ? { subscriptionReferenceCode } : {}) } });
     await this.audit.logPlatform({ tenantId, action: "subscription.payment_failed", metadata: { provider: IYZICO, error, ref: subscriptionReferenceCode ?? null } });
     return { ok: false, message: error };
@@ -301,7 +455,7 @@ export class IyzicoBillingService {
     return { completed, closed };
   }
 
-  private async safeCancel(ref: string, tenantId: string) {
+  private async safeCancel(ref: string, tenantId: string | null) {
     try {
       await this.client.cancelSubscription(ref);
       await this.audit.logPlatform({ tenantId, action: "iyzico.subscription_cancelled", metadata: { ref } });

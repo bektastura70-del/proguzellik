@@ -60,6 +60,10 @@ export abstract class IyzicoClient {
   /** "sandbox" | "live" | null (yapılandırılmadı) */
   abstract get environment(): "sandbox" | "live" | null;
   abstract createProduct(name: string, description: string): Promise<{ referenceCode: string }>;
+  /** Aynı adlı ürün iyzico'da zaten varsa (ör. kayıt bizde yok) referansı bulunur. */
+  abstract findProduct(name: string): Promise<{ referenceCode: string } | null>;
+  /** Ürün altında aynı adlı ödeme planı (tutar ve dönem çağıran tarafından doğrulanır). */
+  abstract findPricingPlan(productRef: string, name: string): Promise<{ referenceCode: string; price: number; interval: IyzicoInterval } | null>;
   abstract createPricingPlan(productRef: string, p: { name: string; price: string; interval: IyzicoInterval }): Promise<{ referenceCode: string }>;
   abstract initCheckout(p: { conversationId: string; callbackUrl: string; pricingPlanReferenceCode: string; customer: IyzicoCustomer }): Promise<{ token: string; checkoutFormContent: string; tokenExpireTime?: number }>;
   abstract retrieveCheckout(token: string): Promise<IyzicoCheckoutResult>;
@@ -140,6 +144,29 @@ export class HttpIyzicoClient extends IyzicoClient {
   async createProduct(name: string, description: string) {
     const r = await this.call<{ data: { referenceCode: string } }>("POST", "/v2/subscription/products", { locale: "tr", name, description });
     return { referenceCode: r.data.referenceCode };
+  }
+
+  async findProduct(name: string) {
+    for (let page = 1; page <= 10; page++) {
+      const r = await this.call<{ data: { items?: { referenceCode: string; name: string }[]; pageCount?: number } }>("GET", `/v2/subscription/products?page=${page}&count=100`);
+      const hit = r.data.items?.find((p) => p.name === name);
+      if (hit) return { referenceCode: hit.referenceCode };
+      if (!r.data.items?.length || page >= (r.data.pageCount ?? 1)) break;
+    }
+    return null;
+  }
+
+  async findPricingPlan(productRef: string, name: string) {
+    for (let page = 1; page <= 10; page++) {
+      const r = await this.call<{ data: { items?: { referenceCode: string; name: string; price: number; paymentInterval: IyzicoInterval; paymentIntervalCount?: number }[]; pageCount?: number } }>(
+        "GET",
+        `/v2/subscription/products/${encodeURIComponent(productRef)}/pricing-plans?page=${page}&count=100`,
+      );
+      const hit = r.data.items?.find((p) => p.name === name && (p.paymentIntervalCount ?? 1) === 1);
+      if (hit) return { referenceCode: hit.referenceCode, price: Number(hit.price), interval: hit.paymentInterval };
+      if (!r.data.items?.length || page >= (r.data.pageCount ?? 1)) break;
+    }
+    return null;
   }
 
   async createPricingPlan(productRef: string, p: { name: string; price: string; interval: IyzicoInterval }) {

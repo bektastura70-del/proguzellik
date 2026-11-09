@@ -17,6 +17,16 @@ export async function getPlans(): Promise<SitePlan[]> {
   }
 }
 
+/** Siteden doğrudan satın alma açık mı (API'ye ulaşılamazsa kapalı sayılır). */
+export async function getPurchaseOpen(): Promise<boolean> {
+  try {
+    const r = await fetch(`${API_URL}/purchase/status`, { cache: "no-store" });
+    return r.ok ? ((await r.json()) as { enabled?: boolean }).enabled === true : false;
+  } catch {
+    return false;
+  }
+}
+
 export async function getSiteInfo(): Promise<SiteInfo> {
   try {
     const r = await fetch(`${API_URL}/public/site`, { cache: "no-store" });

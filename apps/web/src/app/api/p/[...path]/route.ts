@@ -24,6 +24,9 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
   const tenant = req.headers.get("x-tenant-id") ?? req.cookies.get(TENANT_COOKIE)?.value;
   if (tenant) headers["X-Tenant-Id"] = tenant;
   Object.assign(headers, clientIpHeaders(req));
+  // Kayıt/satın alma onay kayıtlarında tarayıcı bilgisi (sunucu değil) saklansın.
+  const ua = req.headers.get("user-agent");
+  if (ua) headers["User-Agent"] = ua.slice(0, 300);
   const res = await fetch(url, {
     method: req.method,
     headers,

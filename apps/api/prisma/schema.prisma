@@ -1472,8 +1472,11 @@ enum IyzicoCheckoutStatus {
 /// iyzico ödeme formu oturumu. Kart bilgisi hiç tutulmaz; yalnız iyzico belirteci ve referanslar.
 model IyzicoCheckout {
   id                        String               @id @default(uuid()) @db.Uuid
-  tenantId                  String               @db.Uuid
-  userId                    String               @db.Uuid
+  /// Mevcut işletmenin ödemesinde dolu. Siteden satın almada ödeme başarılı olana dek boş (işletme henüz yok).
+  tenantId                  String?              @db.Uuid
+  userId                    String?              @db.Uuid
+  /// Siteden doğrudan satın alma: bekleyen satın alma kaydı (tenantId ya da bu alan dolu olmalı)
+  purchaseRequestId         String?              @db.Uuid
   environment               String
   conversationId            String               @unique
   token                     String?              @unique
@@ -1493,6 +1496,38 @@ model IyzicoCheckout {
   completedAt               DateTime?
 
   @@index([tenantId, createdAt])
+  @@index([purchaseRequestId])
+}
+
+/// Siteden doğrudan paket satın alma (deneme olmadan). İşletme ve kullanıcı yalnız ilk ödeme
+/// iyzico'da doğrulanınca oluşturulur; o anda bu kayıt silinir. Fatura bilgileri burada tutulmaz (yalnız iyzico'ya gider).
+model PurchaseRequest {
+  id                String       @id @default(uuid()) @db.Uuid
+  /// Küçük harfe çevrilmiş
+  email             String
+  businessName      String
+  fullName          String
+  /// Normalleştirilmiş telefon (+90XXXXXXXXXX)
+  phone             String
+  passwordHash      String
+  planCode          String
+  billingCycle      BillingCycle
+  kvkkNoticeVersion String
+  termsVersion      String
+  marketingConsent  Boolean      @default(false)
+  /// E-posta bağlantısındaki belirtecin özeti; ödeme adımına kadar aynı bağlantı kullanılır
+  tokenHash         String       @unique
+  expiresAt         DateTime
+  verifiedAt        DateTime?
+  /// Bu kayıtla başlatılan ödeme formu sayısı (kötüye kullanım sınırı)
+  checkoutCount     Int          @default(0)
+  ip                String?
+  userAgent         String?
+  createdAt         DateTime     @default(now())
+
+  @@index([email])
+  @@index([phone])
+  @@index([expiresAt])
 }
 
 /// iyzico abonelik bildirimleri (webhook). Aynı bildirim iki kez işlenmez.
