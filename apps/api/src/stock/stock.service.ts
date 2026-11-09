@@ -12,6 +12,7 @@ export interface ProductInput {
   minQty?: number;
   costPrice?: number;
   salePrice?: number;
+  vatRate?: number | null;
   isActive?: boolean;
 }
 
@@ -25,6 +26,12 @@ export interface SaleInput {
   staffId?: string;
   note?: string;
 }
+
+/** KDV dahil tutarın içindeki KDV: tutar × oran / (100 + oran) */
+export const vatOf = (gross: Prisma.Decimal, rate: Prisma.Decimal | null) =>
+  rate === null || rate.isZero() ? D(0) : gross.times(rate).div(D(100).plus(rate)).toDecimalPlaces(2);
+
+export type LowStockItem = { id: string; name: string; stockQty: string; minQty: string; unit: string };
 
 @Injectable()
 export class StockService {
@@ -126,58 +133,113 @@ export class StockService {
    */
   sell(t: TenantInfo, b: SaleInput) {
     return this.prisma.withTenant(t, async (tx) => {
-      if (!b.items.length) throw new BadRequestException("Satışta en az bir ürün olmalı");
-      if (b.customerId && !(await tx.customer.findUnique({ where: { id: b.customerId } }))) throw new NotFoundException("Müşteri bulunamadı");
-      if (b.staffId) {
-        const st = await tx.staffMember.findUnique({ where: { id: b.staffId } });
-        if (!st || !st.isActive) throw new NotFoundException("Personel bulunamadı");
-      }
-      const ids = [...new Set(b.items.map((i) => i.productId))];
-      const products = await tx.product.findMany({ where: { id: { in: ids } } });
-      const lines = b.items.map((i) => {
-        const p = products.find((x) => x.id === i.productId);
-        if (!p || !p.isActive) throw new NotFoundException("Ürün bulunamadı");
-        if (p.kind !== "RETAIL") throw new BadRequestException(`${p.name} satışa açık değil`);
-        const unit = i.unitPrice ?? (p.salePrice !== null ? Number(p.salePrice) : undefined);
-        if (unit === undefined) throw new BadRequestException(`${p.name} için satış fiyatı tanımlı değil`);
-        return { p, qty: D(i.qty), unitPrice: D(unit).toDecimalPlaces(2), lineTotal: D(unit).times(i.qty).toDecimalPlaces(2) };
-      });
-      const total = lines.reduce((s, l) => s.plus(l.lineTotal), D(0));
-      const description = lines.map((l) => `${l.p.name} × ${l.qty.toString()}`).join(", ").slice(0, 300);
-      const trx = await tx.financeTransaction.create({
-        data: {
-          tenantId: t.tenantId,
-          type: "INCOME",
-          category: "URUN_SATISI",
-          amount: total,
-          method: b.method,
-          customerId: b.customerId,
-          staffId: b.staffId,
-          description,
-          createdById: t.userId,
-        },
-      });
-      const sale = await tx.productSale.create({
-        data: {
-          tenantId: t.tenantId,
-          customerId: b.customerId,
-          staffId: b.staffId,
-          financeTransactionId: trx.id,
-          method: b.method,
-          total,
-          note: b.note,
-          createdById: t.userId,
-        },
-      });
-      for (const l of lines) {
-        await tx.productSaleItem.create({
-          data: { tenantId: t.tenantId, saleId: sale.id, productId: l.p.id, qty: l.qty, unitPrice: l.unitPrice, unitCost: l.p.costPrice, lineTotal: l.lineTotal },
-        });
-        await StockService.move(tx, { tenantId: t.tenantId, productId: l.p.id, type: "SALE", qty: l.qty, createdById: t.userId, note: "Satış", productSaleId: sale.id });
-      }
-      await this.audit.log(tx, { tenantId: t.tenantId, actorId: t.userId, action: "stock.sold", entity: "ProductSale", entityId: sale.id, metadata: { total: money(total), items: lines.length } });
+      const r = await this.sellInTx(tx, t, b);
       // Eski istemcilerle uyum: yanıtın kökü kasa kaydıdır.
-      return { ...trx, saleId: sale.id, sale: await StockService.saleDetail(tx, sale.id) };
+      return { ...r.transaction, saleId: r.sale.id, sale: r.sale, lowStock: r.lowStock };
+    });
+  }
+
+  /** Satış fişini verilen transaction içinde yazar (randevu tahsilatı da kullanır). */
+  async sellInTx(tx: Tx, t: TenantInfo, b: SaleInput & { appointmentId?: string }) {
+    if (!b.items.length) throw new BadRequestException("Satışta en az bir ürün olmalı");
+    if (b.customerId && !(await tx.customer.findUnique({ where: { id: b.customerId } }))) throw new NotFoundException("Müşteri bulunamadı");
+    if (b.staffId) {
+      const st = await tx.staffMember.findUnique({ where: { id: b.staffId } });
+      if (!st || !st.isActive) throw new NotFoundException("Personel bulunamadı");
+    }
+    const ids = [...new Set(b.items.map((i) => i.productId))];
+    const products = await tx.product.findMany({ where: { id: { in: ids } } });
+    const lines = b.items.map((i) => {
+      const p = products.find((x) => x.id === i.productId);
+      if (!p || !p.isActive) throw new NotFoundException("Ürün bulunamadı");
+      if (p.kind !== "RETAIL") throw new BadRequestException(`${p.name} satışa açık değil`);
+      const unit = i.unitPrice ?? (p.salePrice !== null ? Number(p.salePrice) : undefined);
+      if (unit === undefined) throw new BadRequestException(`${p.name} için satış fiyatı tanımlı değil`);
+      const lineTotal = D(unit).times(i.qty).toDecimalPlaces(2);
+      return { p, qty: D(i.qty), unitPrice: D(unit).toDecimalPlaces(2), lineTotal, vatRate: p.vatRate, vatAmount: vatOf(lineTotal, p.vatRate) };
+    });
+    const total = lines.reduce((s, l) => s.plus(l.lineTotal), D(0));
+    const vatTotal = lines.reduce((s, l) => s.plus(l.vatAmount), D(0));
+    const description = lines.map((l) => `${l.p.name} × ${l.qty.toString()}`).join(", ").slice(0, 300);
+    const trx = await tx.financeTransaction.create({
+      data: {
+        tenantId: t.tenantId,
+        type: "INCOME",
+        category: "URUN_SATISI",
+        amount: total,
+        method: b.method,
+        customerId: b.customerId,
+        staffId: b.staffId,
+        description,
+        createdById: t.userId,
+      },
+    });
+    const sale = await tx.productSale.create({
+      data: {
+        tenantId: t.tenantId,
+        customerId: b.customerId,
+        staffId: b.staffId,
+        appointmentId: b.appointmentId,
+        financeTransactionId: trx.id,
+        method: b.method,
+        total,
+        vatTotal,
+        note: b.note,
+        createdById: t.userId,
+      },
+    });
+    for (const l of lines) {
+      await tx.productSaleItem.create({
+        data: {
+          tenantId: t.tenantId, saleId: sale.id, productId: l.p.id, qty: l.qty, unitPrice: l.unitPrice, unitCost: l.p.costPrice,
+          lineTotal: l.lineTotal, vatRate: l.vatRate, vatAmount: l.vatAmount,
+        },
+      });
+      await StockService.move(tx, { tenantId: t.tenantId, productId: l.p.id, type: "SALE", qty: l.qty, createdById: t.userId, note: "Satış", productSaleId: sale.id });
+    }
+    await this.audit.log(tx, { tenantId: t.tenantId, actorId: t.userId, action: "stock.sold", entity: "ProductSale", entityId: sale.id, metadata: { total: money(total), items: lines.length } });
+    // Bu satışla kritik seviyeye düşen ya da altında kalan ürünler (anında uyarı için)
+    const after = await tx.product.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, stockQty: true, minQty: true, unit: true } });
+    const lowStock: LowStockItem[] = after
+      .filter((p) => D(p.minQty).greaterThan(0) && D(p.stockQty).lessThanOrEqualTo(p.minQty))
+      .map((p) => ({ id: p.id, name: p.name, stockQty: p.stockQty.toString(), minQty: p.minQty.toString(), unit: p.unit }));
+    return { transaction: trx, sale: await StockService.saleDetail(tx, sale.id), lowStock };
+  }
+
+  /**
+   * Randevu tahsilatı: hizmet bedeli ve yanında satılan ürünler tek işlemde kaydedilir.
+   * Hizmet tahsilatı kasaya "HIZMET", ürünler ayrı bir satış fişi olarak "URUN_SATISI" yazılır
+   * (ürün primi randevunun personeline ya da seçilen personele gider).
+   */
+  checkoutAppointment(
+    t: TenantInfo,
+    appointmentId: string,
+    b: { serviceAmount?: number; method: PaymentMethod; items: SaleInput["items"]; productStaffId?: string; description?: string },
+  ) {
+    return this.prisma.withTenant(t, async (tx) => {
+      const appt = await tx.appointment.findUnique({ where: { id: appointmentId } });
+      if (!appt) throw new NotFoundException("Randevu bulunamadı");
+      if (appt.status !== "COMPLETED") throw new ConflictException("Tahsilat yalnızca tamamlanan randevu için alınır");
+      if (!b.serviceAmount && !b.items.length) throw new BadRequestException("Tahsil edilecek tutar ya da ürün yok");
+      let service = null;
+      if (b.serviceAmount) {
+        service = await tx.financeTransaction.create({
+          data: {
+            tenantId: t.tenantId, type: "INCOME", category: "HIZMET", amount: b.serviceAmount, method: b.method,
+            customerId: appt.customerId, appointmentId: appt.id, staffId: appt.staffId, description: b.description, createdById: t.userId,
+          },
+        });
+        await this.audit.log(tx, { tenantId: t.tenantId, actorId: t.userId, action: "finance.collected", entity: "FinanceTransaction", entityId: service.id });
+      }
+      const products = b.items.length
+        ? await this.sellInTx(tx, t, { items: b.items, method: b.method, customerId: appt.customerId, staffId: b.productStaffId ?? appt.staffId, appointmentId: appt.id })
+        : null;
+      return {
+        service,
+        sale: products?.sale ?? null,
+        lowStock: products?.lowStock ?? [],
+        total: money(D(service?.amount).plus(D(products?.sale.total))),
+      };
     });
   }
 
@@ -238,7 +300,8 @@ export class StockService {
         if (!it) throw new NotFoundException("Satış satırı bulunamadı");
         const left = D(it.qty).minus(it.returns.reduce((s, x) => s.plus(x.qty), D(0)));
         if (D(r.qty).greaterThan(left)) throw new ConflictException(`İade adedi kalan adedi (${left.toString()}) aşamaz`);
-        return { it, qty: D(r.qty), amount: D(it.unitPrice).times(r.qty).toDecimalPlaces(2), restock: r.restock ?? true };
+        const amount = D(it.unitPrice).times(r.qty).toDecimalPlaces(2);
+        return { it, qty: D(r.qty), amount, vatAmount: vatOf(amount, it.vatRate), restock: r.restock ?? true };
       });
       if (new Set(lines.map((l) => l.it.id)).size !== lines.length) throw new BadRequestException("Aynı satır birden çok kez seçildi");
       const amount = lines.reduce((s, l) => s.plus(l.amount), D(0));
@@ -263,7 +326,7 @@ export class StockService {
         data: { tenantId: t.tenantId, saleId, refundTransactionId: trx.id, amount, reason: b.reason, createdById: t.userId },
       });
       for (const l of lines) {
-        await tx.productSaleReturnLine.create({ data: { tenantId: t.tenantId, returnId: ret.id, saleItemId: l.it.id, qty: l.qty, amount: l.amount, restocked: l.restock } });
+        await tx.productSaleReturnLine.create({ data: { tenantId: t.tenantId, returnId: ret.id, saleItemId: l.it.id, qty: l.qty, amount: l.amount, vatAmount: l.vatAmount, restocked: l.restock } });
         if (l.restock) {
           await StockService.move(tx, { tenantId: t.tenantId, productId: l.it.productId, type: "RETURN", qty: l.qty, createdById: t.userId, note: "Satış iadesi", productSaleId: saleId });
         }
@@ -281,17 +344,19 @@ export class StockService {
         tx.productSaleItem.findMany({ where: { sale: { occurredAt: range } }, include: { product: { select: { name: true, unit: true } } } }),
         tx.productSaleReturnLine.findMany({ where: { ret: { createdAt: range } }, include: { saleItem: { include: { product: { select: { name: true, unit: true } } } } } }),
       ]);
-      type Row = { productId: string; name: string; unit: string; soldQty: Prisma.Decimal; returnedQty: Prisma.Decimal; revenue: Prisma.Decimal; cost: Prisma.Decimal; costKnown: boolean };
+      type Row = { productId: string; name: string; unit: string; soldQty: Prisma.Decimal; returnedQty: Prisma.Decimal; revenue: Prisma.Decimal; vat: Prisma.Decimal; cost: Prisma.Decimal; costKnown: boolean; vatKnown: boolean };
       const by = new Map<string, Row>();
       const row = (id: string, p: { name: string; unit: string }) => {
         let r = by.get(id);
-        if (!r) by.set(id, (r = { productId: id, name: p.name, unit: p.unit, soldQty: D(0), returnedQty: D(0), revenue: D(0), cost: D(0), costKnown: true }));
+        if (!r) by.set(id, (r = { productId: id, name: p.name, unit: p.unit, soldQty: D(0), returnedQty: D(0), revenue: D(0), vat: D(0), cost: D(0), costKnown: true, vatKnown: true }));
         return r;
       };
       for (const i of items) {
         const r = row(i.productId, i.product);
         r.soldQty = r.soldQty.plus(i.qty);
         r.revenue = r.revenue.plus(i.lineTotal);
+        r.vat = r.vat.plus(i.vatAmount);
+        if (i.vatRate === null) r.vatKnown = false;
         if (i.unitCost === null) r.costKnown = false;
         r.cost = r.cost.plus(D(i.unitCost).times(i.qty));
       }
@@ -300,6 +365,7 @@ export class StockService {
         const r = row(i.productId, i.product);
         r.returnedQty = r.returnedQty.plus(l.qty);
         r.revenue = r.revenue.minus(l.amount);
+        r.vat = r.vat.minus(l.vatAmount);
         if (l.restocked) r.cost = r.cost.minus(D(i.unitCost).times(l.qty));
       }
       const products = [...by.values()]
@@ -310,14 +376,18 @@ export class StockService {
           soldQty: r.soldQty.toString(),
           returnedQty: r.returnedQty.toString(),
           revenue: money(r.revenue),
+          vat: money(r.vat),
+          netRevenue: money(r.revenue.minus(r.vat)),
           cost: money(r.cost),
-          profit: money(r.revenue.minus(r.cost)),
+          // Kâr KDV hariç ciro üzerinden (alış fiyatı KDV hariç girilir)
+          profit: money(r.revenue.minus(r.vat).minus(r.cost)),
           costKnown: r.costKnown,
+          vatKnown: r.vatKnown,
         }))
         .sort((a, b) => Number(b.revenue) - Number(a.revenue));
-      const sum = (k: "revenue" | "cost" | "profit") => money(products.reduce((s, p) => s.plus(p[k]), D(0)));
+      const sum = (k: "revenue" | "vat" | "netRevenue" | "cost" | "profit") => money(products.reduce((s, p) => s.plus(p[k]), D(0)));
       const saleCount = await tx.productSale.count({ where: { occurredAt: range } });
-      return { from: q.from, to: q.to, saleCount, revenue: sum("revenue"), cost: sum("cost"), profit: sum("profit"), products };
+      return { from: q.from, to: q.to, saleCount, revenue: sum("revenue"), vat: sum("vat"), netRevenue: sum("netRevenue"), cost: sum("cost"), profit: sum("profit"), products };
     });
   }
 

@@ -8,6 +8,7 @@ import { PaymentReminderService } from "../platform/finance/payment-reminder.ser
 import { RenewalService } from "../notifications/renewal.service";
 import { RetentionService } from "../notifications/retention.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { LowStockService } from "../stock/low-stock.service";
 import { purgeTrialApplications } from "../platform/trial-application.service";
 
 export const DAILY_JOB = "subscription-lifecycle";
@@ -36,6 +37,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     private readonly reminders: PaymentReminderService,
     private readonly retention: RetentionService,
     private readonly renewal: RenewalService,
+    private readonly lowStock: LowStockService,
   ) {}
 
   async onModuleInit() {
@@ -91,6 +93,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       const ret = await this.retention.run(now);
       // Yenilenme hatırlatmaları (uygulama bildirimi + e-posta; RENEWAL_REMINDERS=1 ve işletme ayarı açıksa)
       const ren = await this.renewal.run(now);
+      // Kritik stok e-postası (işletme sahibi ve yöneticilere; ayarlardan kapatılabilir)
+      const low = await this.lowStock.run(now);
       const result = {
         ...lifecycle,
         paymentReminders: pay.paymentReminders,
@@ -99,7 +103,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         packageReminders: ret.packageReminders,
         rebookReminders: ret.rebookReminders,
         renewalReminders: ren.renewalReminders,
-        errors: [...lifecycle.errors, ...pay.paymentReminderErrors, ...ret.errors, ...ren.errors],
+        lowStockEmails: low.lowStockEmails,
+        errors: [...lifecycle.errors, ...pay.paymentReminderErrors, ...ret.errors, ...ren.errors, ...low.errors],
       };
       await db.jobRun.update({
         where: { id: run.id },

@@ -23,6 +23,7 @@ export type EmailTemplate =
   | { name: "invoice_notice"; vars: { salon: string; number: string; amount: string; date: string } }
   | { name: "owner_notice"; vars: { subject: string; body: string; salon?: string } }
   | { name: "customer_otp"; vars: { salon: string; code: string; minutes: number } }
+  | { name: "low_stock_alert"; vars: { salon: string; count: number; items: string; link: string } }
   | { name: "renewal_reminder"; vars: { salon: string; firstName: string; service: string; dueDate: string; link: string; phone?: string; optOutLink: string } };
 
 export type TemplateName = EmailTemplate["name"];
@@ -56,6 +57,7 @@ export const TEMPLATE_META: Record<TemplateName, { label: string; vars: string[]
   customer_otp: { label: "Müşteri portalı doğrulama kodu", vars: ["salon", "minutes"], secret: true, editable: false },
   // secret: değişkenler (vazgeçme belirteci) saklanmaz ve e-posta merkezinden elle yeniden gönderilemez.
   // Yeniden deneme yalnızca kuyruktan yapılır; orada izin/vazgeçme/randevu/tarih her denemede yeniden denetlenir.
+  low_stock_alert: { label: "Kritik stok uyarısı (işletme sahibi ve yöneticilere)", vars: ["salon", "count"], secret: false, editable: false },
   renewal_reminder: { label: "Yenilenme hatırlatması (salon müşterisine)", vars: ["salon", "firstName", "service", "dueDate"], secret: true, editable: false },
 };
 
@@ -183,6 +185,15 @@ export function render(t: EmailTemplate, override?: TemplateOverride | null): { 
     case "invoice_notice":
       subject = `Faturanız: ${t.vars.number}`;
       paras = [`${esc(t.vars.salon)} adına ${esc(t.vars.date)} tarihli ${esc(t.vars.number)} numaralı faturanız düzenlendi.`, `Tutar: ${esc(t.vars.amount)} TL.`];
+      break;
+    case "low_stock_alert":
+      subject = `${t.vars.salon}: ${t.vars.count} ürün kritik stok seviyesinde`;
+      paras = [
+        `${esc(t.vars.salon)} işletmesinde aşağıdaki ürünler kritik seviyede ya da altında:`,
+        String(t.vars.items ?? "").split("\n").filter(Boolean).map((i) => `• ${esc(i)}`).join("<br>"),
+        "Bu uyarıyı Ayarlar sayfasından kapatabilirsiniz.",
+      ];
+      cta = { label: "Stoğa git", link: t.vars.link };
       break;
     case "renewal_reminder":
       subject = `${t.vars.salon}: ${t.vars.service} yenileme zamanınız yaklaşıyor`;

@@ -104,6 +104,7 @@ test.describe.serial("Stok", () => {
     await expect(row).toContainText("10 adet");
     await row.getByRole("button", { name: "Düzenle" }).click();
     await page.getByRole("dialog").getByLabel("Satış fiyatı (₺)").fill("375");
+    await page.getByRole("dialog").getByLabel("KDV oranı (%)").fill("20");
     await page.getByRole("dialog").getByRole("button", { name: "Kaydet" }).click();
     await expectToast(page, "Ürün güncellendi");
     await row.getByRole("button", { name: "Geçmiş" }).click();
@@ -120,6 +121,7 @@ test.describe.serial("Stok", () => {
     await dlg.getByRole("button", { name: "Satışı kaydet" }).click();
     await expectToast(page, "Satış kaydedildi");
     await expect(row).toContainText("7 adet");
+    await expect(row).toContainText("KDV %20");
     const tx = await apiGet<Tx[]>(page, `/finance/transactions?${today()}`);
     expect(tx.find((t) => t.category === "URUN_SATISI" && t.amount === "1125")).toBeTruthy();
     await row.getByRole("button", { name: "Sat" }).click();

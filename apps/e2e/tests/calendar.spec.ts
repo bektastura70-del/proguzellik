@@ -114,8 +114,11 @@ test.describe.serial("Randevu takvimi", () => {
     await page.locator(`[data-appt-id="${createdId}"]`).click();
     await page.getByRole("dialog").getByRole("button", { name: "Tamamlandı" }).click();
     const pay = page.getByRole("dialog", { name: "Tahsilat" });
-    await expect(pay.getByLabel("Tutar (₺)")).toHaveValue("500");
+    await expect(pay.getByLabel("Hizmet tutarı (₺)")).toHaveValue("500");
     await pay.getByLabel("Yöntem").selectOption("CASH");
+    // Randevu tahsilatına ürün eklenir (tek işlemde hizmet + ürün)
+    await pay.getByRole("button", { name: "+ Ürün ekle" }).click();
+    await expect(pay.getByText(/ürün primi .* için hesaplanır/)).toBeVisible();
     await pay.getByRole("button", { name: "Tahsil et" }).click();
     await expectToast(page, "Tahsilat kaydedildi");
     const list = await apiGet<Appt[]>(page, `/appointments?${range}`);
@@ -123,6 +126,8 @@ test.describe.serial("Randevu takvimi", () => {
     expect(a).toMatchObject({ status: "COMPLETED", price: "500", startsAt: iso("16:30") });
     const tx = await apiGet<{ appointmentId: string | null; amount: string; method: string }[]>(page, `/finance/transactions?from=${encodeURIComponent(new Date(Date.now() - 60_000).toISOString())}&to=${encodeURIComponent(new Date(Date.now() + 60_000).toISOString())}`);
     expect(tx.find((t) => t.appointmentId === a.id)).toMatchObject({ amount: "500", method: "CASH" });
+    const sales = await apiGet<{ appointmentId: string | null; method: string; items: unknown[] }[]>(page, `/product-sales?from=${encodeURIComponent(new Date(Date.now() - 60_000).toISOString())}&to=${encodeURIComponent(new Date(Date.now() + 60_000).toISOString())}`);
+    expect(sales.find((x) => x.appointmentId === a.id)).toMatchObject({ method: "CASH", items: [expect.anything()] });
   });
 
   test("iptal sebebiyle iptal; 'İptalleri göster' ile görünür", async ({ page }) => {

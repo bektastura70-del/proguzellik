@@ -7,13 +7,13 @@ import { Alert, Badge, Button, Card, CardBody, CardHeader, Dialog, Field, Input,
 import { api, useApi } from "@/lib/api";
 import { ROLE_TR } from "@/lib/format";
 
-type Settings = { name: string; slug: string; phone: string | null; email: string | null; address: string | null; timezone: string; onlineBookingEnabled: boolean; requireMfa: boolean; packageReminderDays: number; renewalRemindersEnabled: boolean; features?: { renewalReminders: boolean } };
+type Settings = { name: string; slug: string; phone: string | null; email: string | null; address: string | null; timezone: string; onlineBookingEnabled: boolean; requireMfa: boolean; packageReminderDays: number; renewalRemindersEnabled: boolean; lowStockEmailEnabled?: boolean; features?: { renewalReminders: boolean } };
 type TeamInvite = { id: string; email: string; fullName: string; role: string; status: "PENDING_DELIVERY" | "SENT"; expiresAt: string | null; sentAt: string | null };
 type InviteResult = { delivered: boolean; reason?: string };
 type Member = { id: string; role: string; isActive: boolean; user: { id: string; fullName: string; email: string } };
 
 export default function SettingsPage() {
-  const { can, me } = useSession();
+  const { can, me, has } = useSession();
   const toast = useToast();
   const settings = useApi<Settings>("/settings");
   const team = useApi<Member[]>("/team");
@@ -74,6 +74,28 @@ export default function SettingsPage() {
                 Müşterilere yenilenme hatırlatması gönder
               </label>
               <p className="text-neutral-500">Yalnızca ticari ileti (kampanya) izni olan ve hatırlatmaları kapatmamış müşterilere gider. Gün ayarları Hizmetler sayfasında yapılır. Müşteri zaten randevu aldıysa hatırlatma gönderilmez.</p>
+            </CardBody>
+          </Card>
+        )}
+        {has("STOCK") && (
+          <Card>
+            <CardHeader title="Kritik stok uyarısı" description="Kritik seviyeye düşen ürünler işletme sahibi ve yöneticilere e-postayla bildirilir." />
+            <CardBody className="space-y-3 text-sm">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={s.lowStockEmailEnabled ?? true} className="accent-brand-600" onChange={async (e) => {
+                  const next = e.target.checked;
+                  settings.setData({ ...s, lowStockEmailEnabled: next });
+                  try {
+                    await api("/settings", { method: "PATCH", body: { lowStockEmailEnabled: next } });
+                    toast(next ? "Kritik stok e-postası açıldı" : "Kritik stok e-postası kapatıldı");
+                  } catch (err) {
+                    settings.setData({ ...s, lowStockEmailEnabled: !next });
+                    toast((err as Error).message, "red");
+                  }
+                }} />
+                Kritik stok e-postası gönder
+              </label>
+              <p className="text-neutral-500">Günde bir kez kontrol edilir. Yeni bir ürün kritik seviyeye düştüğünde e-posta gider; liste değişmezse haftada bir hatırlatılır. Kritik seviye, ürün düzenlenirken girilir.</p>
             </CardBody>
           </Card>
         )}

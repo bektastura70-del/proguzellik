@@ -181,12 +181,12 @@ export function Empty({ title, children }: { title: string; children?: React.Rea
 }
 
 /* ----------------------------- Toast ------------------------------ */
-type ToastMsg = { id: number; text: string; tone: "green" | "red" };
-const ToastCtx = React.createContext<(text: string, tone?: "green" | "red") => void>(() => {});
+type ToastMsg = { id: number; text: string; tone: "green" | "red" | "amber" };
+const ToastCtx = React.createContext<(text: string, tone?: "green" | "red" | "amber") => void>(() => {});
 export const useToast = () => React.useContext(ToastCtx);
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = React.useState<ToastMsg[]>([]);
-  const push = React.useCallback((text: string, tone: "green" | "red" = "green") => {
+  const push = React.useCallback((text: string, tone: "green" | "red" | "amber" = "green") => {
     const id = Date.now() + Math.random();
     setItems((x) => [...x, { id, text, tone }]);
     setTimeout(() => setItems((x) => x.filter((t) => t.id !== id)), 4000);
@@ -196,7 +196,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[60] flex flex-col items-center gap-2 px-4" aria-live="polite">
         {items.map((t) => (
-          <div key={t.id} className={cn("pointer-events-auto rounded-xl px-4 py-3 text-sm text-white shadow-lg", t.tone === "green" ? "bg-ink" : "bg-red-600")}>
+          <div key={t.id} className={cn("pointer-events-auto rounded-xl px-4 py-3 text-sm text-white shadow-lg", t.tone === "green" ? "bg-ink" : t.tone === "amber" ? "bg-amber-600" : "bg-red-600")}>
             {t.text}
           </div>
         ))}

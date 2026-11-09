@@ -49,7 +49,7 @@ export default function StockPage() {
                   <Td><Badge tone={p.kind === "RETAIL" ? "blue" : "neutral"}>{p.kind === "RETAIL" ? "Satış" : "Sarf"}</Badge></Td>
                   <Td className={low ? "font-semibold text-red-600" : ""}>{Number(p.stockQty)} {p.unit}</Td>
                   <Td>{Number(p.minQty)} {p.unit}</Td>
-                  <Td>{p.costPrice ? tl(p.costPrice) : "—"} / {p.salePrice ? tl(p.salePrice) : "—"}</Td>
+                  <Td>{p.costPrice ? tl(p.costPrice) : "—"} / {p.salePrice ? tl(p.salePrice) : "—"}{p.vatRate != null && <div className="text-xs text-neutral-500">KDV %{Number(p.vatRate)}</div>}</Td>
                   <Td className="whitespace-nowrap text-right">
                     {p.kind === "RETAIL" && can("OWNER", "MANAGER", "RECEPTION") && <Button size="sm" variant="ghost" onClick={() => setSelling(p)}>Sat</Button>}
                     {can("OWNER", "MANAGER") && <Button size="sm" variant="ghost" onClick={() => setMoving(p)}>Hareket</Button>}
@@ -70,7 +70,7 @@ export default function StockPage() {
             const f = new FormData(e.currentTarget);
             const n = (k: string) => (f.get(k) ? Number(f.get(k)) : undefined);
             try {
-              await api("/products", { method: "POST", body: { name: f.get("name"), sku: (f.get("sku") as string) || undefined, unit: f.get("unit"), kind: f.get("kind"), minQty: n("minQty"), costPrice: n("costPrice"), salePrice: n("salePrice"), initialQty: n("initialQty") } });
+              await api("/products", { method: "POST", body: { name: f.get("name"), sku: (f.get("sku") as string) || undefined, unit: f.get("unit"), kind: f.get("kind"), minQty: n("minQty"), costPrice: n("costPrice"), salePrice: n("salePrice"), vatRate: n("vatRate"), initialQty: n("initialQty") } });
               toast("Ürün eklendi"); setCreating(false); products.reload();
             } catch (err) { toast((err as Error).message, "red"); }
           }}>
@@ -84,7 +84,8 @@ export default function StockPage() {
               <Field label="Açılış stoğu"><Input name="initialQty" type="number" min={0} step="0.001" /></Field>
               <Field label="Kritik seviye"><Input name="minQty" type="number" min={0} step="0.001" /></Field>
               <Field label="Alış fiyatı (₺)"><Input name="costPrice" type="number" min={0} step="0.01" /></Field>
-              <Field label="Satış fiyatı (₺)"><Input name="salePrice" type="number" min={0} step="0.01" /></Field>
+              <Field label="Satış fiyatı (₺)" hint="KDV dahil"><Input name="salePrice" type="number" min={0} step="0.01" /></Field>
+              <Field label="KDV oranı (%)" hint="Satış ürünlerinde fişte KDV ayrılır; boş bırakılırsa ayrılmaz"><Input name="vatRate" type="number" min={0} max={100} step="0.01" /></Field>
             </div>
             <Button className="w-full">Kaydet</Button>
           </form>
@@ -97,7 +98,7 @@ export default function StockPage() {
             const f = new FormData(e.currentTarget);
             const n = (k: string) => (f.get(k) !== "" ? Number(f.get(k)) : undefined);
             try {
-              await api(`/products/${editing.id}`, { method: "PATCH", body: { name: f.get("name"), sku: (f.get("sku") as string) || undefined, minQty: n("minQty"), costPrice: n("costPrice"), salePrice: n("salePrice"), isActive: f.get("isActive") === "on" } });
+              await api(`/products/${editing.id}`, { method: "PATCH", body: { name: f.get("name"), sku: (f.get("sku") as string) || undefined, minQty: n("minQty"), costPrice: n("costPrice"), salePrice: n("salePrice"), vatRate: f.get("vatRate") === "" ? null : Number(f.get("vatRate")), isActive: f.get("isActive") === "on" } });
               toast("Ürün güncellendi"); setEditing(null); products.reload();
             } catch (err) { toast((err as Error).message, "red"); }
           }}>
@@ -106,7 +107,8 @@ export default function StockPage() {
               <Field label="Stok kodu"><Input name="sku" defaultValue={editing.sku ?? ""} /></Field>
               <Field label="Kritik seviye"><Input name="minQty" type="number" min={0} step="0.001" defaultValue={Number(editing.minQty)} /></Field>
               <Field label="Alış fiyatı (₺)"><Input name="costPrice" type="number" min={0} step="0.01" defaultValue={editing.costPrice ? Number(editing.costPrice) : ""} /></Field>
-              <Field label="Satış fiyatı (₺)"><Input name="salePrice" type="number" min={0} step="0.01" defaultValue={editing.salePrice ? Number(editing.salePrice) : ""} /></Field>
+              <Field label="Satış fiyatı (₺)" hint="KDV dahil"><Input name="salePrice" type="number" min={0} step="0.01" defaultValue={editing.salePrice ? Number(editing.salePrice) : ""} /></Field>
+              <Field label="KDV oranı (%)"><Input name="vatRate" type="number" min={0} max={100} step="0.01" defaultValue={editing.vatRate != null ? Number(editing.vatRate) : ""} /></Field>
             </div>
             <p className="text-xs text-neutral-500">Stok miktarı yalnızca hareket kaydıyla değişir (denetlenebilirlik için).</p>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="isActive" defaultChecked className="accent-brand-600" /> Aktif</label>

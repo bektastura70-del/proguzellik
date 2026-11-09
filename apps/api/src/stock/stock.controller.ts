@@ -15,6 +15,7 @@ const productSchema = z.object({
   minQty: z.number().min(0).max(1_000_000).optional(),
   costPrice: moneySchema.optional(),
   salePrice: moneySchema.optional(),
+  vatRate: z.number().min(0).max(100).nullable().optional(),
   isActive: z.boolean().optional(),
 });
 const createSchema = productSchema.extend({ initialQty: qty.optional() });
@@ -53,6 +54,15 @@ const salesListSchema = z.object({
   staffId: z.string().uuid().optional(),
   customerId: z.string().uuid().optional(),
 });
+const checkoutSchema = z
+  .object({
+    serviceAmount: moneySchema.optional(),
+    method: methodSchema,
+    items: z.array(saleLine).max(50).default([]),
+    productStaffId: z.string().uuid().optional(),
+    description: z.string().trim().max(300).optional(),
+  })
+  .refine((v) => (v.serviceAmount ?? 0) > 0 || v.items.length > 0, "Tahsil edilecek tutar ya da ürün yok");
 const rangeSchema = z.object({ from: z.string().datetime({ offset: true }), to: z.string().datetime({ offset: true }) });
 const consumablesSchema = z.object({ items: z.array(z.object({ productId: z.string().uuid(), qty })).max(50) });
 const listSchema = z.object({ low: z.enum(["true", "false"]).optional(), kind: z.enum(["RETAIL", "CONSUMABLE"]).optional() });
@@ -120,6 +130,12 @@ export class StockController {
   @Roles("OWNER", "MANAGER")
   returnSale(@CurrentTenant() t: TenantInfo, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(returnSchema)) b: z.infer<typeof returnSchema>) {
     return this.stock.returnSale(t, id, b);
+  }
+
+  @Post("appointments/:id/checkout")
+  @Roles("OWNER", "MANAGER", "RECEPTION")
+  checkout(@CurrentTenant() t: TenantInfo, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(checkoutSchema)) b: z.infer<typeof checkoutSchema>) {
+    return this.stock.checkoutAppointment(t, id, b);
   }
 
   @Get("services/:id/consumables")

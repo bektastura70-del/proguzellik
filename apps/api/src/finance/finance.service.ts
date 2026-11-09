@@ -185,13 +185,17 @@ export class FinanceService {
   static async balanceInTx(tx: Tx, customerId: string) {
     const customer = await tx.customer.findUnique({ where: { id: customerId } });
     if (!customer) throw new NotFoundException("Müşteri bulunamadı");
-    const [appts, pkgs, paid, refunded] = await Promise.all([
+    const [appts, pkgs, paid, refunded, products, productReturns] = await Promise.all([
       tx.appointment.aggregate({ where: { customerId, status: "COMPLETED", customerPackageId: null }, _sum: { price: true } }),
       tx.customerPackage.aggregate({ where: { customerId, status: { not: "CANCELLED" } }, _sum: { price: true } }),
       tx.financeTransaction.aggregate({ where: { customerId, type: "INCOME" }, _sum: { amount: true } }),
       tx.financeTransaction.aggregate({ where: { customerId, type: "REFUND" }, _sum: { amount: true } }),
+      // Ürün satışları peşin tahsil edilir: borç olarak da sayılır ki bakiye alacaklı görünmesin.
+      tx.productSale.aggregate({ where: { customerId }, _sum: { total: true } }),
+      tx.productSaleReturn.aggregate({ where: { sale: { customerId } }, _sum: { amount: true } }),
     ]);
-    const charges = D(appts._sum.price).plus(D(pkgs._sum.price));
+    const productNet = D(products._sum.total).minus(D(productReturns._sum.amount));
+    const charges = D(appts._sum.price).plus(D(pkgs._sum.price)).plus(productNet);
     const payments = D(paid._sum.amount).minus(D(refunded._sum.amount));
     return { customerId, charges: money(charges), payments: money(payments), balance: money(charges.minus(payments)) };
   }

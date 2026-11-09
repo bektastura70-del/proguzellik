@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CustomerPicker } from "@/components/panel/customer-picker";
 import { useSession } from "@/components/panel/session";
-import type { Appointment, Customer, Service, Staff } from "@/components/panel/types";
+import { lineBody, linesInvalid, lowStockText, ProductLines, saleTotals, type SaleLine } from "@/components/panel/sale-dialog";
+import type { Appointment, Customer, LowStockItem, Product, Service, Staff } from "@/components/panel/types";
 import { Alert, Badge, Button, Dialog, Field, Input, Select, Spinner, Textarea, statusTone, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { dateTr, isoDay, istanbulToIso, METHOD_TR, STATUS_TR, timeTr, tl } from "@/lib/format";
@@ -197,18 +198,25 @@ export function TimeOffDialog({ value, staff, onClose, onDone }: { value: { staf
 
 export function AppointmentDetail({ appt, staff, onClose, onChange }: { appt: Appointment; staff: Staff[]; onClose: () => void; onChange: () => void }) {
   const toast = useToast();
-  const { can } = useSession();
+  const { can, has } = useSession();
+  const stock = has("STOCK");
+  const [lines, setLines] = useState<SaleLine[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [mode, setMode] = useState<"view" | "pay" | "edit" | "cancel">("view");
   const desk = can("OWNER", "MANAGER", "RECEPTION");
   const open = appt.status === "BOOKED" || appt.status === "CONFIRMED";
+  // Tahsilat penceresinde ürün satışı (stok paketi varsa)
+  const retail = useApi<Product[]>(stock && mode === "pay" ? "/products?kind=RETAIL" : null);
+  const canPay = desk && (Number(appt.price) > 0 || stock);
+  const [serviceAmount, setServiceAmount] = useState(String(Number(appt.price)));
+  const totals = saleTotals(lines, retail.data ?? []);
 
   async function status(s: string, reason?: string) {
     setErr(null);
     try {
       await api(`/appointments/${appt.id}/status`, { method: "POST", body: { status: s, reason } });
       toast(`Durum: ${STATUS_TR[s]}`);
-      if (s === "COMPLETED" && Number(appt.price) > 0 && desk) setMode("pay");
+      if (s === "COMPLETED" && canPay) setMode("pay");
       else onChange();
     } catch (e) {
       setErr((e as Error).message);
@@ -222,17 +230,44 @@ export function AppointmentDetail({ appt, staff, onClose, onChange }: { appt: Ap
         <form className="space-y-4" onSubmit={async (e) => {
           e.preventDefault();
           const f = new FormData(e.currentTarget);
+          const amount = Number(serviceAmount) || 0;
+          if (lines.length && linesInvalid(lines)) return;
+          if (!amount && !lines.length) { setErr("Tahsil edilecek tutar ya da ürün yok"); return; }
           try {
-            await api("/finance/payments", { method: "POST", body: { customerId: appt.customer.id, appointmentId: appt.id, amount: Number(f.get("amount")), method: f.get("method") } });
-            toast("Tahsilat kaydedildi");
+            if (lines.length) {
+              const r = await api<{ lowStock?: LowStockItem[] }>(`/appointments/${appt.id}/checkout`, {
+                method: "POST",
+                body: { serviceAmount: amount > 0 ? amount : undefined, method: f.get("method"), items: lineBody(lines) },
+              });
+              toast("Tahsilat kaydedildi");
+              const warn = lowStockText(r.lowStock);
+              if (warn) toast(warn, "amber");
+            } else {
+              await api("/finance/payments", { method: "POST", body: { customerId: appt.customer.id, appointmentId: appt.id, amount, method: f.get("method") } });
+              toast("Tahsilat kaydedildi");
+            }
             onChange();
           } catch (e) { setErr((e as Error).message); }
         }}>
           <p className="text-sm text-neutral-600">{appt.customer.firstName} {appt.customer.lastName} · {appt.service.name}</p>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Tutar (₺)"><Input name="amount" type="number" step="0.01" min="0.01" defaultValue={Number(appt.price)} required /></Field>
+            <Field label="Hizmet tutarı (₺)"><Input name="amount" type="number" step="0.01" min="0" value={serviceAmount} onChange={(e) => setServiceAmount(e.target.value)} required /></Field>
             <Field label="Yöntem"><Select name="method" defaultValue="CARD">{Object.entries(METHOD_TR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
           </div>
+          {stock && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Ürün satışı</div>
+              {retail.data && retail.data.length === 0 && <p className="text-xs text-neutral-500">Satışa açık ürün yok.</p>}
+              <ProductLines retail={retail.data ?? []} lines={lines} setLines={setLines} />
+              {lines.length > 0 && <p className="text-xs text-neutral-500">Ürünler ayrı bir satış fişine yazılır; ürün primi {appt.staff.displayName} için hesaplanır.</p>}
+            </div>
+          )}
+          {lines.length > 0 && (
+            <div className="border-t border-sand-200 pt-3 text-sm">
+              <div className="flex justify-between"><span className="text-neutral-500">Toplam</span><span className="text-lg font-semibold">{tl((Number(serviceAmount) || 0) + totals.total)}</span></div>
+              {totals.vat > 0 && <div className="text-right text-xs text-neutral-500">Ürünlerdeki KDV: {tl(totals.vat)}</div>}
+            </div>
+          )}
           <div className="flex gap-2">
             <Button className="flex-1">Tahsil et</Button>
             <Button type="button" variant="outline" onClick={onChange}>Sonra</Button>
@@ -302,7 +337,7 @@ export function AppointmentDetail({ appt, staff, onClose, onChange }: { appt: Ap
             </div>
           )}
           {open && !desk && <Button onClick={() => status("COMPLETED")} className="w-full">Tamamlandı olarak işaretle</Button>}
-          {appt.status === "COMPLETED" && Number(appt.price) > 0 && desk && <Button variant="outline" className="w-full" onClick={() => setMode("pay")}>Tahsilat al</Button>}
+          {appt.status === "COMPLETED" && canPay && <Button variant="outline" className="w-full" onClick={() => setMode("pay")}>Tahsilat al</Button>}
         </div>
       )}
     </Dialog>

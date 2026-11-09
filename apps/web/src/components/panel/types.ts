@@ -18,7 +18,7 @@ export type Txn = {
   customer: { id: string; firstName: string; lastName: string } | null; staff: { id: string; displayName: string } | null;
   refundedAmount?: string; refundable?: string; productSale?: { id: string } | null;
 };
-export type Product = { id: string; name: string; sku: string | null; unit: string; kind: "RETAIL" | "CONSUMABLE"; stockQty: string; minQty: string; costPrice: string | null; salePrice: string | null };
+export type Product = { id: string; name: string; sku: string | null; unit: string; kind: "RETAIL" | "CONSUMABLE"; stockQty: string; minQty: string; costPrice: string | null; salePrice: string | null; vatRate?: string | null };
 
 export type ProductSaleItem = {
   id: string; productId: string; qty: string; unitPrice: string; unitCost: string | null; lineTotal: string;
@@ -28,5 +28,6 @@ export type ProductSale = {
   id: string; financeTransactionId: string; method: string; total: string; note: string | null; occurredAt: string;
   customer: { id: string; firstName: string; lastName: string } | null; staff: { id: string; displayName: string } | null;
   items: ProductSaleItem[]; returns: { id: string; amount: string; reason: string; createdAt: string }[];
-  returnedTotal: string; netTotal: string;
+  returnedTotal: string; netTotal: string; vatTotal?: string; appointmentId?: string | null;
 };
+export type LowStockItem = { id: string; name: string; stockQty: string; minQty: string; unit: string };

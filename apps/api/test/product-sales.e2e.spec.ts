@@ -1,4 +1,6 @@
 import { INestApplication } from "@nestjs/common";
+import { futureAt } from "./helpers";
+import { LowStockService } from "../src/stock/low-stock.service";
 import { addMember, api, createApp, createTenantWithUser, login, owner, resetDb, setupSalon, TEST_PASSWORD } from "./helpers";
 
 const RANGE = `from=${new Date(Date.now() - 86_400_000).toISOString()}&to=${new Date(Date.now() + 86_400_000).toISOString()}`;
@@ -144,5 +146,72 @@ describe("Ürün satış fişi, iade, prim ve rapor", () => {
       ).rejects.toThrow(/permission denied/i);
     }
     await appDb.$disconnect();
+  });
+
+  describe("KDV, randevu tahsilatı ve kritik stok", () => {
+    let serum: string;
+
+    it("KDV oranı tanımlı üründe satır ve fişte KDV ayrılır; tanımsızda KDV sıfırdır", async () => {
+      serum = (await a.post("/products").send({ name: "Serum", kind: "RETAIL", salePrice: 600, costPrice: 250, vatRate: 20, initialQty: 5, minQty: 3 }).expect(201)).body.id;
+      expect((await a.patch(`/products/${serum}`).send({ vatRate: 20 }).expect(200)).body.vatRate).toBe("20");
+      await a.post("/products").send({ name: "X", vatRate: 101 }).expect(400);
+      const r = await a.post("/product-sales").send({ items: [{ productId: serum, qty: 1 }, { productId: sampuan, qty: 1 }], method: "CASH" }).expect(201);
+      expect(r.body.sale).toMatchObject({ total: "900", vatTotal: "100" });
+      expect(r.body.sale.items.find((i: any) => i.productId === serum)).toMatchObject({ vatRate: "20", vatAmount: "100" });
+      expect(r.body.sale.items.find((i: any) => i.productId === sampuan)).toMatchObject({ vatRate: null, vatAmount: "0" });
+      // 5 - 1 = 4 > 3: henüz kritik değil
+      expect(r.body.lowStock.map((p: any) => p.name)).not.toContain("Serum");
+      const rep = await a.get(`/product-sales/report?${RANGE}`).expect(200);
+      expect(rep.body.products.find((p: any) => p.productId === serum)).toMatchObject({ revenue: "600.00", vat: "100.00", netRevenue: "500.00", cost: "250.00", profit: "250.00", vatKnown: true });
+    });
+
+    it("KDV'li iadede KDV de geri alınır", async () => {
+      const r = await a.post("/product-sales").send({ items: [{ productId: serum, qty: 1 }], method: "CARD" }).expect(201);
+      // 5-1-1 = 3 ≤ 3: kritik seviyeye düştü
+      expect(r.body.lowStock).toEqual([expect.objectContaining({ name: "Serum", stockQty: "3", minQty: "3" })]);
+      await a.post(`/product-sales/${r.body.sale.id}/returns`).send({ items: [{ saleItemId: r.body.sale.items[0].id, qty: 1, restock: false }], reason: "iade" }).expect(201);
+      const line = await su.productSaleReturnLine.findFirstOrThrow({ where: { saleItemId: r.body.sale.items[0].id } });
+      expect(line.vatAmount.toString()).toBe("100");
+    });
+
+    it("randevu tahsilatı: hizmet + ürün tek işlemde; ürün primi randevu personeline", async () => {
+      const appt = (await a.post("/appointments").send({ customerId: s.customer.id, staffId: s.staff.id, serviceId: s.service.id, startsAt: futureAt(2, "10:00") }).expect(201)).body;
+      await a.post(`/appointments/${appt.id}/checkout`).send({ serviceAmount: 800, method: "CARD", items: [{ productId: sampuan, qty: 1 }] }).expect(409);
+      await a.post(`/appointments/${appt.id}/status`).send({ status: "COMPLETED" }).expect(201);
+      const before = await su.financeTransaction.count();
+      // Ürünlerden biri yetersizse hizmet tahsilatı da yazılmaz
+      await a.post(`/appointments/${appt.id}/checkout`).send({ serviceAmount: 800, method: "CARD", items: [{ productId: sampuan, qty: 999 }] }).expect(409);
+      expect(await su.financeTransaction.count()).toBe(before);
+      const r = await a.post(`/appointments/${appt.id}/checkout`).send({ serviceAmount: 800, method: "CARD", items: [{ productId: sampuan, qty: 1 }] }).expect(201);
+      expect(r.body.total).toBe("1100.00");
+      expect(r.body.service).toMatchObject({ category: "HIZMET", amount: "800", appointmentId: appt.id, staffId: s.staff.id });
+      expect(r.body.sale).toMatchObject({ total: "300", appointmentId: appt.id, staff: { id: s.staff.id } });
+      // Sadece ürün de tahsil edilebilir; boş tahsilat reddedilir
+      await a.post(`/appointments/${appt.id}/checkout`).send({ method: "CASH", items: [{ productId: sampuan, qty: 1 }] }).expect(201);
+      await a.post(`/appointments/${appt.id}/checkout`).send({ method: "CASH", items: [] }).expect(400);
+      // Ürün satışları müşterinin bakiyesini alacaklı göstermez
+      const bal = await a.get(`/customers/${s.customer.id}/balance`).expect(200);
+      expect(bal.body.balance).toBe("0.00");
+    });
+
+    it("kritik stok e-postası sahip/yöneticiye gider, aynı liste tekrar gönderilmez, ayardan kapatılır", async () => {
+      const low = app.get(LowStockService);
+      await su.outboundEmail.deleteMany({ where: { template: "low_stock_alert" } });
+      const r1 = await low.run();
+      expect(r1.errors).toEqual([]);
+      const mails = await su.outboundEmail.findMany({ where: { template: "low_stock_alert", tenantId: A.tenant.id } });
+      expect(mails.map((m) => m.to)).toEqual(["a@test.local"]);
+      expect(mails[0].subject).toContain("kritik stok");
+      expect(mails[0].body).toContain("Serum: 3 adet (kritik 3)");
+      expect((await low.run()).lowStockEmails).toBe(0);
+      // B'nin stok paketi yoksa ya da kritik ürünü yoksa e-posta almaz
+      expect(await su.outboundEmail.count({ where: { template: "low_stock_alert", tenantId: B.tenant.id } })).toBe(0);
+      await a.patch("/settings").send({ lowStockEmailEnabled: false }).expect(200);
+      await a.post(`/products/${maske}/movements`).send({ type: "ADJUST", qty: -3 }).expect(201);
+      await a.patch(`/products/${maske}`).send({ minQty: 1 }).expect(200);
+      expect((await low.run()).lowStockEmails).toBe(0);
+      await a.patch("/settings").send({ lowStockEmailEnabled: true }).expect(200);
+      expect((await low.run()).lowStockEmails).toBe(1);
+    });
   });
 });

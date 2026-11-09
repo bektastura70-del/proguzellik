@@ -11,8 +11,8 @@ import { api, useApi } from "@/lib/api";
 import { addDays, dateTimeTr, isoDay, istanbulToIso, METHOD_TR, tl } from "@/lib/format";
 
 type Report = {
-  saleCount: number; revenue: string; cost: string; profit: string;
-  products: { productId: string; name: string; unit: string; soldQty: string; returnedQty: string; revenue: string; cost: string; profit: string; costKnown: boolean }[];
+  saleCount: number; revenue: string; vat: string; netRevenue: string; cost: string; profit: string;
+  products: { productId: string; name: string; unit: string; soldQty: string; returnedQty: string; revenue: string; vat: string; netRevenue: string; cost: string; profit: string; costKnown: boolean; vatKnown: boolean }[];
 };
 
 export default function ProductSalesPage() {
@@ -51,19 +51,21 @@ export default function ProductSalesPage() {
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat label="Satış fişi" value={report.data ? report.data.saleCount : "—"} />
-            <Stat label="Net ürün cirosu" value={report.data ? tl(report.data.revenue) : "—"} hint="İadeler düşülmüş" />
+            <Stat label="Ürün cirosu (KDV dahil)" value={report.data ? tl(report.data.revenue) : "—"} hint={report.data ? `İadeler düşülmüş · KDV ${tl(report.data.vat)}` : undefined} />
             <Stat label="Maliyet" value={report.data ? tl(report.data.cost) : "—"} hint="Satış anındaki alış fiyatıyla" />
-            <Stat label="Brüt kâr" value={report.data ? tl(report.data.profit) : "—"} />
+            <Stat label="Brüt kâr" value={report.data ? tl(report.data.profit) : "—"} hint="KDV hariç ciro − maliyet" />
           </div>
           <Card className="mt-6">
-            <CardHeader title="Ürün bazında" description="Fiyatlar KDV ayrımı yapılmadan, kasaya yazılan tutarlarla hesaplanır." />
-            <Table head={["Ürün", "Satılan", "İade", "Net ciro", "Maliyet", "Brüt kâr"]} empty="Bu aralıkta ürün satışı yok">
+            <CardHeader title="Ürün bazında" description="Satış fiyatları KDV dahildir. KDV oranı girilmemiş ürünlerde KDV ayrılmaz (*). Alış fiyatı KDV hariç girilmelidir." />
+            <Table head={["Ürün", "Satılan", "İade", "Ciro (KDV dahil)", "KDV", "KDV hariç", "Maliyet", "Brüt kâr"]} empty="Bu aralıkta ürün satışı yok">
               {report.data?.products.map((p) => (
                 <tr key={p.productId}>
                   <Td className="font-medium">{p.name}</Td>
                   <Td>{Number(p.soldQty)} {p.unit}</Td>
                   <Td>{Number(p.returnedQty) > 0 ? `${Number(p.returnedQty)} ${p.unit}` : "—"}</Td>
                   <Td>{tl(p.revenue)}</Td>
+                  <Td>{tl(p.vat)}{!p.vatKnown && <span className="ml-1 text-xs text-amber-700" title="Bazı satışlarda KDV oranı tanımlı değildi">*</span>}</Td>
+                  <Td>{tl(p.netRevenue)}</Td>
                   <Td>{tl(p.cost)}{!p.costKnown && <span className="ml-1 text-xs text-amber-700" title="Bazı satışlarda alış fiyatı tanımlı değildi">*</span>}</Td>
                   <Td className={Number(p.profit) < 0 ? "text-red-600" : ""}>{tl(p.profit)}</Td>
                 </tr>

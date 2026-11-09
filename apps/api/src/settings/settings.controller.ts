@@ -23,11 +23,12 @@ const settingsSchema = z.object({
   requireMfa: z.boolean().optional(),
   packageReminderDays: z.number().int().min(1).max(60).optional(),
   renewalRemindersEnabled: z.boolean().optional(),
+  lowStockEmailEnabled: z.boolean().optional(),
 });
 
 const PUBLIC_FIELDS = {
   id: true, name: true, slug: true, phone: true, email: true, address: true, timezone: true,
-  onlineBookingEnabled: true, requireMfa: true, packageReminderDays: true, renewalRemindersEnabled: true, status: true, planCode: true, trialEndsAt: true,
+  onlineBookingEnabled: true, requireMfa: true, packageReminderDays: true, renewalRemindersEnabled: true, lowStockEmailEnabled: true, status: true, planCode: true, trialEndsAt: true,
 } as const;
 
 @Controller("settings")
