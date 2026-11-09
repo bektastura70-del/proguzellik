@@ -26,7 +26,7 @@ grep -q 'IYZICO_PILOT_TENANTS: ${IYZICO_PILOT_TENANTS:-}' docker-compose.yml || 
 tenant=$(q "SELECT id FROM \"Tenant\" WHERE slug='deneme'")
 [[ "$tenant" =~ ^[0-9a-f-]{36}$ ]] || fail "slug=deneme olan tek bir salon bulunamadı"
 echo "Deneme salonu: $(q "SELECT name||' · durum '||status||' · paket '||\"planCode\" FROM \"Tenant\" WHERE id='$tenant'")"
-echo "Onaylı fiyatlar:"; q "SELECT \"planCode\"||' v'||version||' aylık '||coalesce(\"monthlyPrice\"::text,'-')||' yıllık '||coalesce(\"yearlyPrice\"::text,'-') FROM \"PlanPrice\" WHERE status='APPROVED' AND \"effectiveFrom\"<=now() ORDER BY 1"
+echo "Onaylı fiyatlar:"; q "SELECT \"planCode\"||' v'||coalesce(version::text,'-')||' aylık '||coalesce(\"monthlyPrice\"::text,'-')||' yıllık '||coalesce(\"yearlyPrice\"::text,'-') FROM \"PlanPrice\" WHERE status='APPROVED' AND \"effectiveFrom\"<=now() ORDER BY 1"
 n=$(q "SELECT count(*) FROM \"PlanPrice\" WHERE status='APPROVED' AND \"effectiveFrom\"<=now()")
 (( n > 0 )) || fail "Onaylı ve yürürlükte fiyat yok"
 act=$(q "SELECT count(*) FROM \"Subscription\" WHERE \"tenantId\"='$tenant' AND status='ACTIVE'")

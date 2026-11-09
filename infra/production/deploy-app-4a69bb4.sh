@@ -21,7 +21,8 @@ trap 'fail "satır $LINENO başarısız oldu"' ERR
 log "1/7 Ön kontrol (çalışan: $OLD → yeni: $NEW)"
 grep -q "^APP_VERSION=$OLD$" .env || fail "Çalışan sürüm $OLD değil ($(env_get APP_VERSION))"
 docker image inspect proguzellik-api:$NEW proguzellik-web:$NEW >/dev/null || fail "Yeni imajlar sunucuda yok"
-[[ -f docker-compose.yml.$NEW ]] || fail "docker-compose.yml.$NEW bulunamadı"
+[[ -f docker-compose.yml.$NEW && -f docker-compose.yml.$OLD ]] || fail "docker-compose.yml.$NEW / .$OLD bulunamadı"
+cmp -s docker-compose.yml docker-compose.yml.$OLD || fail "Sunucudaki docker-compose.yml depodaki $OLD sürümünden farklı (elle değişiklik?); üzerine yazılmadı"
 grep -q 'PAYMENT_MODE: ${PAYMENT_MODE:-mock}' docker-compose.yml.$NEW || fail "Yeni compose dosyasında PAYMENT_MODE varsayılanı mock değil"
 if grep -qE '^(PAYMENT_MODE|IYZICO_[A-Z_]+)=' .env; then fail ".env'de PAYMENT_MODE/IYZICO_ satırı var: bu dağıtım ödeme KAPALI yapılır"; fi
 
