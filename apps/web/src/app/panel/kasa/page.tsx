@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useSession } from "@/components/panel/session";
 import type { Txn } from "@/components/panel/types";
@@ -8,7 +9,7 @@ import { api, useApi } from "@/lib/api";
 import { addDays, dateTimeTr, isoDay, istanbulToIso, METHOD_TR, TYPE_TR, tl } from "@/lib/format";
 
 type Summary = { income: string; expense: string; refund: string; net: string; byMethod: Record<string, string> };
-type Commission = { staffId: string; staffName: string; rate: string; appointments: number; revenue: string; earned: string; paid: string; due: string };
+type Commission = { staffId: string; staffName: string; rate: string; appointments: number; revenue: string; serviceEarned?: string; productRate?: string; productSales?: number; productRevenue?: string; productEarned?: string; earned: string; paid: string; due: string };
 
 export default function CashPage() {
   const { can } = useSession();
@@ -63,7 +64,9 @@ export default function CashPage() {
               <Td className={`whitespace-nowrap font-medium ${t.type === "INCOME" ? "" : "text-red-600"}`}>{t.type === "INCOME" ? "" : "−"}{tl(t.amount)}</Td>
               <Td className="whitespace-nowrap text-right">
                 {t.type === "INCOME" && Number(t.refundedAmount ?? 0) > 0 && <span className="mr-2 text-xs text-amber-700">{tl(t.refundedAmount!)} iade</span>}
-                {t.type === "INCOME" && can("OWNER", "MANAGER") && Number(t.refundable ?? t.amount) > 0 && <Button size="sm" variant="ghost" onClick={() => setRefund(t)}>İade</Button>}
+                {t.type === "INCOME" && can("OWNER", "MANAGER") && Number(t.refundable ?? t.amount) > 0 && (t.productSale
+                  ? <Link href="/panel/stok/satislar"><Button size="sm" variant="ghost" title="Ürün iadesi stokla birlikte Ürün satışları ekranından yapılır">İade</Button></Link>
+                  : <Button size="sm" variant="ghost" onClick={() => setRefund(t)}>İade</Button>)}
               </Td>
             </tr>
           ))}
@@ -72,11 +75,12 @@ export default function CashPage() {
 
       {comm.data && (
         <Card className="mt-6">
-          <CardHeader title="Personel primleri" description="Tamamlanan randevular üzerinden hesaplanır; paket seansları paket fiyatı/seans sayısı ile değerlenir." />
-          <Table head={["Personel", "Oran", "Randevu", "Ciro", "Hak edilen", "Ödenen", "Kalan", ""]} empty="Personel yok">
+          <CardHeader title="Personel primleri" description="Hizmet primi tamamlanan randevulardan (paket seansı = paket fiyatı / seans sayısı), ürün primi personelin ürün satışlarından (iadeler düşülerek) hesaplanır." />
+          <Table head={["Personel", "Hizmet %", "Randevu", "Hizmet cirosu", "Ürün %", "Ürün cirosu", "Hak edilen", "Ödenen", "Kalan", ""]} empty="Personel yok">
             {comm.data.map((c) => (
               <tr key={c.staffId}>
                 <Td className="font-medium">{c.staffName}</Td><Td>%{Number(c.rate)}</Td><Td>{c.appointments}</Td><Td>{tl(c.revenue)}</Td>
+                <Td>%{Number(c.productRate ?? 0)}</Td><Td>{tl(c.productRevenue ?? 0)}</Td>
                 <Td>{tl(c.earned)}</Td><Td>{tl(c.paid)}</Td><Td className="font-medium">{tl(c.due)}</Td>
                 <Td className="text-right">{Number(c.due) > 0 && <Button size="sm" variant="outline" onClick={() => setPayout(c)}>Öde</Button>}</Td>
               </tr>

@@ -34,7 +34,7 @@ export default function StaffPage() {
                   <Badge tone={s.isActive ? "green" : "neutral"}>{s.isActive ? "Aktif" : "Pasif"}</Badge>
                 </div>
                 <div className="mt-4 space-y-1 text-sm text-neutral-600">
-                  <div>Prim oranı: %{Number(s.commissionRate)}</div>
+                  <div>Prim oranı: %{Number(s.commissionRate)} hizmet · %{Number(s.productCommissionRate ?? 0)} ürün</div>
                   <div>Hizmetler: {s.services.length ? s.services.map((x) => services.data?.find((v) => v.id === x.serviceId)?.name).filter(Boolean).join(", ") : "—"}</div>
                   <div>Çalışma: {s.workingHours.length ? [...new Set(s.workingHours.map((h) => WEEKDAYS[h.weekday].slice(0, 3)))].join(", ") : "tanımlı değil"}</div>
                 </div>
@@ -63,7 +63,7 @@ function StaffForm({ initial, services, onClose, onSaved }: { initial?: Staff; s
     const f = new FormData(e.currentTarget);
     const body = {
       displayName: f.get("displayName"), title: (f.get("title") as string) || undefined, phone: (f.get("phone") as string) || undefined,
-      color: f.get("color"), commissionRate: Number(f.get("commissionRate") || 0), isActive: f.get("isActive") === "on",
+      color: f.get("color"), commissionRate: Number(f.get("commissionRate") || 0), productCommissionRate: Number(f.get("productCommissionRate") || 0), isActive: f.get("isActive") === "on",
       onlineBookable: f.get("onlineBookable") === "on", userId: (f.get("userId") as string) || null,
     };
     try {
@@ -82,7 +82,8 @@ function StaffForm({ initial, services, onClose, onSaved }: { initial?: Staff; s
           <Field label="Unvan"><Input name="title" placeholder="Cilt bakım uzmanı" defaultValue={initial?.title ?? ""} /></Field>
           <Field label="Telefon"><Input name="phone" type="tel" defaultValue={initial?.phone ?? ""} /></Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Prim %"><Input name="commissionRate" type="number" min={0} max={100} step="0.5" defaultValue={initial ? Number(initial.commissionRate) : 0} /></Field>
+            <Field label="Hizmet primi %"><Input name="commissionRate" type="number" min={0} max={100} step="0.5" defaultValue={initial ? Number(initial.commissionRate) : 0} /></Field>
+            <Field label="Ürün primi %"><Input name="productCommissionRate" type="number" min={0} max={100} step="0.5" defaultValue={initial ? Number(initial.productCommissionRate ?? 0) : 0} /></Field>
             <Field label="Renk"><Input name="color" type="color" defaultValue={initial?.color ?? "#b0507b"} className="p-1" /></Field>
           </div>
         </div>

@@ -8,6 +8,7 @@ export interface StaffInput {
   phone?: string;
   color?: string;
   commissionRate?: number;
+  productCommissionRate?: number;
   isActive?: boolean;
   onlineBookable?: boolean;
   userId?: string | null;

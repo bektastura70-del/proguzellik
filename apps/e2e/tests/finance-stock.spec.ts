@@ -64,7 +64,7 @@ test.describe.serial("Kasa", () => {
     await page.goto("/panel/kasa");
     await page.getByRole("button", { name: "30 gün" }).click();
     const row = page.getByRole("row").filter({ hasText: "Merve" }).filter({ has: page.getByRole("button", { name: "Öde" }) });
-    const before = (await row.locator("td").nth(6).textContent())!;
+    const before = (await row.locator("td").nth(8).textContent())!;
     await row.getByRole("button", { name: "Öde" }).click();
     const dlg = page.getByRole("dialog", { name: "Prim ödemesi: Merve" });
     await dlg.getByLabel("Tutar (₺)").fill("100");
@@ -72,7 +72,7 @@ test.describe.serial("Kasa", () => {
     await expectToast(page, "Prim ödemesi kaydedildi");
     const parse = (s: string) => Number(s.replace(/[^\d,]/g, "").replace(",", "."));
     await expect(async () => {
-      const after = (await page.getByRole("row").filter({ hasText: "Merve" }).filter({ hasText: "%12" }).locator("td").nth(6).textContent())!;
+      const after = (await page.getByRole("row").filter({ hasText: "Merve" }).filter({ hasText: "%12" }).locator("td").nth(8).textContent())!;
       expect(parse(before) - parse(after)).toBeCloseTo(100, 2);
     }).toPass();
   });
@@ -129,6 +129,23 @@ test.describe.serial("Stok", () => {
     await expectToast(page, "Yetersiz stok");
     await page.reload();
     await expect(page.getByRole("row").filter({ hasText: name })).toContainText("7 adet");
+  });
+
+  test("satış fişi listelenir; iade kasaya yazılır ve ürün stoğa geri girer", async ({ page }) => {
+    await page.goto("/panel/stok/satislar");
+    const sale = page.getByRole("row").filter({ hasText: `${name} × 3` });
+    await expect(sale).toContainText("× 3");
+    await sale.getByRole("button", { name: "İade" }).click();
+    const dlg = page.getByRole("dialog", { name: "Ürün iadesi" });
+    await dlg.getByLabel(`${name} iade adedi`).fill("1");
+    await dlg.getByLabel("Sebep").fill("Müşteri vazgeçti");
+    await dlg.getByRole("button", { name: "İade et" }).click();
+    await expectToast(page, "İade kaydedildi");
+    await expect(sale).toContainText("1 iade");
+    await page.goto("/panel/stok");
+    await expect(page.getByRole("row").filter({ hasText: name })).toContainText("8 adet");
+    const tx = await apiGet<Tx[]>(page, `/finance/transactions?${today()}`);
+    expect(tx.find((t) => t.category === "IADE" && t.amount === "375")).toBeTruthy();
   });
 
   test("kritik stok filtresi", async ({ page }) => {

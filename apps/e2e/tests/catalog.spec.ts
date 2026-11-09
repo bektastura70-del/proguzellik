@@ -47,7 +47,7 @@ test.describe.serial("Hizmetler, personel ve paketler", () => {
     await page.getByRole("button", { name: "Personel" }).click();
     const dlg = page.getByRole("dialog", { name: "Yeni personel" });
     await dlg.getByLabel("Görünen ad").fill(staffName);
-    await dlg.getByLabel("Prim %").fill("18");
+    await dlg.getByLabel("Hizmet primi %").fill("18");
     await dlg.getByText(svcName).click();
     await dlg.getByRole("button", { name: "Kaydet" }).click();
     await expectToast(page, "Personel kaydedildi");

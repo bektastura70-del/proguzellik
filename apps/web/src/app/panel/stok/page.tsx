@@ -1,13 +1,14 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Plus, ShoppingBag } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
-import { CustomerPicker } from "@/components/panel/customer-picker";
+import { SaleDialog } from "@/components/panel/sale-dialog";
 import { useSession } from "@/components/panel/session";
-import type { Customer, Product } from "@/components/panel/types";
-import { Alert, Badge, Button, Card, Dialog, Field, Input, PageHeader, Select, Spinner, Table, Td, useToast } from "@/components/ui";
+import type { Product } from "@/components/panel/types";
+import { Badge, Button, Card, Dialog, Field, Input, PageHeader, Select, Spinner, Table, Td, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
-import { dateTimeTr, METHOD_TR, tl } from "@/lib/format";
+import { dateTimeTr, tl } from "@/lib/format";
 
 export default function StockPage() {
   const { can } = useSession();
@@ -16,15 +17,21 @@ export default function StockPage() {
   const products = useApi<Product[]>(`/products?${new URLSearchParams({ ...(kind ? { kind } : {}) })}`);
   const [creating, setCreating] = useState(false);
   const [moving, setMoving] = useState<Product | null>(null);
-  const [selling, setSelling] = useState<Product | null>(null);
-  const [customer, setCustomer] = useState<Customer | null>(null);
+  // undefined: kapalı, null: boş fiş, ürün: o ürünle başlayan fiş
+  const [selling, setSelling] = useState<Product | null | undefined>(undefined);
   const [editing, setEditing] = useState<Product | null>(null);
   const [history, setHistory] = useState<Product | null>(null);
   const [lowOnly, setLowOnly] = useState(false);
 
   return (
     <>
-      <PageHeader title="Stok" description="Satış ürünleri ve sarf malzemeleri" action={can("OWNER", "MANAGER") && <Button onClick={() => setCreating(true)}><Plus /> Ürün</Button>} />
+      <PageHeader title="Stok" description="Satış ürünleri ve sarf malzemeleri" action={
+          <>
+            <Link href="/panel/stok/satislar"><Button variant="outline">Satışlar</Button></Link>
+            {can("OWNER", "MANAGER", "RECEPTION") && <Button variant="outline" onClick={() => setSelling(null)}><ShoppingBag /> Satış fişi</Button>}
+            {can("OWNER", "MANAGER") && <Button onClick={() => setCreating(true)}><Plus /> Ürün</Button>}
+          </>
+        } />
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
         {[["", "Tümü"], ["CONSUMABLE", "Sarf"], ["RETAIL", "Satış"]].map(([k, l]) => (
           <button key={l} onClick={() => setKind(k)} className={`rounded-full border px-3 py-1 ${kind === k ? "border-brand-600 bg-brand-600 text-white" : "border-sand-300 bg-white"}`}>{l}</button>
@@ -128,31 +135,14 @@ export default function StockPage() {
           </form>
         </Dialog>
       )}
-      {selling && (
-        <Dialog open onClose={() => { setSelling(null); setCustomer(null); }} title={`Satış: ${selling.name}`}>
-          <form className="space-y-4" onSubmit={async (e) => {
-            e.preventDefault();
-            const f = new FormData(e.currentTarget);
-            try {
-              await api("/product-sales", { method: "POST", body: { productId: selling.id, qty: Number(f.get("qty")), method: f.get("method"), customerId: customer?.id } });
-              toast("Satış kaydedildi"); setSelling(null); setCustomer(null); products.reload();
-            } catch (err) { toast((err as Error).message, "red"); }
-          }}>
-            {!selling.salePrice && <Alert tone="amber">Bu ürünün satış fiyatı tanımlı değil.</Alert>}
-            <Field label="Müşteri (isteğe bağlı)"><CustomerPicker value={customer} onChange={setCustomer} /></Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Adet" hint={`Birim ${selling.salePrice ? tl(selling.salePrice) : "—"}`}><Input name="qty" type="number" min={1} step={1} defaultValue={1} required /></Field>
-              <Field label="Yöntem"><Select name="method" defaultValue="CARD">{Object.entries(METHOD_TR).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
-            </div>
-            <Button className="w-full">Satışı kaydet</Button>
-          </form>
-        </Dialog>
+      {selling !== undefined && (
+        <SaleDialog initial={selling} onClose={() => setSelling(undefined)} onDone={() => { setSelling(undefined); products.reload(); }} />
       )}
     </>
   );
 }
 
-const MOVE_TR: Record<string, string> = { IN: "Giriş", OUT: "Çıkış", ADJUST: "Sayım düzeltmesi", CONSUME: "Hizmet sarfı", SALE: "Satış" };
+const MOVE_TR: Record<string, string> = { IN: "Giriş", OUT: "Çıkış", ADJUST: "Sayım düzeltmesi", CONSUME: "Hizmet sarfı", SALE: "Satış", RETURN: "Satış iadesi" };
 
 function MovementsDialog({ product, onClose }: { product: Product; onClose: () => void }) {
   const list = useApi<{ id: string; type: string; qty: string; note: string | null; createdAt: string }[]>(`/products/${product.id}/movements`);

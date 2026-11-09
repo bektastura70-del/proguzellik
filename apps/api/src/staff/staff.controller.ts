@@ -11,6 +11,7 @@ const staffSchema = z.object({
   phone: phoneSchema.optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   commissionRate: z.number().min(0).max(100).optional(),
+  productCommissionRate: z.number().min(0).max(100).optional(),
   isActive: z.boolean().optional(),
   onlineBookable: z.boolean().optional(),
   userId: z.string().uuid().nullable().optional(),

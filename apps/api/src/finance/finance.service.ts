@@ -27,6 +27,7 @@ export class FinanceService {
         include: {
           customer: { select: { id: true, firstName: true, lastName: true } },
           staff: { select: { id: true, displayName: true } },
+          productSale: { select: { id: true } },
         },
       });
       const incomeIds = rows.filter((r) => r.type === "INCOME").map((r) => r.id);
@@ -110,6 +111,10 @@ export class FinanceService {
       const orig = await tx.financeTransaction.findUnique({ where: { id } });
       if (!orig) throw new NotFoundException("İşlem bulunamadı");
       if (orig.type !== "INCOME") throw new BadRequestException("Yalnızca gelir kayıtları iade edilebilir");
+      // Ürün satış fişinin iadesi stokla birlikte yapılmalı (Stok > Satışlar).
+      if (await tx.productSale.findFirst({ where: { financeTransactionId: id }, select: { id: true } })) {
+        throw new ConflictException({ message: "Ürün satışlarının iadesi Stok > Satışlar ekranından yapılır", code: "USE_PRODUCT_RETURN" });
+      }
       const prev = await tx.financeTransaction.aggregate({ where: { refundOfId: id }, _sum: { amount: true } });
       const remaining = D(orig.amount).minus(D(prev._sum.amount));
       if (D(b.amount).greaterThan(remaining)) {
@@ -192,29 +197,41 @@ export class FinanceService {
   }
 
   /**
-   * Personel primleri: dönemde tamamlanan randevuların değeri × prim oranı.
-   * Paketli seanslar için seans değeri = paket fiyatı / seans sayısı.
+   * Personel primleri:
+   * - Hizmet: dönemde tamamlanan randevuların değeri × prim oranı
+   *   (paketli seanslar için seans değeri = paket fiyatı / seans sayısı).
+   * - Ürün: dönemdeki ürün satışları (satan personel) − dönemdeki iadeleri × ürün prim oranı.
    * Ödenen primler "PRIM" kategorili gider kayıtlarından düşülür.
    */
   commissions(t: TenantInfo, q: { from: string; to: string }) {
     return this.prisma.withTenant(t, async (tx) => {
+      const range = { gte: new Date(q.from), lt: new Date(q.to) };
       const staff = await tx.staffMember.findMany({ orderBy: { displayName: "asc" } });
       const appts = await tx.appointment.findMany({
-        where: { status: "COMPLETED", startsAt: { gte: new Date(q.from), lt: new Date(q.to) } },
+        where: { status: "COMPLETED", startsAt: range },
         include: { customerPackage: { select: { price: true, totalSessions: true } } },
       });
-      const payouts = await tx.financeTransaction.groupBy({
-        by: ["staffId"],
-        where: { type: "EXPENSE", category: "PRIM", occurredAt: { gte: new Date(q.from), lt: new Date(q.to) } },
-        _sum: { amount: true },
-      });
+      const [payouts, sales, returns] = await Promise.all([
+        tx.financeTransaction.groupBy({
+          by: ["staffId"],
+          where: { type: "EXPENSE", category: "PRIM", occurredAt: range },
+          _sum: { amount: true },
+        }),
+        tx.productSale.groupBy({ by: ["staffId"], where: { occurredAt: range, staffId: { not: null } }, _sum: { total: true }, _count: true }),
+        tx.productSaleReturn.findMany({ where: { createdAt: range, sale: { staffId: { not: null } } }, select: { amount: true, sale: { select: { staffId: true } } } }),
+      ]);
       return staff.map((s) => {
         const mine = appts.filter((a) => a.staffId === s.id);
         const revenue = mine.reduce((sum, a) => {
           const v = a.customerPackage ? D(a.customerPackage.price).div(a.customerPackage.totalSessions) : D(a.price);
           return sum.plus(v);
         }, D(0));
-        const earned = revenue.times(D(s.commissionRate)).div(100);
+        const serviceEarned = revenue.times(D(s.commissionRate)).div(100);
+        const sold = sales.find((x) => x.staffId === s.id);
+        const returned = returns.filter((r) => r.sale.staffId === s.id).reduce((sum, r) => sum.plus(r.amount), D(0));
+        const productRevenue = D(sold?._sum.total).minus(returned);
+        const productEarned = productRevenue.times(D(s.productCommissionRate)).div(100);
+        const earned = serviceEarned.plus(productEarned);
         const paid = D(payouts.find((p) => p.staffId === s.id)?._sum.amount);
         return {
           staffId: s.id,
@@ -222,6 +239,11 @@ export class FinanceService {
           rate: D(s.commissionRate).toString(),
           appointments: mine.length,
           revenue: money(revenue),
+          serviceEarned: money(serviceEarned),
+          productRate: D(s.productCommissionRate).toString(),
+          productSales: sold?._count ?? 0,
+          productRevenue: money(productRevenue),
+          productEarned: money(productEarned),
           earned: money(earned),
           paid: money(paid),
           due: money(earned.minus(paid)),
