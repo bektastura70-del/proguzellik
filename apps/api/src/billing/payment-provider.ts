@@ -92,11 +92,15 @@ export class MockPaymentProvider extends PaymentProvider {
  */
 export class IyzicoPaymentProvider extends PaymentProvider {
   readonly name = "iyzico";
-  constructor(private readonly configured: () => boolean) {
+  /** productionPilot: canlıda yalnız pilot işletmeler için (işletme kontrolü IyzicoBillingService.allowedFor'da). */
+  constructor(
+    private readonly configured: () => boolean,
+    private readonly productionPilot = false,
+  ) {
     super();
   }
   get acceptsPayments() {
-    return !isProductionRuntime() && this.configured();
+    return this.configured() && (!isProductionRuntime() || this.productionPilot);
   }
   async charge(): Promise<ChargeResult> {
     return { ok: false, error: "iyzico aboneliğinde tahsilatı iyzico yapar; belirteçle ödeme desteklenmez" };
@@ -104,9 +108,13 @@ export class IyzicoPaymentProvider extends PaymentProvider {
 }
 
 /** Ortama göre sağlayıcı seçimi: canlıda test sağlayıcısı yerine "ödeme kapalı" kullanılır. */
-export function paymentProviderFor(env: { NODE_ENV: string; PAYMENT_MODE: string }, iyzicoConfigured: () => boolean = () => false): PaymentProvider {
-  // Canlıda online ödeme ayrı onay verilene kadar kapalıdır (iyzico dahil).
-  if (env.NODE_ENV === "production") return new DisabledPaymentProvider();
+export function paymentProviderFor(env: { NODE_ENV: string; PAYMENT_MODE: string; IYZICO_PILOT_TENANTS?: string }, iyzicoConfigured: () => boolean = () => false): PaymentProvider {
+  if (env.NODE_ENV === "production") {
+    // Canlıda yalnız iyzico pilotu (sandbox, seçili işletmeler) açılabilir; test sağlayıcısı asla.
+    const pilot = (env.IYZICO_PILOT_TENANTS ?? "").trim().length > 0;
+    if (env.PAYMENT_MODE === "iyzico" && pilot) return new IyzicoPaymentProvider(iyzicoConfigured, true);
+    return new DisabledPaymentProvider();
+  }
   if (env.PAYMENT_MODE === "mock") return new MockPaymentProvider();
   if (env.PAYMENT_MODE === "iyzico") return new IyzicoPaymentProvider(iyzicoConfigured);
   return new DisabledPaymentProvider();

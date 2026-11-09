@@ -50,6 +50,11 @@ const schema = z.object({
   IYZICO_MERCHANT_ID: z.string().optional(),
   /** Ödeme sonucu iyzico'nun döneceği API adresi (ör. https://alanadi/api). Tanımsızsa APP_URL + /api kullanılır. */
   IYZICO_CALLBACK_BASE: z.string().optional(),
+  /**
+   * Canlı sunucuda (NODE_ENV=production) iyzico SANDBOX pilotu: yalnız bu işletme kimliklerinde (virgülle) ödeme ekranı açılır.
+   * Boşsa canlıda online ödeme kapalıdır. Sandbox'ta gerçek para çekilmez.
+   */
+  IYZICO_PILOT_TENANTS: z.string().optional(),
   // e-Fatura/e-Arşiv: yetkili entegratör bağlanana kadar "none" (fatura yalnızca taslak/kayıt olarak tutulur).
   EINVOICE_PROVIDER: z.enum(["none"]).default("none"),
   // Zamanlanmış görevler
@@ -150,6 +155,10 @@ export const webPushMode = (env: Pick<Env, "WEB_PUSH_MODE" | "NODE_ENV" | "VAPID
   return mode;
 };
 
+/** Canlıda iyzico pilotu açık işletmeler (geçerli UUID'ler). */
+export const iyzicoPilotTenants = (env: Pick<Env, "IYZICO_PILOT_TENANTS">) =>
+  (env.IYZICO_PILOT_TENANTS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter((s) => /^[0-9a-f-]{36}$/.test(s));
+
 export const appUrl = (env: Env) => (env.APP_URL ?? env.WEB_ORIGIN.split(",")[0]).replace(/\/$/, "");
 
 /**
@@ -174,7 +183,13 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
   if (env.WHATSAPP_MODE === "cloud") {
     for (const k of ["WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN"] as const) if (!env[k]) err(`${k} gerekli`);
   }
-  if (env.PAYMENT_MODE === "iyzico") warn("PAYMENT_MODE=iyzico canlıda henüz kapalıdır (ayrı onayla açılacak); online ödeme alınmaz");
+  if (env.PAYMENT_MODE === "iyzico") {
+    const pilots = iyzicoPilotTenants(env);
+    if (pilots.length) warn(`PAYMENT_MODE=iyzico: iyzico SANDBOX pilotu yalnız ${pilots.length} işletmede açık (gerçek para çekilmez)`);
+    else warn("PAYMENT_MODE=iyzico ama IYZICO_PILOT_TENANTS boş: canlıda online ödeme kapalı");
+    if (!env.IYZICO_API_KEY || !env.IYZICO_SECRET_KEY) err("PAYMENT_MODE=iyzico için IYZICO_API_KEY ve IYZICO_SECRET_KEY gerekli");
+    if (!env.IYZICO_MERCHANT_ID) warn("IYZICO_MERCHANT_ID yok: iyzico bildirimleri (webhook) reddedilir; günlük görev durumu yine eşitler");
+  }
   if (env.PAYMENT_MODE === "mock") warn("PAYMENT_MODE=mock: canlıda online ödeme kapalı; abonelikler yalnızca SaaS sahibi panelinden manuel tanımlanır");
   if (env.MARKETING_MESSAGES === "1") warn("MARKETING_MESSAGES=1: işletmeler toplu kampanya mesajı gönderebilir (İYS kaydı işletmelerin sorumluluğunda)");
   if (env.META_MODE === "mock") warn("META_MODE=mock: işletmelerin WhatsApp/Instagram bağlantıları doğrulanamaz, mesaj alınıp gönderilmez");

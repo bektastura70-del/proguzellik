@@ -99,6 +99,28 @@ describe("iyzico (birim)", () => {
     expect(verifyIyzicoSubscriptionSignature(p, "abc")).toBe(false);
   });
 
+  it("canlıda pilot listesi varsa yalnız iyzico açılır; listede olmayan işletme ödeme ekranı açamaz", () => {
+    const p = paymentProviderFor({ NODE_ENV: "production", PAYMENT_MODE: "iyzico", IYZICO_PILOT_TENANTS: "11111111-1111-4111-8111-111111111111" }, () => true);
+    expect(p).toBeInstanceOf(IyzicoPaymentProvider);
+    expect(paymentProviderFor({ NODE_ENV: "production", PAYMENT_MODE: "mock", IYZICO_PILOT_TENANTS: "11111111-1111-4111-8111-111111111111" }, () => true)).toBeInstanceOf(DisabledPaymentProvider);
+    expect(paymentProviderFor({ NODE_ENV: "production", PAYMENT_MODE: "iyzico", IYZICO_PILOT_TENANTS: " " }, () => true)).toBeInstanceOf(DisabledPaymentProvider);
+    const env = loadEnv() as { NODE_ENV: string; IYZICO_PILOT_TENANTS?: string };
+    const saved = { NODE_ENV: env.NODE_ENV, P: env.IYZICO_PILOT_TENANTS, R: process.env.NODE_ENV };
+    try {
+      process.env.NODE_ENV = "production";
+      env.NODE_ENV = "production";
+      env.IYZICO_PILOT_TENANTS = "11111111-1111-4111-8111-111111111111";
+      expect(p.acceptsPayments).toBe(true);
+      const svc = Object.create(IyzicoBillingService.prototype) as IyzicoBillingService;
+      expect(svc.allowedFor("11111111-1111-4111-8111-111111111111")).toBe(true);
+      expect(svc.allowedFor("22222222-2222-4222-8222-222222222222")).toBe(false);
+    } finally {
+      process.env.NODE_ENV = saved.R;
+      env.NODE_ENV = saved.NODE_ENV;
+      env.IYZICO_PILOT_TENANTS = saved.P;
+    }
+  });
+
   it("canlıda iyzico dahil online ödeme kapalı; canlı iyzico adresi bu sürümde yapılandırılmış sayılmaz", () => {
     expect(paymentProviderFor({ NODE_ENV: "production", PAYMENT_MODE: "iyzico" }, () => true)).toBeInstanceOf(DisabledPaymentProvider);
     expect(paymentProviderFor({ NODE_ENV: "development", PAYMENT_MODE: "iyzico" }, () => true)).toBeInstanceOf(IyzicoPaymentProvider);

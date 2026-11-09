@@ -112,7 +112,7 @@ export class SubscriptionsService {
         savedMethod,
         payments,
         /** false: online ödeme kapalı (canlıda gerçek sağlayıcı yok); paket SaaS sahibi tarafından tanımlanır. */
-        onlinePayment: this.payments.acceptsPayments && pricingPublic(env),
+        onlinePayment: this.payments.acceptsPayments && pricingPublic(env) && (this.payments.name !== IYZICO || this.iyzico.allowedFor(t.tenantId)),
         /** "iyzico": iyzico ödeme formu (kart bilgisi iyzico sayfasında girilir); "token": test sağlayıcısı */
         checkoutKind: this.payments.name === IYZICO ? "iyzico" : "token",
         /** Abonelik için iletişim (online ödeme kapalıyken paket SaaS sahibince tanımlanır) */

@@ -3,7 +3,7 @@ import { BillingCycle, Prisma, Subscription } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { AuditService } from "../../audit/audit.service";
 import { TenantInfo } from "../../common/decorators";
-import { appUrl, loadEnv, pricingPublic } from "../../config/env";
+import { appUrl, iyzicoPilotTenants, loadEnv, pricingPublic } from "../../config/env";
 import { EmailService } from "../../email/email.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { PaymentProvider } from "../payment-provider";
@@ -60,6 +60,13 @@ export class IyzicoBillingService {
     return this.payments.name === IYZICO && this.payments.acceptsPayments && this.client.environment != null;
   }
 
+  /** Canlıda (pilot) yalnız listedeki işletmeler ödeme ekranını açabilir; geliştirmede hepsi. */
+  allowedFor(tenantId: string) {
+    const env = loadEnv();
+    if (env.NODE_ENV !== "production") return true;
+    return iyzicoPilotTenants(env).includes(tenantId.toLowerCase());
+  }
+
   private assertEnabled() {
     if (!this.enabled) throw new ServiceUnavailableException({ message: "Online ödeme henüz aktif değil. Paket için bizimle iletişime geçin.", code: "ONLINE_PAYMENT_DISABLED" });
     if (!pricingPublic(loadEnv())) throw new ServiceUnavailableException({ message: "Paket fiyatları henüz açıklanmadı. Paket için bizimle iletişime geçin.", code: "PRICING_NOT_ANNOUNCED" });
@@ -100,6 +107,7 @@ export class IyzicoBillingService {
 
   async startCheckout(t: TenantInfo, b: IyzicoBillingInput) {
     this.assertEnabled();
+    if (!this.allowedFor(t.tenantId)) throw new ServiceUnavailableException({ message: "Online ödeme henüz aktif değil. Paket için bizimle iletişime geçin.", code: "ONLINE_PAYMENT_DISABLED" });
     const env = this.client.environment!;
     const db = this.prisma.platform;
     const user = await db.user.findUniqueOrThrow({ where: { id: t.userId } });
