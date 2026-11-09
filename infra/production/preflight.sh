@@ -70,6 +70,14 @@ if [[ -f "$ENV_FILE" ]]; then
     for k in VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY VAPID_SUBJECT; do [[ -n "$(env_get "$k")" ]] && ok "$k tanımlı" || bad "WEB_PUSH_MODE=live ama $k boş"; done
     [[ "$(env_get COMPOSE_FILE)" == *docker-compose.egress.yml* ]] && ok "Push için çıkış ağı etkin" || bad "WEB_PUSH_MODE=live ama COMPOSE_FILE'da docker-compose.egress.yml yok (worker push servislerine ulaşamaz)"
   fi
+  if [[ "$(env_get PAYMENT_MODE)" == "iyzico" ]]; then
+    warn "PAYMENT_MODE=iyzico: online ödeme yalnız IYZICO_PILOT_TENANTS'taki işletmelerde açık"
+    [[ -n "$(env_get IYZICO_API_KEY)" && -n "$(env_get IYZICO_SECRET_KEY)" ]] && ok "iyzico anahtarları tanımlı" || bad "PAYMENT_MODE=iyzico ama iyzico anahtarları boş"
+    [[ -n "$(env_get IYZICO_PILOT_TENANTS)" ]] || warn "IYZICO_PILOT_TENANTS boş: hiçbir işletmede ödeme açılmaz"
+    [[ "$(env_get COMPOSE_FILE)" == *docker-compose.egress.yml* ]] && ok "iyzico için çıkış ağı etkin" || bad "PAYMENT_MODE=iyzico ama COMPOSE_FILE'da docker-compose.egress.yml yok (api iyzico'ya ulaşamaz)"
+  else
+    ok "Online ödeme kapalı"
+  fi
   [[ -n "$(env_get APP_VERSION)" ]] && ok "APP_VERSION tanımlı" || bad "APP_VERSION boş"
 else
   bad ".env yok: $ENV_FILE"
