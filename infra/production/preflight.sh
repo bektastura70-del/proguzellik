@@ -70,6 +70,14 @@ if [[ -f "$ENV_FILE" ]]; then
     for k in VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY VAPID_SUBJECT; do [[ -n "$(env_get "$k")" ]] && ok "$k tanımlı" || bad "WEB_PUSH_MODE=live ama $k boş"; done
     [[ "$(env_get COMPOSE_FILE)" == *docker-compose.egress.yml* ]] && ok "Push için çıkış ağı etkin" || bad "WEB_PUSH_MODE=live ama COMPOSE_FILE'da docker-compose.egress.yml yok (worker push servislerine ulaşamaz)"
   fi
+  if [[ "$(env_get PURCHASE_ENABLED)" == "1" ]]; then
+    warn "PURCHASE_ENABLED=1: siteden doğrudan paket satın alma açık (işletme ödeme alınınca açılır)"
+    [[ "$(env_get EMAIL_MODE)" == "smtp" ]] || bad "PURCHASE_ENABLED=1 ama e-posta kapalı: satın alma doğrulanamaz"
+    [[ "$(env_get PAYMENT_MODE)" == "iyzico" ]] || bad "PURCHASE_ENABLED=1 ama PAYMENT_MODE iyzico değil"
+    [[ "$(env_get IYZICO_PILOT_TENANTS)" == "*" ]] || warn "PURCHASE_ENABLED=1 ama IYZICO_PILOT_TENANTS \"*\" değil: satın alma formu kapalı görünür"
+  else
+    ok "Siteden doğrudan satın alma kapalı"
+  fi
   if [[ "$(env_get PAYMENT_MODE)" == "iyzico" ]]; then
     warn "PAYMENT_MODE=iyzico: online ödeme yalnız IYZICO_PILOT_TENANTS'taki işletmelerde açık"
     [[ -n "$(env_get IYZICO_API_KEY)" && -n "$(env_get IYZICO_SECRET_KEY)" ]] && ok "iyzico anahtarları tanımlı" || bad "PAYMENT_MODE=iyzico ama iyzico anahtarları boş"
