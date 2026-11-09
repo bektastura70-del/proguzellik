@@ -110,7 +110,7 @@ export class IyzicoPaymentProvider extends PaymentProvider {
 /** Ortama göre sağlayıcı seçimi: canlıda test sağlayıcısı yerine "ödeme kapalı" kullanılır. */
 export function paymentProviderFor(env: { NODE_ENV: string; PAYMENT_MODE: string; IYZICO_PILOT_TENANTS?: string }, iyzicoConfigured: () => boolean = () => false): PaymentProvider {
   if (env.NODE_ENV === "production") {
-    // Canlıda yalnız iyzico pilotu (sandbox, seçili işletmeler) açılabilir; test sağlayıcısı asla.
+    // Canlıda yalnız iyzico açılabilir (IYZICO_PILOT_TENANTS: seçili işletmeler ya da "*"); test sağlayıcısı asla.
     const pilot = (env.IYZICO_PILOT_TENANTS ?? "").trim().length > 0;
     if (env.PAYMENT_MODE === "iyzico" && pilot) return new IyzicoPaymentProvider(iyzicoConfigured, true);
     return new DisabledPaymentProvider();

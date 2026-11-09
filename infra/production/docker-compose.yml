@@ -99,8 +99,9 @@ services:
       EINVOICE_PROVIDER: none
       # Diğer entegrasyonlar pasif: gerçek servise bağlanılmaz
       WHATSAPP_MODE: mock
-      # Online ödeme: varsayılan kapalı (mock + production = devre dışı). iyzico SANDBOX pilotu yalnız
-      # enable-iyzico-sandbox-pilot.sh ile açılır ve yalnız IYZICO_PILOT_TENANTS'taki işletmelerde çalışır.
+      # Online ödeme: varsayılan kapalı (mock + production = devre dışı). iyzico yalnız enable-iyzico-*.sh betikleriyle açılır
+      # ve yalnız IYZICO_PILOT_TENANTS'taki işletmelerde ("*" = tümü) çalışır. Adres varsayılanı SANDBOX'tır (para çekilmez).
+      IYZICO_BASE_URL: ${IYZICO_BASE_URL:-https://sandbox-api.iyzipay.com}
       PAYMENT_MODE: ${PAYMENT_MODE:-mock}
       IYZICO_API_KEY: ${IYZICO_API_KEY:-}
       IYZICO_SECRET_KEY: ${IYZICO_SECRET_KEY:-}

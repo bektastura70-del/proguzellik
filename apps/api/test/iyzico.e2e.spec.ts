@@ -114,6 +114,9 @@ describe("iyzico (birim)", () => {
       const svc = Object.create(IyzicoBillingService.prototype) as IyzicoBillingService;
       expect(svc.allowedFor("11111111-1111-4111-8111-111111111111")).toBe(true);
       expect(svc.allowedFor("22222222-2222-4222-8222-222222222222")).toBe(false);
+      env.IYZICO_PILOT_TENANTS = "*";
+      expect(svc.allowedFor("22222222-2222-4222-8222-222222222222")).toBe(true);
+      expect(paymentProviderFor({ NODE_ENV: "production", PAYMENT_MODE: "iyzico", IYZICO_PILOT_TENANTS: "*" }, () => true)).toBeInstanceOf(IyzicoPaymentProvider);
     } finally {
       process.env.NODE_ENV = saved.R;
       env.NODE_ENV = saved.NODE_ENV;
@@ -121,7 +124,7 @@ describe("iyzico (birim)", () => {
     }
   });
 
-  it("canlıda iyzico dahil online ödeme kapalı; canlı iyzico adresi bu sürümde yapılandırılmış sayılmaz", () => {
+  it("canlıda pilot listesi yoksa online ödeme kapalı; canlı adres yalnız canlı anahtarla çalışır", () => {
     expect(paymentProviderFor({ NODE_ENV: "production", PAYMENT_MODE: "iyzico" }, () => true)).toBeInstanceOf(DisabledPaymentProvider);
     expect(paymentProviderFor({ NODE_ENV: "development", PAYMENT_MODE: "iyzico" }, () => true)).toBeInstanceOf(IyzicoPaymentProvider);
     expect(paymentProviderFor({ NODE_ENV: "development", PAYMENT_MODE: "iyzico" }, () => false).acceptsPayments).toBe(false);
@@ -129,6 +132,10 @@ describe("iyzico (birim)", () => {
     const saved = { ...env };
     try {
       Object.assign(env, { IYZICO_API_KEY: "k", IYZICO_SECRET_KEY: "s", IYZICO_BASE_URL: "https://api.iyzipay.com" });
+      expect(new HttpIyzicoClient().environment).toBe("live");
+      Object.assign(env, { IYZICO_API_KEY: "sandbox-k", IYZICO_SECRET_KEY: "sandbox-s" });
+      expect(new HttpIyzicoClient().environment).toBeNull();
+      env.IYZICO_BASE_URL = "https://example.com";
       expect(new HttpIyzicoClient().environment).toBeNull();
       env.IYZICO_BASE_URL = "https://sandbox-api.iyzipay.com";
       expect(new HttpIyzicoClient().environment).toBe("sandbox");

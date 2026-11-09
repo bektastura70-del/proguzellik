@@ -156,6 +156,8 @@ export const webPushMode = (env: Pick<Env, "WEB_PUSH_MODE" | "NODE_ENV" | "VAPID
 };
 
 /** Canlıda iyzico pilotu açık işletmeler (geçerli UUID'ler). */
+/** IYZICO_PILOT_TENANTS="*": canlıda tüm işletmelerde online ödeme açık. */
+export const iyzicoAllTenants = (env: Pick<Env, "IYZICO_PILOT_TENANTS">) => (env.IYZICO_PILOT_TENANTS ?? "").trim() === "*";
 export const iyzicoPilotTenants = (env: Pick<Env, "IYZICO_PILOT_TENANTS">) =>
   (env.IYZICO_PILOT_TENANTS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter((s) => /^[0-9a-f-]{36}$/.test(s));
 
@@ -185,7 +187,9 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
   }
   if (env.PAYMENT_MODE === "iyzico") {
     const pilots = iyzicoPilotTenants(env);
-    if (pilots.length) warn(`PAYMENT_MODE=iyzico: iyzico SANDBOX pilotu yalnız ${pilots.length} işletmede açık (gerçek para çekilmez)`);
+    const live = (() => { try { return new URL(env.IYZICO_BASE_URL).host === "api.iyzipay.com"; } catch { return false; } })();
+    const where = iyzicoAllTenants(env) ? "TÜM işletmelerde" : pilots.length ? `yalnız ${pilots.length} işletmede` : null;
+    if (where) warn(live ? `PAYMENT_MODE=iyzico: CANLI ödeme ${where} açık (GERÇEK para çekilir)` : `PAYMENT_MODE=iyzico: iyzico SANDBOX ${where} açık (gerçek para çekilmez)`);
     else warn("PAYMENT_MODE=iyzico ama IYZICO_PILOT_TENANTS boş: canlıda online ödeme kapalı");
     if (!env.IYZICO_API_KEY || !env.IYZICO_SECRET_KEY) err("PAYMENT_MODE=iyzico için IYZICO_API_KEY ve IYZICO_SECRET_KEY gerekli");
     if (!env.IYZICO_MERCHANT_ID) warn("IYZICO_MERCHANT_ID yok: iyzico bildirimleri (webhook) reddedilir; günlük görev durumu yine eşitler");

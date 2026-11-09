@@ -2,8 +2,10 @@ import { Injectable, Logger } from "@nestjs/common";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { loadEnv } from "../../config/env";
 
-/** Bu sürümde yalnız iyzico SANDBOX (test) adresine bağlanılır; canlı adres ayrı onayla açılacak. */
+/** iyzico SANDBOX (test) adresi: para çekilmez. */
 export const IYZICO_SANDBOX_HOST = "sandbox-api.iyzipay.com";
+/** iyzico CANLI adresi: gerçek kartlardan para çekilir. */
+export const IYZICO_LIVE_HOST = "api.iyzipay.com";
 
 export type IyzicoInterval = "MONTHLY" | "YEARLY";
 
@@ -108,13 +110,15 @@ export class HttpIyzicoClient extends IyzicoClient {
     } catch {
       return null;
     }
-    // Canlı adres (api.iyzipay.com) bu sürümde bilinçli olarak desteklenmez.
-    return host === IYZICO_SANDBOX_HOST ? "sandbox" : null;
+    if (host === IYZICO_SANDBOX_HOST) return "sandbox";
+    // Canlı adreste test anahtarı kullanılmaz (yanlış eşleşme: bağlantı kurulmaz).
+    if (host === IYZICO_LIVE_HOST) return apiKey.startsWith("sandbox-") || secretKey.startsWith("sandbox-") ? null : "live";
+    return null;
   }
 
   private async call<T extends Json>(method: "GET" | "POST", path: string, body?: Json): Promise<T> {
     const { apiKey, secretKey, base } = this.cfg;
-    if (!this.environment || !apiKey || !secretKey) throw new IyzicoError("iyzico yapılandırılmadı (yalnız sandbox desteklenir)", "NOT_CONFIGURED");
+    if (!this.environment || !apiKey || !secretKey) throw new IyzicoError("iyzico yapılandırılmadı (adres veya anahtar uyumsuz)", "NOT_CONFIGURED");
     const payload = body ? JSON.stringify(body) : "";
     const rnd = Date.now().toString() + randomBytes(6).toString("hex");
     const uriPath = path.split("?")[0];

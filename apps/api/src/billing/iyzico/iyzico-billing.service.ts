@@ -3,7 +3,7 @@ import { BillingCycle, Prisma, Subscription } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { AuditService } from "../../audit/audit.service";
 import { TenantInfo } from "../../common/decorators";
-import { appUrl, iyzicoPilotTenants, loadEnv, pricingPublic } from "../../config/env";
+import { appUrl, iyzicoAllTenants, iyzicoPilotTenants, loadEnv, pricingPublic } from "../../config/env";
 import { EmailService } from "../../email/email.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { PaymentProvider } from "../payment-provider";
@@ -64,7 +64,7 @@ export class IyzicoBillingService {
   allowedFor(tenantId: string) {
     const env = loadEnv();
     if (env.NODE_ENV !== "production") return true;
-    return iyzicoPilotTenants(env).includes(tenantId.toLowerCase());
+    return iyzicoAllTenants(env) || iyzicoPilotTenants(env).includes(tenantId.toLowerCase());
   }
 
   private assertEnabled() {
