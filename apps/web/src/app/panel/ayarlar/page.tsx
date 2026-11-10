@@ -32,7 +32,7 @@ export default function SettingsPage() {
       <PageHeader title="Ayarlar" />
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader title="İşletme bilgileri" />
+          <CardHeader title="İşletme bilgileri" action={<Link href="/panel/baslangic" className="text-sm text-brand-700 underline">Kurulum sihirbazı</Link>} />
           <CardBody>
             <form className="space-y-4" onSubmit={async (e) => {
               e.preventDefault();

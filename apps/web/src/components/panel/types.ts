@@ -31,3 +31,13 @@ export type ProductSale = {
   returnedTotal: string; netTotal: string; vatTotal?: string; appointmentId?: string | null;
 };
 export type LowStockItem = { id: string; name: string; stockQty: string; minQty: string; unit: string };
+
+/** Başlangıç sihirbazı durumu (adımlar sunucuda mevcut verilerden hesaplanır). */
+export type Onboarding = {
+  steps: { salon: boolean; services: boolean; staff: boolean; online: boolean };
+  done: number;
+  total: number;
+  complete: boolean;
+  dismissed: boolean;
+  slug: string;
+};

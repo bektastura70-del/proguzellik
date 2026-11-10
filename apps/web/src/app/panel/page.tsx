@@ -3,11 +3,12 @@
 import { AlertTriangle, CalendarDays, CalendarPlus, Coins, Copy, PackagePlus, UserPlus, Users, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useSession } from "@/components/panel/session";
-import type { Appointment } from "@/components/panel/types";
+import type { Appointment, Onboarding } from "@/components/panel/types";
 import { Badge, Button, Card, CardBody, CardHeader, Empty, PageHeader, Spinner, Stat, statusTone, useToast } from "@/components/ui";
 import { buttonVariants } from "@/components/ui";
 import { useEffect, useState } from "react";
-import { useApi } from "@/lib/api";
+import { api, useApi } from "@/lib/api";
+import { useRouter } from "next/navigation";
 import { addDays, dateTr, isoDay, istanbulToIso, STATUS_TR, timeTr, tl } from "@/lib/format";
 
 type Dashboard = {
@@ -29,6 +30,17 @@ export default function Overview() {
   const dash = useApi<Dashboard>(can("OWNER", "MANAGER") && has("REPORTS") ? `/reports/dashboard?from=${encodeURIComponent(monthFrom)}&to=${encodeURIComponent(to)}` : null);
 
   const toast = useToast();
+  const router = useRouter();
+  const onb = useApi<Onboarding>(can("OWNER", "MANAGER") ? "/onboarding" : null);
+  // Hiç kurulum yapılmamış salonda sahibi oturum başına bir kez sihirbaza yönlendirilir.
+  useEffect(() => {
+    if (!onb.data || !can("OWNER") || onb.data.dismissed || onb.data.done > 0) return;
+    try {
+      if (sessionStorage.getItem("pg_onb_redirected")) return;
+      sessionStorage.setItem("pg_onb_redirected", "1");
+    } catch { /* depolama kapalı: yine de yönlendir */ }
+    router.replace("/panel/baslangic");
+  }, [onb.data, can, router]);
   const [origin, setOrigin] = useState("");
   useEffect(() => setOrigin(window.location.origin), []);
   const active = appts.data?.filter((a) => !["CANCELLED"].includes(a.status)) ?? [];
@@ -39,6 +51,23 @@ export default function Overview() {
         description={dateTr(new Date(), { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
         action={<Link href="/panel/takvim" className={buttonVariants()}>Randevu ekle</Link>}
       />
+      {onb.data && !onb.data.complete && !onb.data.dismissed && (
+        <Card className="mb-6 border-brand-200 bg-brand-50/40" data-testid="kurulum-karti">
+          <CardBody className="flex flex-wrap items-center gap-4">
+            <div className="min-w-48 flex-1">
+              <p className="font-medium">Salon kurulumu: {onb.data.done} / {onb.data.total} adım tamam</p>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-sand-200"><div className="h-full rounded-full bg-brand-600" style={{ width: `${(onb.data.done / onb.data.total) * 100}%` }} /></div>
+              <p className="mt-1 text-xs text-neutral-500">Online randevu için hizmet, personel ve çalışma saatlerini tamamlayın.</p>
+            </div>
+            <Link href="/panel/baslangic" className={buttonVariants()}>Kuruluma devam et</Link>
+            {can("OWNER") && (
+              <Button variant="outline" onClick={async () => {
+                try { await api("/onboarding", { method: "PATCH", body: { dismissed: true } }); void onb.reload(); } catch (e) { toast((e as Error).message, "red"); }
+              }}>Gizle</Button>
+            )}
+          </CardBody>
+        </Card>
+      )}
       {can("OWNER", "MANAGER", "RECEPTION") && (
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
