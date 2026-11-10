@@ -7,6 +7,7 @@ import { Public } from "../common/decorators";
 import { uuidParam } from "../common/zod.pipe";
 import { PrismaService } from "../prisma/prisma.service";
 import { safeEqual } from "../security/crypto";
+import { loadEnv, metaApp } from "../config/env";
 import { openSecret } from "./channels.service";
 import { InboundMessage, InboxService } from "./inbox.service";
 import { InboundSink } from "./inbound-sink";
@@ -86,6 +87,67 @@ export class MetaWebhooksController {
     private readonly sink: InboundSink,
   ) {}
 
+  /** ProGüzellik uygulamasının ortak webhook doğrulaması (Meta uygulama panelinde girilen belirteç). */
+  @Public()
+  @Get()
+  verifyApp(@Query("hub.mode") mode: string, @Query("hub.verify_token") token: string, @Query("hub.challenge") challenge: string) {
+    const app = metaApp(loadEnv());
+    if (!app) throw new NotFoundException();
+    if (mode !== "subscribe" || !token || !safeEqual(token, app.verifyToken)) throw new ForbiddenException();
+    return String(challenge ?? "");
+  }
+
+  /**
+   * Ortak webhook: Embedded Signup ile bağlanan tüm salonların olayları buraya gelir. İmza uygulama sırrıyla
+   * doğrulanır; her olay numara kimliğine (phone_number_id) göre ilgili salonun bağlantısına yönlendirilir.
+   * Bağlı olmayan numaraların olayları yok sayılır.
+   */
+  @Public()
+  @Post()
+  @HttpCode(200)
+  async receiveApp(@Req() req: RawBodyRequest<Request>, @Headers("x-hub-signature-256") signature?: string) {
+    const app = metaApp(loadEnv());
+    if (!app) throw new NotFoundException();
+    this.checkSignature(req, app.appSecret, signature);
+    const body = req.body as WaBody;
+    if (body?.object !== "whatsapp_business_account") return { received: true, stored: 0, updated: 0 };
+    const ids = new Set<string>();
+    for (const e of body.entry ?? []) for (const ch of e.changes ?? []) if (ch.value?.metadata?.phone_number_id) ids.add(ch.value.metadata.phone_number_id);
+    let stored = 0;
+    let updated = 0;
+    for (const phoneId of ids) {
+      const c = await this.prisma.platform.channelConnection.findFirst({ where: { channel: "WHATSAPP", externalId: phoneId, managed: true, status: { not: "DISABLED" } } });
+      if (!c) continue;
+      const r = await this.process(c, body);
+      stored += r.stored;
+      updated += r.updated;
+    }
+    return { received: true, stored, updated };
+  }
+
+  private checkSignature(req: RawBodyRequest<Request>, secret: string, signature?: string) {
+    const raw = req.rawBody;
+    if (!raw || !signature) throw new ForbiddenException("İmza eksik");
+    const expected = "sha256=" + createHmac("sha256", secret).update(raw).digest("hex");
+    if (!safeEqual(signature, expected)) throw new ForbiddenException("Geçersiz imza");
+  }
+
+  private async process(c: ChannelConnection, body: unknown) {
+    await this.prisma.withTenant({ tenantId: c.tenantId, userId: "" }, (tx) => tx.channelConnection.update({ where: { id: c.id }, data: { lastWebhookAt: new Date() } }));
+    const parsed = c.channel === "WHATSAPP" ? parseWhatsApp(body as WaBody, c.externalId) : parseInstagram(body as IgBody, c.externalId);
+    let stored = 0;
+    for (const m of parsed.messages) {
+      const r = await this.inbox.ingest(c, m);
+      if (!r) continue;
+      stored++;
+      if (m.isText && !r.optedOut) await this.sink.inbound(c, r.conversation.id, r.message.id);
+    }
+    let updated = 0;
+    for (const s of parsed.statuses) updated += await this.inbox.applyStatus(c.tenantId, s.id, s.status, s.error);
+    if (stored || updated) this.logger.log(`Webhook ${c.channel}: ${stored} yeni mesaj, ${updated} durum`);
+    return { stored, updated };
+  }
+
   private async connection(id: string) {
     if (!uuidParam.test(id)) throw new NotFoundException();
     const c = await this.prisma.platform.channelConnection.findUnique({ where: { id } });
@@ -114,24 +176,9 @@ export class MetaWebhooksController {
   @HttpCode(200)
   async receive(@Param("id") id: string, @Req() req: RawBodyRequest<Request>, @Headers("x-hub-signature-256") signature?: string) {
     const c = await this.connection(id);
-    if (!c.appSecretEnc) throw new NotFoundException();
-    const raw = req.rawBody;
-    if (!raw || !signature) throw new ForbiddenException("İmza eksik");
-    const expected = "sha256=" + createHmac("sha256", openSecret(c.appSecretEnc)).update(raw).digest("hex");
-    if (!safeEqual(signature, expected)) throw new ForbiddenException("Geçersiz imza");
-
-    await this.prisma.withTenant({ tenantId: c.tenantId, userId: "" }, (tx) => tx.channelConnection.update({ where: { id: c.id }, data: { lastWebhookAt: new Date() } }));
-    const parsed = c.channel === "WHATSAPP" ? parseWhatsApp(req.body as WaBody, c.externalId) : parseInstagram(req.body as IgBody, c.externalId);
-    let stored = 0;
-    for (const m of parsed.messages) {
-      const r = await this.inbox.ingest(c, m);
-      if (!r) continue;
-      stored++;
-      if (m.isText && !r.optedOut) await this.sink.inbound(c as ChannelConnection, r.conversation.id, r.message.id);
-    }
-    let updated = 0;
-    for (const s of parsed.statuses) updated += await this.inbox.applyStatus(c.tenantId, s.id, s.status, s.error);
-    if (stored || updated) this.logger.log(`Webhook ${c.channel}: ${stored} yeni mesaj, ${updated} durum`);
-    return { received: true, stored, updated };
+    // ProGüzellik uygulamasıyla bağlanan numaralar yalnızca ortak adresten olay alır.
+    if (c.managed || !c.appSecretEnc) throw new NotFoundException();
+    this.checkSignature(req, openSecret(c.appSecretEnc), signature);
+    return { received: true, ...(await this.process(c, req.body)) };
   }
 }

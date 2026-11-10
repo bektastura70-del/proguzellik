@@ -2,7 +2,7 @@
 
 import { Check, Copy, Instagram, MessageCircle } from "lucide-react";
 import Link from "next/link";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useSession } from "@/components/panel/session";
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Field, Input, Label, PageHeader, Spinner, Table, Td, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -13,9 +13,13 @@ type Channel = "WHATSAPP" | "INSTAGRAM";
 type Conn = {
   id: string; channel: Channel; status: "DRAFT" | "CONNECTED" | "ERROR" | "DISABLED"; externalId: string; businessAccountId: string | null;
   displayName: string | null; tokenHint: string | null; verifiedAt: string | null; webhookVerifiedAt: string | null; lastWebhookAt: string | null;
-  lastError: string | null; aiAutoReply: boolean; aiDataConsentAt: string | null; webhookUrl: string;
+  lastError: string | null; aiAutoReply: boolean; aiDataConsentAt: string | null; webhookUrl: string; managed: boolean;
 };
-type ListRes = { metaMode: "mock" | "live" | "disabled"; aiMode: string; aiAvailable: boolean; connections: Conn[] };
+type ListRes = {
+  metaMode: "mock" | "live" | "disabled"; aiMode: string; aiAvailable: boolean; connections: Conn[];
+  /** ProGüzellik Meta uygulamasıyla "WhatsApp'ı bağla" açıksa dolu */
+  embeddedSignup: { appId: string; configId: string } | null;
+};
 type Tpl = { name: string; label: string; category: string; body: string; status: string; language: string | null };
 
 const PATH: Record<Channel, string> = { WHATSAPP: "whatsapp", INSTAGRAM: "instagram" };
@@ -59,6 +63,10 @@ export default function ChannelsPage() {
   const { can, has } = useSession();
   const list = useApi<ListRes>("/channels");
   const [open, setOpen] = useState<Channel | null>(null);
+  // "WhatsApp'ı bağla" sayfasından dönüşte sihirbaz açık gelir.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("kurulum") === "whatsapp") setOpen("WHATSAPP");
+  }, []);
 
   if (!has("WHATSAPP")) {
     return (
@@ -126,7 +134,7 @@ export default function ChannelsPage() {
 function Wizard({ channel, conn, meta, onChange }: { channel: Channel; conn?: Conn; meta: ListRes; onChange: () => void }) {
   const toast = useToast();
   const steps = stepsFor(channel);
-  const initial = !conn || conn.status === "DISABLED" ? 0 : conn.status === "CONNECTED" ? steps.findIndex((x) => x.s === "Webhook") : 2;
+  const initial = !conn || conn.status === "DISABLED" ? 0 : conn.managed && conn.status === "CONNECTED" ? steps.findIndex((x) => x.s === "Şablonlar") : conn.status === "CONNECTED" ? steps.findIndex((x) => x.s === "Webhook") : conn.managed ? 0 : 2;
   const [step, setStep] = useState(Math.max(0, initial));
   const [busy, setBusy] = useState(false);
   const path = PATH[channel];
@@ -151,7 +159,8 @@ function Wizard({ channel, conn, meta, onChange }: { channel: Channel; conn?: Co
           ))}
         </ol>
 
-        {current === "Hazırlık" && <Prep channel={channel} onNext={next} />}
+        {current === "Hazırlık" && channel === "WHATSAPP" && meta.embeddedSignup && <ConnectWithMeta conn={conn} onManual={next} />}
+        {current === "Hazırlık" && !(channel === "WHATSAPP" && meta.embeddedSignup) && <Prep channel={channel} onNext={next} />}
 
         {current === "Hesap bilgileri" && (
           <form className="space-y-4" onSubmit={(e) => {
@@ -222,6 +231,24 @@ function Wizard({ channel, conn, meta, onChange }: { channel: Channel; conn?: Co
   );
 }
 
+/** Önerilen yol: ProGüzellik Meta uygulamasıyla tek tıkla bağlama (anahtar girmeden). */
+function ConnectWithMeta({ conn, onManual }: { conn?: Conn; onManual: () => void }) {
+  return (
+    <div className="space-y-4 text-sm">
+      <p>Salonunuzun WhatsApp Business numarasını Meta penceresinden seçerek bağlayın. Anahtar veya uygulama kurmanıza gerek yoktur; numara ve mesajlar salonunuzun kendi Meta hesabında kalır.</p>
+      <ul className="list-disc space-y-1 pl-5">
+        <li>Bir Facebook hesabı ve (yoksa pencerede açılacak) bir Meta işletme portföyü</li>
+        <li>Başka bir WhatsApp uygulamasında kullanılmayan bir telefon numarası</li>
+        <li>Bağladıktan sonra WhatsApp Yöneticisi'nde bir ödeme yöntemi (Meta, şablon mesajlarını salonunuza ücretlendirir)</li>
+      </ul>
+      {conn?.managed && conn.status === "ERROR" && conn.lastError && <Alert>Önceki deneme tamamlanamadı: {conn.lastError}</Alert>}
+      {/* Meta penceresi ayrı güvenlik politikası olan sayfada açılır; tam sayfa geçiş gerekir. */}
+      <Button onClick={() => window.location.assign("/panel/kanallar/whatsapp-bagla")}>{conn?.managed && conn.status === "CONNECTED" ? "Başka numara bağla" : "WhatsApp'ı bağla"}</Button>
+      <p className="text-xs text-neutral-500">Kendi Meta uygulamanızla kurmak mı istiyorsunuz? <button type="button" className="underline" onClick={onManual}>Elle kurulum (ileri düzey)</button></p>
+    </div>
+  );
+}
+
 function Prep({ channel, onNext }: { channel: Channel; onNext: () => void }) {
   const [ok, setOk] = useState(false);
   const items = channel === "WHATSAPP"
@@ -255,6 +282,15 @@ function Prep({ channel, onNext }: { channel: Channel; onNext: () => void }) {
 function WebhookStep({ channel, conn, onRefresh }: { channel: Channel; conn: Conn; onRefresh: () => void }) {
   const toast = useToast();
   const [token, setToken] = useState<string | null>(null);
+  if (conn.managed) {
+    return (
+      <div className="space-y-3 text-sm">
+        <p>Numaranız ProGüzellik uygulamasıyla bağlı; webhook ayarı otomatik yapıldı, sizin bir şey girmenize gerek yok.</p>
+        <div className="rounded-xl bg-sand-50 p-3 text-xs">Son gelen olay: {conn.lastWebhookAt ? dateTimeTr(conn.lastWebhookAt) : "henüz yok"}</div>
+        <Button variant="outline" onClick={onRefresh}>Durumu yenile</Button>
+      </div>
+    );
+  }
   return (
     <div className="space-y-4 text-sm">
       <p>Meta uygulamanızın <b>{channel === "WHATSAPP" ? "WhatsApp > Yapılandırma" : "Instagram > Webhook'lar"}</b> bölümüne aşağıdaki adresi ve doğrulama belirtecini girin, ardından <b>messages</b> alanına abone olun.</p>

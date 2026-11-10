@@ -58,3 +58,14 @@ Gerçek kullanım için sunucuda yapılacaklar:
 **Ürün kararı (ileride):** Salonların Meta panelinde uğraşmadan "Facebook ile bağlan" düğmesiyle bağlanabilmesi (Embedded Signup) için ProGüzellik'in Meta Tech Provider olması gerekir. Şu anki sihirbaz, salonun anahtarları kendi girmesine dayanır.
 
 **Son adım:** Canlıya alma (deploy) için açık onayın.
+
+## ProGüzellik Meta uygulaması ile bağlama (Embedded Signup) — 10 Kasım 2026
+
+Salonlar kendi WhatsApp numaralarını tek ProGüzellik Meta uygulaması (Tech Provider, uygulama 2059349714909229) üzerinden bağlar. Elle kurulum (salonun kendi uygulaması ve anahtarları) yedek olarak durur.
+
+- Ortam değişkenleri (dördü de tanımlı değilse düğme kapalı): `META_APP_ID`, `META_APP_SECRET` (32 hex), `META_ES_CONFIG_ID` (Facebook Login for Business yapılandırma kimliği), `META_WEBHOOK_VERIFY_TOKEN` (en az 16 karakter). Gerçek istek için ayrıca `META_MODE=live`.
+- Akış: panel `/panel/kanallar/whatsapp-bagla` (Meta alan adlarına izinli ayrı CSP; tam sayfa geçişle açılır) → Meta penceresi → kod sunucuda `oauth/access_token` ile işletme anahtarına çevrilir → numaranın WABA'ya ait olduğu `/{waba}/phone_numbers` ile doğrulanır → `/{waba}/subscribed_apps` → `/{phone}/register` (6 haneli PIN, şifreli saklanır). Bağlantı kapatılınca abonelik kaldırılır.
+- Ortak webhook: `https://<alan>/api/webhooks/meta` (Meta uygulama panelinde Callback URL + `META_WEBHOOK_VERIFY_TOKEN`, `messages` alanı). İmza `META_APP_SECRET` ile doğrulanır, olay `phone_number_id`'ye göre salona yönlendirilir. Bu yolla bağlanan numaralara bağlantıya özel adres kapalıdır.
+- Salon, bağladıktan sonra WhatsApp Yöneticisi'nde ödeme yöntemi ekler (Meta ücretleri doğrudan salona yansır).
+- Embedded Signup v2/v3 15 Ekim 2026'da kullanımdan kalktı; uygulama panelinde yapılandırma oluşturulurken güncel sürüm seçilmeli (resmi belgeden teyit edilecek).
+- Yerelde `http://localhost` üzerinde Meta penceresi açılır ama giriş https ister; uçtan uca deneme canlı (https) alan adında yapılır.
