@@ -69,33 +69,35 @@ export const TOOL_DEFS = [
   },
   {
     name: "bos_saatler",
-    description: "Bir hizmet için belirli bir gündeki boş randevu saatleri (salon saat diliminde). Randevu önermeden önce mutlaka kullan.",
+    description:
+      "Bir hizmet için belirli bir gündeki boş randevu saatleri (salon saat diliminde). Randevu önermeden önce mutlaka kullan. Hizmeti ADIYLA ver (hizmetler aracındaki ad); kimlik gerekmez.",
     input_schema: {
       type: "object" as const,
       properties: {
-        hizmetId: { type: "string", description: "hizmetler aracındaki kimlik" },
+        hizmet: { type: "string", description: "Hizmetin adı (hizmetler aracındaki gibi)" },
         tarih: { type: "string", description: "YYYY-AA-GG" },
-        personelId: { type: "string", description: "İsteğe bağlı; müşteri belirli bir personel isterse" },
+        personel: { type: "string", description: "İsteğe bağlı; müşteri belirli bir personel isterse adı" },
       },
-      required: ["hizmetId", "tarih"],
+      required: ["hizmet", "tarih"],
       additionalProperties: false,
     },
   },
   {
     name: "randevu_hazirla",
     description:
-      "Müşteri bir saat seçip ad-soyad (Instagram'da ayrıca cep telefonu) verdikten sonra randevuyu HAZIRLAR, henüz oluşturmaz. Dönen özeti ve KVKK aydınlatma bağlantısını müşteriye gösterip açık onay iste.",
+      "Müşteri bir saat seçip ad-soyad (Instagram'da ayrıca cep telefonu) verdikten sonra randevuyu HAZIRLAR, henüz oluşturmaz. Önceki araç sonuçları sonraki mesajlarda görünmez: hizmeti ADIYLA, günü ve saati konuşmada geçtiği şekliyle ver; kimlikleri sunucu bulur. Dönen özeti ve KVKK aydınlatma bağlantısını müşteriye gösterip açık onay iste.",
     input_schema: {
       type: "object" as const,
       properties: {
-        hizmetId: { type: "string" },
-        baslangic: { type: "string", description: "bos_saatler sonucundaki baslangicIso değeri" },
-        personelId: { type: "string", description: "bos_saatler sonucundaki personelId" },
+        hizmet: { type: "string", description: "Hizmetin adı" },
+        tarih: { type: "string", description: "YYYY-AA-GG" },
+        saat: { type: "string", description: "SS:DD (salon saati), örn. 14:30" },
+        personel: { type: "string", description: "İsteğe bağlı: müşterinin istediği ya da bos_saatler'de önerdiğin personelin adı" },
         ad: { type: "string" },
         soyad: { type: "string" },
         telefon: { type: "string", description: "Yalnızca Instagram'da gerekli: 05xx xxx xx xx" },
       },
-      required: ["hizmetId", "baslangic", "personelId", "ad", "soyad"],
+      required: ["hizmet", "tarih", "saat", "ad", "soyad"],
       additionalProperties: false,
     },
   },
@@ -122,15 +124,32 @@ export const TOOL_DEFS = [
   },
 ];
 
-const slotsInput = z.object({ hizmetId: z.string().uuid(), tarih: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), personelId: z.string().uuid().optional() });
-const prepareInput = z.object({
-  hizmetId: z.string().uuid(),
-  baslangic: z.string().datetime({ offset: true }),
-  personelId: z.string().uuid(),
-  ad: z.string().trim().min(2).max(60),
-  soyad: z.string().trim().min(1).max(60),
-  telefon: z.string().trim().optional(),
-});
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const withService = (o: { hizmetId?: string; hizmet?: string }) => !!(o.hizmetId || o.hizmet?.trim());
+const slotsInput = z
+  .object({
+    hizmetId: z.string().uuid().optional(),
+    hizmet: z.string().trim().min(2).max(100).optional(),
+    tarih: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    personelId: z.string().uuid().optional(),
+    personel: z.string().trim().min(2).max(100).optional(),
+  })
+  .refine(withService, { message: "hizmet (ad) ya da hizmetId gerekli" });
+const prepareInput = z
+  .object({
+    hizmetId: z.string().uuid().optional(),
+    hizmet: z.string().trim().min(2).max(100).optional(),
+    tarih: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    saat: z.string().regex(HHMM, "saat SS:DD biçiminde olmalı").optional(),
+    baslangic: z.string().datetime({ offset: true }).optional(),
+    personelId: z.string().uuid().optional(),
+    personel: z.string().trim().min(2).max(100).optional(),
+    ad: z.string().trim().min(2).max(60),
+    soyad: z.string().trim().min(1).max(60),
+    telefon: z.string().trim().optional(),
+  })
+  .refine(withService, { message: "hizmet (ad) ya da hizmetId gerekli" })
+  .refine((o) => !!o.baslangic || (!!o.tarih && !!o.saat), { message: "tarih ve saat gerekli" });
 const handoffInput = z.object({ neden: z.string().trim().min(2).max(300) });
 
 /** Türkiye cep telefonu: 05xxxxxxxxx biçimine getirir; geçersizse null. */
@@ -215,14 +234,33 @@ export class ChatTools {
     );
   }
 
+  /** Hizmeti kimlikle ya da adla bulur; ad belirsizse ya da yoksa modele seçenekleri verir. */
+  private async resolveService(tx: Tx, hizmetId?: string, hizmet?: string): Promise<{ ok: true; service: { id: string; name: string; price: Prisma.Decimal; durationMin: number } } | { ok: false; error: string }> {
+    const rows = await tx.service.findMany({ where: { isActive: true, onlineBookable: true }, orderBy: { name: "asc" }, select: { id: true, name: true, price: true, durationMin: true } });
+    if (hizmetId) {
+      const hit = rows.find((r) => r.id === hizmetId);
+      return hit ? { ok: true, service: hit } : { ok: false, error: "Hizmet bulunamadı" };
+    }
+    const q = (hizmet ?? "").toLocaleLowerCase("tr-TR").trim();
+    const norm = (v: string) => v.toLocaleLowerCase("tr-TR");
+    const exact = rows.filter((r) => norm(r.name) === q);
+    const loose = exact.length ? exact : rows.filter((r) => norm(r.name).includes(q) || q.includes(norm(r.name)));
+    if (loose.length === 1) return { ok: true, service: loose[0] };
+    const names = (loose.length ? loose : rows).map((r) => r.name).join(", ");
+    return { ok: false, error: loose.length ? `Birden fazla hizmet eşleşti: ${names}. Hangisi olduğunu müşteriye sor` : `Hizmet bulunamadı. Hizmetler: ${names}` };
+  }
+
   private async slots(c: ChatContext, b: z.infer<typeof slotsInput>) {
     const day = new Date(`${b.tarih}T00:00:00Z`).getTime();
     if (day > Date.now() + MAX_DAYS_AHEAD * 86_400_000) return { ok: false, error: `En fazla ${MAX_DAYS_AHEAD} gün sonrası için randevu verilebilir` };
     return this.tx(c, async (tx) => {
       const tz = (await tx.tenant.findUniqueOrThrow({ where: { id: c.tenantId }, select: { timezone: true } })).timezone;
-      const slots = await this.availability.slots(tx, { tenantId: c.tenantId, date: b.tarih, serviceId: b.hizmetId, staffId: b.personelId, onlineOnly: true });
+      const svc = await this.resolveService(tx, b.hizmetId, b.hizmet);
+      if (!svc.ok) return svc;
+      const slots = await this.availability.slots(tx, { tenantId: c.tenantId, date: b.tarih, serviceId: svc.service.id, staffId: b.personelId, onlineOnly: true });
       const min = Date.now() + 60 * 60_000;
-      const list = slots.filter((s) => new Date(s.startsAt).getTime() >= min);
+      const who = b.personel?.toLocaleLowerCase("tr-TR");
+      const list = slots.filter((s) => new Date(s.startsAt).getTime() >= min && (!who || s.staffName.toLocaleLowerCase("tr-TR").includes(who)));
       // Aynı saatte birden çok personel varsa ilk uygun olan önerilir.
       const seen = new Set<string>();
       const uniq = list.filter((s) => (seen.has(s.startsAt) ? false : (seen.add(s.startsAt), true))).slice(0, MAX_SLOTS);
@@ -230,6 +268,7 @@ export class ChatTools {
         ok: true,
         data: {
           tarih: b.tarih,
+          hizmet: svc.service.name,
           saatler: uniq.map((s) => {
             const m = toZoned(new Date(s.startsAt), tz).minutes;
             return { saat: `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`, baslangicIso: s.startsAt, personelId: s.staffId, personel: s.staffName };
@@ -245,11 +284,21 @@ export class ChatTools {
     if (!phone) return { ok: false, error: c.channel === "INSTAGRAM" ? "Geçerli bir cep telefonu (05xx...) iste" : "Telefon numarası doğrulanamadı; personele devret" };
     return this.tx(c, async (tx) => {
       const tz = (await tx.tenant.findUniqueOrThrow({ where: { id: c.tenantId }, select: { timezone: true, name: true } }));
-      const service = await tx.service.findUnique({ where: { id: b.hizmetId } });
-      if (!service || !service.isActive || !service.onlineBookable) return { ok: false, error: "Hizmet bulunamadı" };
-      const local = toZoned(new Date(b.baslangic), tz.timezone);
-      const slots = await this.availability.slots(tx, { tenantId: c.tenantId, date: local.date, serviceId: service.id, staffId: b.personelId, onlineOnly: true });
-      const slot = slots.find((s) => s.startsAt === new Date(b.baslangic).toISOString());
+      const svc = await this.resolveService(tx, b.hizmetId, b.hizmet);
+      if (!svc.ok) return svc;
+      const service = svc.service;
+      const who = b.personel?.toLocaleLowerCase("tr-TR");
+      let slot: { startsAt: string; staffId: string; staffName: string } | undefined;
+      if (b.baslangic) {
+        const local = toZoned(new Date(b.baslangic), tz.timezone);
+        const slots = await this.availability.slots(tx, { tenantId: c.tenantId, date: local.date, serviceId: service.id, staffId: b.personelId, onlineOnly: true });
+        slot = slots.find((s) => s.startsAt === new Date(b.baslangic!).toISOString());
+      } else {
+        // Saat, salon saat diliminde "SS:DD" olarak verilir; sunucu o günün boş saatlerinden eşleşeni bulur.
+        const [hh, mm] = b.saat!.split(":").map(Number);
+        const slots = await this.availability.slots(tx, { tenantId: c.tenantId, date: b.tarih!, serviceId: service.id, staffId: b.personelId, onlineOnly: true });
+        slot = slots.find((s) => toZoned(new Date(s.startsAt), tz.timezone).minutes === hh * 60 + mm && (!who || s.staffName.toLocaleLowerCase("tr-TR").includes(who)));
+      }
       if (!slot || new Date(slot.startsAt).getTime() < Date.now() + 60 * 60_000) return { ok: false, error: "Bu saat artık müsait değil; bos_saatler ile yeniden bak" };
       const pending: PendingBooking = { serviceId: service.id, staffId: slot.staffId, startsAt: slot.startsAt, firstName: b.ad, lastName: b.soyad, phone, createdAt: new Date().toISOString() };
       await tx.conversation.update({ where: { id: c.conversationId }, data: { state: { pending } as unknown as Prisma.InputJsonValue } });

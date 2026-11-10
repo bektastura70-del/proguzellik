@@ -184,6 +184,30 @@ describe("Yapay zekâ sohbet motoru: yanıt, kampanya, randevu, personele devir"
     expect(await su.appointment.count({ where: { tenantId: A.tenant.id } })).toBe(before);
   });
 
+  it("randevu araçları kimlik gerektirmez: hizmet adı + tarih + saat ile hazırlanır (model önceki araç sonuçlarını görmez)", async () => {
+    const tools = app.get(ChatTools);
+    const conv = await su.conversation.create({ data: { tenantId: A.tenant.id, connectionId: conn, channel: "WHATSAPP", externalUserId: "905557770001" } });
+    const ctx = { tenantId: A.tenant.id, conversationId: conv.id, channel: "WHATSAPP" as const, externalUserId: "905557770001", customerId: null };
+    const svcName = s.service.name;
+    // Boş saatleri hizmet adıyla (küçük harf, kısmi) iste
+    const bos = await tools.run(ctx, "bos_saatler", { hizmet: svcName.toLocaleLowerCase("tr-TR"), tarih: tomorrow() });
+    expect(bos).toMatchObject({ ok: true, data: { hizmet: svcName } });
+    const first = (bos.data as { saatler: { saat: string; personel: string }[] }).saatler[0];
+    expect(first.saat).toMatch(/^\d{2}:\d{2}$/);
+    // Kimliksiz hazırla: yalnızca ad, tarih, saat (+ isteğe bağlı personel adı)
+    const ok = await tools.run(ctx, "randevu_hazirla", { hizmet: svcName, tarih: tomorrow(), saat: first.saat, personel: first.personel, ad: "Deniz", soyad: "Test" });
+    expect(ok).toMatchObject({ ok: true });
+    expect((ok.data as { ozet: string }).ozet).toContain(first.saat);
+    expect((await su.conversation.findUniqueOrThrow({ where: { id: conv.id } })).state).not.toBeNull();
+    // Olmayan saat ve olmayan hizmet açık hata döner (model uydurmaz)
+    expect(await tools.run(ctx, "randevu_hazirla", { hizmet: svcName, tarih: tomorrow(), saat: "03:07", ad: "Deniz", soyad: "Test" })).toMatchObject({ ok: false, error: expect.stringContaining("müsait değil") });
+    expect(await tools.run(ctx, "randevu_hazirla", { hizmet: "Olmayan hizmet", tarih: tomorrow(), saat: first.saat, ad: "Deniz", soyad: "Test" })).toMatchObject({ ok: false, error: expect.stringContaining("Hizmet bulunamadı") });
+    expect(await tools.run(ctx, "randevu_hazirla", { tarih: tomorrow(), saat: first.saat, ad: "Deniz", soyad: "Test" })).toMatchObject({ ok: false, error: expect.stringContaining("Geçersiz girdi") });
+    // Eski kimlikli biçim de çalışmaya devam eder
+    const withIds = (await tools.run(ctx, "bos_saatler", { hizmetId: s.service.id, tarih: tomorrow() })).data as { saatler: { baslangicIso: string; personelId: string }[] };
+    expect(await tools.run(ctx, "randevu_hazirla", { hizmetId: s.service.id, baslangic: withIds.saatler[0].baslangicIso, personelId: withIds.saatler[0].personelId, ad: "Deniz", soyad: "Test" })).toMatchObject({ ok: true });
+  });
+
   it("Instagram: müşterinin yazdığı numara kayıtlı bir müşteriye aitse o kayda bağlanmaz, personele devredilir", async () => {
     const tools = app.get(ChatTools);
     const conv = await su.conversation.create({ data: { tenantId: A.tenant.id, connectionId: conn, channel: "INSTAGRAM", externalUserId: "ig-1784000000001" } });
