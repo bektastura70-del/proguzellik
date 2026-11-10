@@ -102,6 +102,15 @@ describe("WhatsApp'ı bağla (Embedded Signup) ve ortak webhook", () => {
     expect(await su.conversation.count({ where: { externalUserId: "905551110002" } })).toBe(0);
   });
 
+  it("aynı numaranın hatalı kalmış başka kaydı varsa mesaj yalnızca bağlı (CONNECTED) salona gider", async () => {
+    // B'nin aynı numarayla yarım kalmış (ERROR) bir denemesi olsun.
+    await su.channelConnection.create({ data: { tenantId: B.tenant.id, channel: "WHATSAPP", status: "ERROR", managed: true, externalId: PHONE_A, businessAccountId: WABA_A, accessTokenEnc: "", tokenLast4: "", appSecretEnc: "", verifyTokenEnc: "x" } });
+    for (let i = 0; i < 3; i++) await appPost(app, waText(PHONE_A, `90555111020${i}`, `wamid.ESX${i}`, "Selam")).expect(200);
+    expect(await su.conversation.count({ where: { tenantId: B.tenant.id } })).toBe(0);
+    expect(await su.conversation.count({ where: { tenantId: A.tenant.id, externalUserId: { startsWith: "90555111020" } } })).toBe(3);
+    await su.channelConnection.deleteMany({ where: { tenantId: B.tenant.id } });
+  });
+
   it("ProGüzellik uygulamasıyla bağlı numaraya bağlantıya özel adresten olay gönderilemez", async () => {
     const row = await su.channelConnection.findFirstOrThrow({ where: { tenantId: A.tenant.id } });
     await appPost(app, waText(PHONE_A, "905551110003", "wamid.ES4", "Selam")).expect(200);

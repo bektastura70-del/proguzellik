@@ -43,9 +43,17 @@ export default function WhatsAppConnectPage() {
   const [result, setResult] = useState<string | null>(null);
   const info = useRef<SessionInfo | null>(null);
   const code = useRef<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fail = (m: string) => {
+    if (timer.current) clearTimeout(timer.current);
+    code.current = null;
+    setErr(m);
+    setState("idle");
+  };
 
   const finish = async () => {
     if (!code.current || !info.current?.phone_number_id || !info.current.waba_id) return;
+    if (timer.current) clearTimeout(timer.current);
     const body = { code: code.current, phoneNumberId: info.current.phone_number_id, wabaId: info.current.waba_id };
     code.current = null;
     setState("saving");
@@ -74,13 +82,14 @@ export default function WhatsAppConnectPage() {
         info.current = d.data ?? null;
         void finish();
       } else if (d.event === "FINISH_ONLY_WABA") {
-        setErr("Hesap oluşturuldu ama numara eklenmedi. Lütfen tekrar deneyip bir telefon numarası seçin.");
-        setState("idle");
+        fail("Hesap oluşturuldu ama numara eklenmedi. Lütfen tekrar deneyip bir telefon numarası seçin.");
+      } else if (d.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING" || d.event === "FINISH_GRANT_ONLY_API_ACCESS") {
+        fail("Bu bağlantı türü henüz desteklenmiyor. Lütfen WhatsApp Business uygulamasında kullanılmayan bir numarayı seçin.");
       } else if (d.event === "CANCEL") {
+        if (timer.current) clearTimeout(timer.current);
         setState("idle");
       } else if (d.event === "ERROR") {
-        setErr(d.data?.error_message ?? "Meta bir hata bildirdi");
-        setState("idle");
+        fail(d.data?.error_message ?? "Meta bir hata bildirdi");
       }
     };
     window.addEventListener("message", onMessage);
@@ -106,6 +115,8 @@ export default function WhatsAppConnectPage() {
         if (!c) { setState((s) => (s === "open" ? "idle" : s)); return; }
         code.current = c;
         void finish();
+        // Kod geldi ama numara bilgisi gelmediyse bekleme sonsuza kadar sürmesin (kod zaten 30 sn geçerli).
+        timer.current = setTimeout(() => { if (code.current) fail("Meta numara bilgisini göndermedi. Lütfen tekrar deneyin."); }, 20_000);
       }, { config_id: es.configId, response_type: "code", override_default_response_type: true, extras: { setup: {} } });
     } catch (e) {
       setErr((e as Error).message);

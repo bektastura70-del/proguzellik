@@ -87,7 +87,8 @@ export class ChannelsService {
   async list(t: TenantInfo) {
     const env = loadEnv();
     const rows = await this.prisma.withTenant(t, (tx) => tx.channelConnection.findMany({ orderBy: { channel: "asc" } }));
-    const app = metaApp(env);
+    // Meta bu sunucuda kapalıysa düğme gösterilmez (salon Meta penceresini bitirip sonra hata almasın).
+    const app = this.meta.mode === "disabled" ? null : metaApp(env);
     return {
       metaMode: this.meta.mode,
       // "WhatsApp'ı bağla" düğmesi için tarayıcıya yalnızca herkese açık kimlikler gider (uygulama sırrı asla).

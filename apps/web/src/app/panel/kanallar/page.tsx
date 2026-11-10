@@ -243,7 +243,9 @@ function ConnectWithMeta({ conn, onManual }: { conn?: Conn; onManual: () => void
       </ul>
       {conn?.managed && conn.status === "ERROR" && conn.lastError && <Alert>Önceki deneme tamamlanamadı: {conn.lastError}</Alert>}
       {/* Meta penceresi ayrı güvenlik politikası olan sayfada açılır; tam sayfa geçiş gerekir. */}
-      <Button onClick={() => window.location.assign("/panel/kanallar/whatsapp-bagla")}>{conn?.managed && conn.status === "CONNECTED" ? "Başka numara bağla" : "WhatsApp'ı bağla"}</Button>
+      {conn?.status === "CONNECTED"
+        ? <Alert tone="green">Bağlı: <b>{conn.displayName ?? conn.externalId}</b>. Başka bir numara bağlamak için önce bu bağlantıyı kapatın.</Alert>
+        : <Button onClick={() => window.location.assign("/panel/kanallar/whatsapp-bagla")}>WhatsApp'ı bağla</Button>}
       <p className="text-xs text-neutral-500">Kendi Meta uygulamanızla kurmak mı istiyorsunuz? <button type="button" className="underline" onClick={onManual}>Elle kurulum (ileri düzey)</button></p>
     </div>
   );
