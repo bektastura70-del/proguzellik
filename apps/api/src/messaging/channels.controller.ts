@@ -12,6 +12,11 @@ const saveSchema = z.object({
   accessToken: z.string().trim().min(20, "Erişim anahtarı çok kısa").max(1024).optional(),
   appSecret: z.string().trim().regex(/^[0-9a-f]{32}$/i, "Uygulama gizli anahtarı 32 karakterlik onaltılık bir değerdir").optional(),
 });
+const esSchema = z.object({
+  code: z.string().trim().min(10).max(2048),
+  phoneNumberId: metaId,
+  wabaId: metaId,
+});
 const aiSchema = z.object({ aiAutoReply: z.boolean(), aiDataConsent: z.boolean().optional() });
 const testSchema = z.object({
   to: z.string().trim().regex(/^\+?[0-9 ()-]{10,20}$/, "Geçerli bir telefon numarası girin"),
@@ -53,6 +58,14 @@ export class ChannelsController {
   @Roles("OWNER")
   verify(@CurrentTenant() t: TenantInfo, @Param("channel") p: string) {
     return this.channels.verify(t, channelOf(p));
+  }
+
+  /** "WhatsApp'ı bağla" (Embedded Signup) penceresinden dönen kod ve kimliklerle bağlantıyı kurar. */
+  @Post("whatsapp/embedded-signup")
+  @HttpCode(200)
+  @Roles("OWNER")
+  embeddedSignup(@CurrentTenant() t: TenantInfo, @Body(new ZodPipe(esSchema)) b: z.infer<typeof esSchema>) {
+    return this.channels.embeddedSignup(t, b);
   }
 
   @Get("whatsapp/templates")

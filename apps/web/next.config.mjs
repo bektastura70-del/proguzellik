@@ -44,6 +44,29 @@ const paymentPageHeaders = [
   },
 ];
 
+/**
+ * Yalnız "WhatsApp'ı bağla" sayfası: Meta JavaScript SDK'sı ve Embedded Signup penceresi Meta alan adlarından yüklenir.
+ * Sayfaya tam sayfa geçişle girilir (istemci içi gezinmede sıkı politika kalırdı).
+ */
+const META = "https://connect.facebook.net https://*.facebook.com";
+const metaConnectHeaders = [
+  {
+    key: "Content-Security-Policy",
+    value: [
+      "default-src 'self'",
+      `script-src 'self' 'unsafe-inline' ${META}`,
+      "style-src 'self' 'unsafe-inline'",
+      `img-src 'self' data: blob: ${META} https://*.fbcdn.net`,
+      "font-src 'self' data:",
+      `connect-src 'self' ${META}`,
+      "frame-src https://*.facebook.com",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join("; "),
+  },
+];
+
 /** @type {import("next").NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -61,6 +84,7 @@ const nextConfig = {
       { source: "/:path*", headers: securityHeaders },
       { source: "/panel/abonelik/odeme", headers: paymentPageHeaders },
       { source: "/satin-al/odeme", headers: paymentPageHeaders },
+      { source: "/panel/kanallar/whatsapp-bagla", headers: metaConnectHeaders },
     ];
   },
 };

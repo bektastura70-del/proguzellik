@@ -25,6 +25,12 @@ const schema = z.object({
   META_MODE: z.enum(["mock", "live"]).default("mock"),
   META_GRAPH_VERSION: z.string().default("v21.0"),
   INSTAGRAM_GRAPH_VERSION: z.string().default("v26.0"),
+  // ProGüzellik'in kendi Meta uygulaması (Tech Provider): salonlar numaralarını Embedded Signup ile bağlar.
+  // Dördü birden tanımlı değilse "WhatsApp'ı bağla" düğmesi kapalıdır; elle kurulum çalışmaya devam eder.
+  META_APP_ID: z.string().regex(/^\d{5,25}$/).optional(),
+  META_APP_SECRET: z.string().regex(/^[0-9a-f]{32}$/i).optional(),
+  META_ES_CONFIG_ID: z.string().regex(/^\d{5,25}$/).optional(),
+  META_WEBHOOK_VERIFY_TOKEN: z.string().min(16).optional(),
   // Toplu kampanya (ticari ileti) gönderimi. Tanımsızsa canlıda kapalı: İYS entegrasyonu yok.
   MARKETING_MESSAGES: z.enum(["0", "1"]).optional(),
   // Yapay zekâ asistanı: varsayılan "mock" (kural tabanlı). "anthropic" Claude API kullanır.
@@ -144,6 +150,12 @@ export const purchaseEnabled = (env: Pick<Env, "PURCHASE_ENABLED" | "NODE_ENV">)
  * durumunda kalır ve bağlantı (belirteç) hiç üretilmez.
  */
 export const inviteDeliveryEnabled = (env: Pick<Env, "EMAIL_MODE" | "NODE_ENV">) => env.EMAIL_MODE === "smtp" || env.NODE_ENV !== "production";
+
+/** ProGüzellik Meta uygulaması (Embedded Signup + ortak webhook) ayarları; eksikse null (özellik kapalı). */
+export function metaApp(env: Pick<Env, "META_APP_ID" | "META_APP_SECRET" | "META_ES_CONFIG_ID" | "META_WEBHOOK_VERIFY_TOKEN">) {
+  const { META_APP_ID: appId, META_APP_SECRET: appSecret, META_ES_CONFIG_ID: configId, META_WEBHOOK_VERIFY_TOKEN: verifyToken } = env;
+  return appId && appSecret && configId && verifyToken ? { appId, appSecret, configId, verifyToken } : null;
+}
 
 /** PWA V1.0 özellikleri bu ortamda açılabilir mi? Canlıda yalnızca PWA_ENABLED=1 ile. */
 export const pwaEnabled = (env: Pick<Env, "PWA_ENABLED" | "NODE_ENV">) =>

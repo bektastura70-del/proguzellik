@@ -46,6 +46,22 @@ export abstract class MetaGateway {
   abstract sendWhatsAppTemplate(c: WaCreds, to: string, template: string, params: string[], language?: string): Promise<{ messageId: string }>;
   abstract sendWhatsAppText(c: WaCreds, to: string, text: string): Promise<{ messageId: string }>;
   abstract sendInstagramText(c: IgCreds, to: string, text: string): Promise<{ messageId: string }>;
+  /* Embedded Signup (ProGüzellik Meta uygulaması). Uç noktalar: developers.facebook.com/docs/whatsapp/embedded-signup */
+  /** Embedded Signup'ın döndüğü kodu (30 sn geçerli) işletme anahtarına çevirir. */
+  abstract exchangeCode(app: MetaAppCreds, code: string): Promise<{ accessToken: string }>;
+  /** WABA'daki numara kimlikleri (tarayıcıdan gelen kimliklerin gerçekten bu hesaba ait olduğunu doğrulamak için). */
+  abstract wabaPhoneNumbers(wabaId: string, accessToken: string): Promise<string[]>;
+  /** Uygulamayı WABA'nın webhook'larına abone eder. */
+  abstract subscribeApp(wabaId: string, accessToken: string): Promise<void>;
+  /** Aboneliği kaldırır (bağlantı kapatılınca). */
+  abstract unsubscribeApp(wabaId: string, accessToken: string): Promise<void>;
+  /** Numarayı Cloud API'ye kaydeder; PIN iki adımlı doğrulama PIN'i olur. */
+  abstract registerPhone(phoneNumberId: string, accessToken: string, pin: string): Promise<void>;
+}
+
+export interface MetaAppCreds {
+  appId: string;
+  appSecret: string;
 }
 
 /** Türkiye numaralarını E.164 (başında + olmadan) biçimine getirir: 0555… → 90555… */
@@ -78,6 +94,21 @@ export class DisabledMetaGateway extends MetaGateway {
     return this.fail();
   }
   sendInstagramText(_c: IgCreds, _to: string, _text: string) {
+    return this.fail();
+  }
+  exchangeCode(_a: MetaAppCreds, _code: string) {
+    return this.fail();
+  }
+  wabaPhoneNumbers(_w: string, _t: string) {
+    return this.fail();
+  }
+  subscribeApp(_w: string, _t: string) {
+    return this.fail();
+  }
+  unsubscribeApp(_w: string, _t: string) {
+    return this.fail();
+  }
+  registerPhone(_p: string, _t: string, _pin: string) {
     return this.fail();
   }
 }
@@ -127,6 +158,30 @@ export class MockMetaGateway extends MetaGateway {
   async sendInstagramText(c: IgCreds, to: string, text: string) {
     this.check(c.accessToken);
     return this.push({ kind: "ig_text", from: c.igId, to, text });
+  }
+  /** Test: "gecersiz" içeren kod reddedilir; anahtar koddan türetilir. WABA'daki numaralar testte `phones` ile belirlenir. */
+  readonly phones = new Map<string, string[]>();
+  readonly subscribed = new Set<string>();
+  readonly registered = new Map<string, string>();
+  async exchangeCode(_a: MetaAppCreds, code: string) {
+    if (code.includes("gecersiz")) throw new MetaApiError("Kod geçersiz veya süresi dolmuş (test)", 400, 100);
+    return { accessToken: `EAAmock${code}`.padEnd(40, "x") };
+  }
+  async wabaPhoneNumbers(wabaId: string, accessToken: string) {
+    this.check(accessToken);
+    return this.phones.get(wabaId) ?? [];
+  }
+  async subscribeApp(wabaId: string, accessToken: string) {
+    this.check(accessToken);
+    this.subscribed.add(wabaId);
+  }
+  async unsubscribeApp(wabaId: string, accessToken: string) {
+    this.check(accessToken);
+    this.subscribed.delete(wabaId);
+  }
+  async registerPhone(phoneNumberId: string, accessToken: string, pin: string) {
+    this.check(accessToken);
+    this.registered.set(phoneNumberId, pin);
   }
 }
 
@@ -222,6 +277,34 @@ export class LiveMetaGateway extends MetaGateway {
     });
     if (!r.message_id) throw new MetaApiError("Meta mesaj kimliği dönmedi");
     return { messageId: r.message_id };
+  }
+
+  async exchangeCode(app: MetaAppCreds, code: string) {
+    const q = new URLSearchParams({ client_id: app.appId, client_secret: app.appSecret, code });
+    // Sır sorgu dizesinde gider (Meta belgesindeki biçim); hata iletisine adres yazılmaz.
+    const res = await this.fetchImpl(this.wa(`oauth/access_token?${q}`), { signal: AbortSignal.timeout(15_000) });
+    const body = (await res.json().catch(() => ({}))) as { access_token?: string; error?: { message?: string; code?: number } };
+    if (!res.ok || body.error || !body.access_token) {
+      throw new MetaApiError(`Meta API hatası (${res.status}): ${body.error?.message ?? "anahtar alınamadı"}`.slice(0, 300), res.status, body.error?.code);
+    }
+    return { accessToken: body.access_token };
+  }
+
+  async wabaPhoneNumbers(wabaId: string, accessToken: string) {
+    const r = await this.call<{ data?: { id: string }[] }>(this.wa(`${encodeURIComponent(wabaId)}/phone_numbers?fields=id&limit=100`), accessToken);
+    return (r.data ?? []).map((p) => p.id);
+  }
+
+  async subscribeApp(wabaId: string, accessToken: string) {
+    await this.call(this.wa(`${encodeURIComponent(wabaId)}/subscribed_apps`), accessToken, { method: "POST" });
+  }
+
+  async unsubscribeApp(wabaId: string, accessToken: string) {
+    await this.call(this.wa(`${encodeURIComponent(wabaId)}/subscribed_apps`), accessToken, { method: "DELETE" });
+  }
+
+  async registerPhone(phoneNumberId: string, accessToken: string, pin: string) {
+    await this.call(this.wa(`${encodeURIComponent(phoneNumberId)}/register`), accessToken, { method: "POST", body: { messaging_product: "whatsapp", pin } });
   }
 }
 

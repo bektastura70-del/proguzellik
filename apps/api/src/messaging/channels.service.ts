@@ -1,8 +1,10 @@
+import { randomInt } from "node:crypto";
 import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
   UnprocessableEntityException,
@@ -10,7 +12,7 @@ import {
 import { ChannelConnection, ChannelType, Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { TenantInfo } from "../common/decorators";
-import { appUrl, loadEnv } from "../config/env";
+import { appUrl, loadEnv, metaApp } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 import { decrypt, deriveKeyHex, encrypt, randomToken } from "../security/crypto";
 import { IgCreds, MetaApiError, MetaDisabledError, MetaGateway, WaCreds } from "./meta.gateway";
@@ -46,6 +48,8 @@ export function metaHttpError(e: unknown): never {
 
 @Injectable()
 export class ChannelsService {
+  private readonly logger = new Logger("Channels");
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -68,7 +72,8 @@ export class ChannelsService {
       lastError: c.lastError,
       aiAutoReply: c.aiAutoReply,
       aiDataConsentAt: c.aiDataConsentAt,
-      webhookUrl: `${appUrl(loadEnv())}/api/webhooks/meta/${c.id}`,
+      managed: c.managed,
+      webhookUrl: c.managed ? `${appUrl(loadEnv())}/api/webhooks/meta` : `${appUrl(loadEnv())}/api/webhooks/meta/${c.id}`,
       updatedAt: c.updatedAt,
     };
   }
@@ -82,8 +87,11 @@ export class ChannelsService {
   async list(t: TenantInfo) {
     const env = loadEnv();
     const rows = await this.prisma.withTenant(t, (tx) => tx.channelConnection.findMany({ orderBy: { channel: "asc" } }));
+    const app = metaApp(env);
     return {
       metaMode: this.meta.mode,
+      // "WhatsApp'ı bağla" düğmesi için tarayıcıya yalnızca herkese açık kimlikler gider (uygulama sırrı asla).
+      embeddedSignup: app ? { appId: app.appId, configId: app.configId, graphVersion: env.META_GRAPH_VERSION } : null,
       aiMode: env.AI_MODE,
       aiAvailable: t.features.includes("AI_ASSISTANT"),
       connections: rows.map(ChannelsService.view),
@@ -112,6 +120,7 @@ export class ChannelsService {
       const data = {
         externalId: b.externalId,
         businessAccountId: channel === "WHATSAPP" ? b.businessAccountId : null,
+        managed: false,
         status: "DRAFT" as const,
         verifiedAt: null,
         displayName: null,
@@ -171,6 +180,78 @@ export class ChannelsService {
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
         throw new ConflictException("Bu hesap başka bir işletmeye bağlı. Destek için bizimle iletişime geçin.");
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Embedded Signup tamamlandı: tarayıcıdan gelen kod sunucuda işletme anahtarına çevrilir, numaranın gerçekten
+   * o WABA'ya ait olduğu Meta'dan doğrulanır, uygulama WABA'nın webhook'larına abone edilir ve numara Cloud API'ye
+   * kaydedilir. Adımlar Meta'nın Tech Provider belgesindeki sırayla yapılır.
+   */
+  async embeddedSignup(t: TenantInfo, b: { code: string; phoneNumberId: string; wabaId: string }) {
+    const app = metaApp(loadEnv());
+    if (!app) throw new ServiceUnavailableException({ message: "WhatsApp'ı bağla özelliği bu sunucuda açık değil", code: "ES_DISABLED" });
+    const existing = await this.prisma.withTenant(t, (tx) => tx.channelConnection.findUnique({ where: { tenantId_channel: { tenantId: t.tenantId, channel: "WHATSAPP" } } }));
+    if (existing && existing.status === "CONNECTED" && existing.externalId !== b.phoneNumberId) {
+      throw new ConflictException("Bu işletmede bağlı bir WhatsApp numarası var; önce bağlantıyı kapatın");
+    }
+    // Numara başka bir işletmede bağlıysa Meta'ya hiç istek yapılmaz (abonelik/kayıt değiştirilmez).
+    const taken = await this.prisma.platform.channelConnection.findFirst({ where: { channel: "WHATSAPP", externalId: b.phoneNumberId, status: "CONNECTED", NOT: { tenantId: t.tenantId } }, select: { id: true } });
+    if (taken) throw new ConflictException("Bu numara başka bir işletmeye bağlı. Destek için bizimle iletişime geçin.");
+    let token: string;
+    try {
+      ({ accessToken: token } = await this.meta.exchangeCode(app, b.code));
+      const phones = await this.meta.wabaPhoneNumbers(b.wabaId, token);
+      if (!phones.includes(b.phoneNumberId)) throw new MetaApiError("Seçilen numara bu WhatsApp Business hesabında bulunamadı", 400);
+    } catch (e) {
+      metaHttpError(e);
+    }
+    const pin = existing?.pinEnc && existing.externalId === b.phoneNumberId ? openSecret(existing.pinEnc) : String(randomInt(0, 1_000_000)).padStart(6, "0");
+    const creds = { phoneNumberId: b.phoneNumberId, accessToken: token, businessAccountId: b.wabaId };
+    let displayName: string | null = null;
+    let error: string | null = null;
+    try {
+      await this.meta.subscribeApp(b.wabaId, token);
+      await this.meta.registerPhone(b.phoneNumberId, token, pin);
+      displayName = (await this.meta.verifyWhatsApp(creds)).displayName;
+    } catch (e) {
+      if (!(e instanceof MetaApiError)) metaHttpError(e);
+      error = (e as MetaApiError).message;
+    }
+    const data = {
+      externalId: b.phoneNumberId,
+      businessAccountId: b.wabaId,
+      managed: true,
+      status: error ? ("ERROR" as const) : ("CONNECTED" as const),
+      displayName,
+      verifiedAt: error ? null : new Date(),
+      lastError: error,
+      accessTokenEnc: sealSecret(token),
+      tokenLast4: token.slice(-4),
+      appSecretEnc: "",
+      pinEnc: sealSecret(pin),
+      ...(existing?.externalId !== b.phoneNumberId ? { webhookVerifiedAt: null, lastWebhookAt: null } : {}),
+    };
+    try {
+      return await this.prisma.withTenant(t, async (tx) => {
+        const c = existing
+          ? await tx.channelConnection.update({ where: { id: existing.id }, data })
+          : await tx.channelConnection.create({ data: { ...data, tenantId: t.tenantId, channel: "WHATSAPP", createdById: t.userId, verifyTokenEnc: sealSecret(randomToken()) } });
+        await this.audit.log(tx, {
+          tenantId: t.tenantId,
+          actorId: t.userId,
+          action: "channel.embedded_signup",
+          entity: "ChannelConnection",
+          entityId: c.id,
+          metadata: { channel: "WHATSAPP", ok: !error, mode: this.meta.mode },
+        });
+        return { ...ChannelsService.view(c), simulated: this.meta.mode === "mock" };
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        throw new ConflictException("Bu numara başka bir işletmeye bağlı. Destek için bizimle iletişime geçin.");
       }
       throw e;
     }
@@ -237,6 +318,10 @@ export class ChannelsService {
   /** Bağlantıyı kapatır ve sırları siler; sohbet geçmişi korunur. */
   async disconnect(t: TenantInfo, channel: ChannelType) {
     const c = await this.get(t, channel);
+    // ProGüzellik uygulamasıyla bağlıysa WABA aboneliği de kaldırılır; Meta'ya ulaşılamazsa bağlantı yine kapanır.
+    if (c.managed && c.businessAccountId && c.accessTokenEnc) {
+      await this.meta.unsubscribeApp(c.businessAccountId, openSecret(c.accessTokenEnc)).catch((e: Error) => this.logger.warn(`Abonelik kaldırılamadı: ${e.message}`));
+    }
     return this.prisma.withTenant(t, async (tx) => {
       const u = await tx.channelConnection.update({
         where: { id: c.id },

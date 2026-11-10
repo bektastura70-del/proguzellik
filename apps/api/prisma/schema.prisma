@@ -1196,6 +1196,10 @@ model ChannelConnection {
   /// Müşteri mesajlarının yapay zekâ sağlayıcısına (yurt dışı) aktarımı için işletme onayı
   aiDataConsentAt   DateTime?
   aiDataConsentBy   String?       @db.Uuid
+  /// ProGüzellik Meta uygulaması üzerinden (Embedded Signup) bağlandı: uygulama sırrı ve webhook adresi ortak
+  managed           Boolean       @default(false)
+  /// Numaranın iki adımlı doğrulama PIN'i (Cloud API kaydı), şifreli
+  pinEnc            String?
   createdById       String?       @db.Uuid
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
