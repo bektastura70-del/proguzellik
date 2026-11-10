@@ -116,7 +116,7 @@ export class MetaWebhooksController {
     let stored = 0;
     let updated = 0;
     for (const phoneId of ids) {
-      const c = await this.prisma.platform.channelConnection.findFirst({ where: { channel: "WHATSAPP", externalId: phoneId, managed: true, status: { not: "DISABLED" } } });
+      const c = await this.prisma.platform.channelConnection.findFirst({ where: { channel: "WHATSAPP", externalId: phoneId, managed: true, status: "CONNECTED" } });
       if (!c) continue;
       const r = await this.process(c, body);
       stored += r.stored;
