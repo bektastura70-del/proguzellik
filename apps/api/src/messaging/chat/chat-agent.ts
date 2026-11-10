@@ -116,21 +116,21 @@ export class AnthropicChatAgent extends ChatAgent {
 
 /* ----------------------------- OpenAI ----------------------------- */
 
-interface OaiToolCall { id: string; type: "function"; function: { name: string; arguments: string } }
-type OaiMessage =
-  | { role: "system" | "user"; content: string }
-  | { role: "assistant"; content: string | null; tool_calls?: OaiToolCall[] }
-  | { role: "tool"; tool_call_id: string; content: string };
+/** Responses API çıktı/girdi öğeleri; modelin döndürdüğü öğeler (akıl yürütme dahil) olduğu gibi geri gönderilir. */
+type OaiItem = { type?: string; role?: string; content?: unknown; call_id?: string; name?: string; arguments?: string; output?: string; [k: string]: unknown };
 interface OaiResponse {
-  choices?: { finish_reason?: string; message?: { content?: string | null; refusal?: string | null; tool_calls?: OaiToolCall[] } }[];
-  error?: { code?: string | null; type?: string | null };
+  status?: string;
+  incomplete_details?: { reason?: string } | null;
+  output?: OaiItem[];
+  error?: { code?: string | null; type?: string | null } | null;
 }
 export type OpenAiFetch = (url: string, init: { method: "POST"; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_URL = "https://api.openai.com/v1/responses";
 
 /**
- * OpenAI Chat Completions ile araç kullanan sohbet ajanı (elle yazılmış döngü, ek paket yok).
+ * OpenAI Responses API ile araç kullanan sohbet ajanı (elle yazılmış döngü, ek paket yok).
+ * `store: false`: OpenAI konuşmayı kendi tarafında saklamaz; geçmiş her istekte buradan gider (akıl yürütme öğeleri dahil).
  * Modele yalnızca bu konuşmanın mesajları ve araç sonuçları gider. Randevu yalnızca sunucudaki araç kurallarıyla
  * (müşterinin açık "evet"i) oluşur; model bunu atlayamaz.
  */
@@ -146,12 +146,10 @@ export class OpenAiChatAgent extends ChatAgent {
   async reply(input: ChatInput): Promise<ChatOutput> {
     const env = loadEnv();
     if (!env.OPENAI_API_KEY || !env.OPENAI_MODEL) return { text: null, handoff: "Yapay zekâ ayarları eksik", tools: [] };
-    const tools = TOOL_DEFS.map((t) => ({ type: "function" as const, function: { name: t.name, description: t.description, parameters: t.input_schema } }));
-    const messages: OaiMessage[] = [
-      { role: "system", content: CHAT_SYSTEM_PROMPT },
-      { role: "system", content: `Salon: ${input.salonName}. Kanal: ${input.channel === "WHATSAPP" ? "WhatsApp" : "Instagram"}. Şu an: ${input.now} (bugün ${input.today}).` },
-      ...input.history.map((h): OaiMessage => ({ role: h.role, content: h.text })),
-    ];
+    // strict: false açıkça yazılır; araç şemaları katı kipin kurallarına göre yazılmadı.
+    const tools = TOOL_DEFS.map((t) => ({ type: "function" as const, name: t.name, description: t.description, parameters: t.input_schema, strict: false }));
+    const instructions = `${CHAT_SYSTEM_PROMPT}\n\nSalon: ${input.salonName}. Kanal: ${input.channel === "WHATSAPP" ? "WhatsApp" : "Instagram"}. Şu an: ${input.now} (bugün ${input.today}).`;
+    const items: OaiItem[] = input.history.map((h) => ({ role: h.role, content: h.text }));
     const used: string[] = [];
     let handoff: string | undefined;
 
@@ -159,40 +157,57 @@ export class OpenAiChatAgent extends ChatAgent {
       const res = await this.doFetch(OPENAI_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.OPENAI_API_KEY}` },
-        body: JSON.stringify({ model: env.OPENAI_MODEL, max_completion_tokens: 4000, messages, tools }),
-        signal: AbortSignal.timeout(45_000),
+        body: JSON.stringify({
+          model: env.OPENAI_MODEL,
+          instructions,
+          input: items,
+          tools,
+          store: false,
+          reasoning: { effort: env.OPENAI_REASONING_EFFORT ?? "low" },
+          // Üst sınır akıl yürütme belirteçlerini de kapsar; yalnızca kullanılan kadarı faturalanır.
+          max_output_tokens: 25_000,
+        }),
+        signal: AbortSignal.timeout(60_000),
       });
       const body = (await res.json().catch(() => ({}))) as OaiResponse;
       // Hata gövdesindeki mesaj metni günlüğe yazılmaz: yalnızca durum kodu ve tür.
       if (!res.ok) throw new Error(`OpenAI ${res.status} ${body.error?.code ?? body.error?.type ?? ""}`.trim());
-      const choice = body.choices?.[0];
-      const msg = choice?.message;
-      if (!msg) throw new Error("OpenAI boş yanıt döndürdü");
+      if (body.status === "failed") throw new Error(`OpenAI yanıtı başarısız ${body.error?.code ?? ""}`.trim());
+      if (body.status === "incomplete") {
+        const reason = body.incomplete_details?.reason;
+        return { text: null, handoff: reason === "content_filter" ? "Yapay zekâ bu mesajı yanıtlamadı" : "Yapay zekâ yanıtı tamamlanamadı", tools: used };
+      }
+      const output = body.output;
+      if (!Array.isArray(output)) throw new Error("OpenAI boş yanıt döndürdü");
 
-      if (msg.refusal || choice?.finish_reason === "content_filter") return { text: null, handoff: "Yapay zekâ bu mesajı yanıtlamadı", tools: used };
-      if (choice?.finish_reason === "length") return { text: null, handoff: "Yapay zekâ yanıtı tamamlanamadı", tools: used };
+      const parts = output.filter((o) => o.type === "message").flatMap((o) => (Array.isArray(o.content) ? (o.content as { type?: string; text?: string }[]) : []));
+      if (parts.some((p) => p.type === "refusal")) return { text: null, handoff: "Yapay zekâ bu mesajı yanıtlamadı", tools: used };
+      const calls = output.filter((o) => o.type === "function_call");
+      if (!calls.length) {
+        const text = parts.filter((p) => p.type === "output_text").map((p) => p.text ?? "").join("\n").trim();
+        return { text: text || null, handoff, tools: used };
+      }
 
-      const calls = msg.tool_calls ?? [];
-      if (!calls.length) return { text: msg.content?.trim() || null, handoff, tools: used };
-
-      messages.push({ role: "assistant", content: msg.content ?? null, tool_calls: calls });
+      // Araç çağrılarıyla gelen tüm öğeler (akıl yürütme dahil) özgün sırayla geri verilir.
+      items.push(...output);
       for (const call of calls) {
-        used.push(call.function.name);
+        const name = call.name ?? "";
+        used.push(name);
         let args: unknown;
-        let content: string;
         try {
-          args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
+          args = call.arguments ? JSON.parse(call.arguments) : {};
         } catch {
           args = undefined;
         }
-        if (args === undefined || args === null || typeof args !== "object") {
-          content = JSON.stringify({ hata: "Araç girdisi geçerli bir JSON nesnesi değil" });
+        let out: string;
+        if (args === undefined || args === null || typeof args !== "object" || Array.isArray(args)) {
+          out = JSON.stringify({ hata: "Araç girdisi geçerli bir JSON nesnesi değil" });
         } else {
-          const r = await input.runTool(call.function.name, args);
+          const r = await input.runTool(name, args);
           if (r.handoff) handoff = r.handoff;
-          content = JSON.stringify(r.ok ? (r.data ?? { tamam: true }) : { hata: r.error });
+          out = JSON.stringify(r.ok ? (r.data ?? { tamam: true }) : { hata: r.error });
         }
-        messages.push({ role: "tool", tool_call_id: call.id, content });
+        items.push({ type: "function_call_output", call_id: call.call_id, output: out });
       }
     }
     this.logger.warn("Araç döngüsü sınırına ulaşıldı");

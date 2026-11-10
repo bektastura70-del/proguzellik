@@ -41,6 +41,8 @@ const schema = z.object({
   // AI_MODE=openai: gelen mesajları OpenAI (Chat Completions) yanıtlar. Model adı bilerek varsayılansız: resmi belgeden seçilir.
   OPENAI_API_KEY: blankToUndef(z.string().min(20).optional()),
   OPENAI_MODEL: blankToUndef(z.string().min(1).optional()),
+  // Akıl yürütme düzeyi (modele göre desteklenen değerler değişir). Boşsa "low".
+  OPENAI_REASONING_EFFORT: blankToUndef(z.enum(["none", "minimal", "low", "medium", "high", "xhigh", "max"]).optional()),
   AI_MODEL: z.string().default("claude-opus-5-5"),
   // Kimlik doğrulama / oturum
   MFA_ENCRYPTION_KEY: z.string().regex(/^[0-9a-f]{64}$/i, "MFA_ENCRYPTION_KEY 64 karakter hex olmalı"),
