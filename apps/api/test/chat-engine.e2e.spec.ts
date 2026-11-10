@@ -171,6 +171,29 @@ describe("Yapay zekâ sohbet motoru: yanıt, kampanya, randevu, personele devir"
     expect(agent.calls.at(-1)!.history.map((h) => h.role)).toEqual(["user", "assistant", "user", "assistant", "user"]);
   });
 
+  it("Instagram: müşterinin yazdığı numara kayıtlı bir müşteriye aitse o kayda bağlanmaz, personele devredilir", async () => {
+    const tools = app.get(ChatTools);
+    const conv = await su.conversation.create({ data: { tenantId: A.tenant.id, connectionId: conn, channel: "INSTAGRAM", externalUserId: "ig-1784000000001" } });
+    const ctx = { tenantId: A.tenant.id, conversationId: conv.id, channel: "INSTAGRAM" as const, externalUserId: "ig-1784000000001", customerId: null };
+    const bos = (await tools.run(ctx, "bos_saatler", { hizmetId: s.service.id, tarih: tomorrow() })).data as { saatler: { baslangicIso: string; personelId: string }[] };
+    const book = async (telefon: string, slot: { baslangicIso: string; personelId: string }) => {
+      expect(await tools.run(ctx, "randevu_hazirla", { hizmetId: s.service.id, baslangic: slot.baslangicIso, personelId: slot.personelId, ad: "Başka", soyad: "Kişi", telefon })).toMatchObject({ ok: true });
+      await su.conversationMessage.create({ data: { tenantId: A.tenant.id, conversationId: conv.id, direction: "IN", author: "CUSTOMER", text: "Evet onaylıyorum" } });
+      return tools.run(ctx, "randevu_onayla", {});
+    };
+    const before = await su.appointment.count({ where: { tenantId: A.tenant.id } });
+    // 05551112233 bir önceki testte WhatsApp'tan kayıt oldu; Instagram'dan yazan biri bu numarayı yazarak o kayda ulaşamaz.
+    const r = await book("05551112233", bos.saatler[1]);
+    expect(r).toMatchObject({ ok: false, handoff: expect.stringContaining("kayıtlı bir müşteriye ait") });
+    expect(await su.appointment.count({ where: { tenantId: A.tenant.id } })).toBe(before);
+    expect((await su.conversation.findUniqueOrThrow({ where: { id: conv.id } })).customerId).toBeNull();
+    // Kayıtlı olmayan numarayla yeni müşteri ve Instagram kaynaklı randevu oluşur.
+    const ok = await book("05559998877", bos.saatler[2]);
+    expect(ok).toMatchObject({ ok: true, booked: expect.any(String) });
+    const appt = await su.appointment.findUniqueOrThrow({ where: { id: ok.booked! }, include: { customer: true } });
+    expect(appt.customer).toMatchObject({ phone: "05559998877", source: "INSTAGRAM" });
+  });
+
   it("araçlar yalnızca kendi işletmesinin verisini görür", async () => {
     const tools = app.get(ChatTools);
     const c = await convOf("905550000001");
