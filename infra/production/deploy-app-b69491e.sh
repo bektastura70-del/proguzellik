@@ -79,6 +79,6 @@ echo "Kurulum sütunu: $(q "SELECT count(*) FROM information_schema.columns WHER
 oc=$(docker exec proguzellik-prod-api node -e "fetch('http://localhost:4000/onboarding').then(r=>console.log(r.status)).catch(()=>console.log('hata'))")
 echo "Kurulum uç noktası girişsiz: $oc (401 beklenir)"
 pc=$(curl -s -o /dev/null -w '%{http_code}' https://proguzellik.com/panel/baslangic || echo hata)
-echo "Sihirbaz sayfası: $pc (200 beklenir)"
+echo "Sihirbaz sayfası: $pc (girişsiz 307 → /giris beklenir)"
 trap - ERR
 log "TAMAM: $NEW çalışıyor (başlangıç sihirbazı açık), satın alma ayarı değişmedi. Geri dönüş: cp -p docker-compose.yml.bak-$STAMP-$NEW docker-compose.yml && ./rollback.sh $OLD. Bu çıktıyı Claude'a gönderin."
