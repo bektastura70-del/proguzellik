@@ -152,6 +152,17 @@ export class InboxService {
     return { ...m, simulated: !!m.providerMessageId?.startsWith("mock.") };
   }
 
+  /** Menü rozeti için: okunmamış konuşmalar ve personelin yanıtını bekleyenler (yapay zekâ devretti ya da personel devraldı). */
+  summary(t: TenantInfo) {
+    return this.prisma.withTenant(t, async (tx) => {
+      const [unread, needsStaff] = await Promise.all([
+        tx.conversation.count({ where: { unread: { gt: 0 } } }),
+        tx.conversation.count({ where: { unread: { gt: 0 }, mode: "HUMAN" } }),
+      ]);
+      return { unread, needsStaff };
+    });
+  }
+
   list(t: TenantInfo, q: { mode?: ConversationMode; unread?: boolean }) {
     return this.prisma.withTenant(t, async (tx) => {
       const rows = await tx.conversation.findMany({

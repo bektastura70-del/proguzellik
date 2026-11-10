@@ -101,6 +101,21 @@ describe("Gelen kutusu: Meta webhook'ları, personel yanıtı, 24 saat kuralı",
     expect((await su.conversation.findUniqueOrThrow({ where: { id: convId } })).unread).toBe(0);
   });
 
+  it("menü rozeti: personelin yanıtını bekleyen (HUMAN, okunmamış) konuşma sayısı; yalnız kendi işletmesi; okununca düşer", async () => {
+    const before = await su.conversation.findUniqueOrThrow({ where: { id: convId } });
+    await su.conversation.update({ where: { id: convId }, data: { mode: "HUMAN", unread: 2 } });
+    expect((await rcp.get("/conversations/summary").expect(200)).body).toEqual({ unread: 1, needsStaff: 1 });
+    expect((await b.get("/conversations/summary").expect(200)).body).toEqual({ unread: 0, needsStaff: 0 });
+    await st.get("/conversations/summary").expect(403);
+    // Yapay zekâ konuşmadayken okunmamış mesaj personele bekleyen iş sayılmaz
+    await su.conversation.update({ where: { id: convId }, data: { mode: "AI" } });
+    expect((await rcp.get("/conversations/summary").expect(200)).body).toEqual({ unread: 1, needsStaff: 0 });
+    await su.conversation.update({ where: { id: convId }, data: { mode: "HUMAN" } });
+    await rcp.get(`/conversations/${convId}`).expect(200);
+    expect((await rcp.get("/conversations/summary").expect(200)).body).toEqual({ unread: 0, needsStaff: 0 });
+    await su.conversation.update({ where: { id: convId }, data: { mode: before.mode, unread: before.unread } });
+  });
+
   it("personel yanıtı müşteriye gider (test modunda işaretli) ve yapay zekâ susar", async () => {
     const r = await rcp.post(`/conversations/${convId}/messages`).send({ text: "Merhaba Ayşe Hanım, lazer 1000 TL." }).expect(201);
     expect(r.body).toMatchObject({ author: "STAFF", status: "SENT", simulated: true });

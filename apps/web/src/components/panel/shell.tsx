@@ -75,6 +75,8 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const [renewal, setRenewal] = useState(false);
+  /** Personelin yanıtını bekleyen konuşma sayısı (yapay zekâ devretti ya da personel devraldı, okunmamış mesaj var). */
+  const [waiting, setWaiting] = useState(0);
   const mobileApp = !!pwa?.businessPwaEnabled;
 
   useEffect(() => {
@@ -86,6 +88,35 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
     if (!tenantId) return;
     api<{ features?: { renewalReminders?: boolean } }>("/settings", { tenant: tenantId }).then((r) => setRenewal(!!r.features?.renewalReminders)).catch(() => setRenewal(false));
   }, [tenantId]);
+
+  const canInbox = !!tenantId && can("OWNER", "MANAGER", "RECEPTION") && has("WHATSAPP");
+  useEffect(() => {
+    if (!canInbox || !tenantId) {
+      setWaiting(0);
+      return;
+    }
+    let stop = false;
+    const load = () => {
+      if (document.visibilityState === "hidden") return;
+      api<{ needsStaff: number }>("/conversations/summary", { tenant: tenantId })
+        .then((r) => !stop && setWaiting(r.needsStaff))
+        .catch(() => undefined);
+    };
+    load();
+    const timer = setInterval(load, 20_000);
+    document.addEventListener("visibilitychange", load);
+    return () => {
+      stop = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", load);
+    };
+  }, [canInbox, tenantId, path]);
+
+  // Sekme başlığında sayı: panel arka planda açıkken de yanıt bekleyen konuşma fark edilir.
+  useEffect(() => {
+    const base = document.title.replace(/^\(\d+\) /, "");
+    document.title = waiting > 0 ? `(${waiting}) ${base}` : base;
+  }, [waiting, path]);
 
   if (!me) {
     return (
@@ -129,6 +160,16 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
           >
             <i.icon className="size-[18px]" />
             {i.label}
+            {i.href === "/panel/mesajlar" && waiting > 0 && (
+              <span
+                data-testid="mesaj-rozeti"
+                aria-label={`${waiting} konuşma yanıt bekliyor`}
+                title="Yanıtınızı bekleyen konuşma var"
+                className="ml-auto grid min-w-5 place-items-center rounded-full bg-rose-500 px-1.5 text-xs font-semibold text-white"
+              >
+                {waiting}
+              </span>
+            )}
           </Link>
         );
       })}

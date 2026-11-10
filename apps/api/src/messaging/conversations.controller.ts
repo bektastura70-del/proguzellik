@@ -21,6 +21,12 @@ export class ConversationsController {
     return this.inbox.list(t, { mode: q.mode, unread: q.unread === "true" });
   }
 
+  @Get("summary")
+  @Roles("OWNER", "MANAGER", "RECEPTION")
+  summary(@CurrentTenant() t: TenantInfo) {
+    return this.inbox.summary(t);
+  }
+
   @Get(":id")
   @Roles("OWNER", "MANAGER", "RECEPTION")
   get(@CurrentTenant() t: TenantInfo, @Param("id", ParseUUIDPipe) id: string) {
