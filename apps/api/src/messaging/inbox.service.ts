@@ -152,13 +152,22 @@ export class InboxService {
     return { ...m, simulated: !!m.providerMessageId?.startsWith("mock.") };
   }
 
-  /** Menü rozeti için: okunmamış konuşmalar ve personelin yanıtını bekleyenler (yapay zekâ devretti ya da personel devraldı). */
+  /**
+   * Menü rozeti için. needsStaff: personele devredilmiş (ya da personelin devraldığı) ve müşterinin son mesajına personel
+   * henüz yanıt yazmamış konuşmalar (24 saatlik pencere içinde). Konuşmanın panelde açık olması bunu "okundu" yapmaz.
+   */
   summary(t: TenantInfo) {
     return this.prisma.withTenant(t, async (tx) => {
-      const [unread, needsStaff] = await Promise.all([
+      const since = new Date(Date.now() - 24 * 3_600_000);
+      const [unread, humans] = await Promise.all([
         tx.conversation.count({ where: { unread: { gt: 0 } } }),
-        tx.conversation.count({ where: { unread: { gt: 0 }, mode: "HUMAN" } }),
+        tx.conversation.findMany({
+          where: { mode: "HUMAN", lastInboundAt: { gt: since } },
+          select: { lastInboundAt: true, messages: { where: { author: "STAFF" }, orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } } },
+          take: 200,
+        }),
       ]);
+      const needsStaff = humans.filter((c) => !c.messages[0] || (c.lastInboundAt && c.messages[0].createdAt < c.lastInboundAt)).length;
       return { unread, needsStaff };
     });
   }

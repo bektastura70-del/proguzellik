@@ -101,19 +101,29 @@ describe("Gelen kutusu: Meta webhook'ları, personel yanıtı, 24 saat kuralı",
     expect((await su.conversation.findUniqueOrThrow({ where: { id: convId } })).unread).toBe(0);
   });
 
-  it("menü rozeti: personelin yanıtını bekleyen (HUMAN, okunmamış) konuşma sayısı; yalnız kendi işletmesi; okununca düşer", async () => {
+  it("menü rozeti: personelin yanıtını bekleyen (HUMAN, personel yanıtı yok) konuşma sayısı; konuşma açılsa da düşmez; yalnız kendi işletmesi", async () => {
     const before = await su.conversation.findUniqueOrThrow({ where: { id: convId } });
-    await su.conversation.update({ where: { id: convId }, data: { mode: "HUMAN", unread: 2 } });
+    await su.conversation.update({ where: { id: convId }, data: { mode: "HUMAN", unread: 2, lastInboundAt: new Date() } });
     expect((await rcp.get("/conversations/summary").expect(200)).body).toEqual({ unread: 1, needsStaff: 1 });
     expect((await b.get("/conversations/summary").expect(200)).body).toEqual({ unread: 0, needsStaff: 0 });
     await st.get("/conversations/summary").expect(403);
-    // Yapay zekâ konuşmadayken okunmamış mesaj personele bekleyen iş sayılmaz
-    await su.conversation.update({ where: { id: convId }, data: { mode: "AI" } });
-    expect((await rcp.get("/conversations/summary").expect(200)).body).toEqual({ unread: 1, needsStaff: 0 });
-    await su.conversation.update({ where: { id: convId }, data: { mode: "HUMAN" } });
+    // Konuşma panelde açılınca okunmamış sayısı sıfırlanır ama personel yanıt yazmadıkça yanıt bekleyen sayılır
     await rcp.get(`/conversations/${convId}`).expect(200);
-    expect((await rcp.get("/conversations/summary").expect(200)).body).toEqual({ unread: 0, needsStaff: 0 });
-    await su.conversation.update({ where: { id: convId }, data: { mode: before.mode, unread: before.unread } });
+    expect((await rcp.get("/conversations/summary").expect(200)).body).toEqual({ unread: 0, needsStaff: 1 });
+    // Yapay zekâ konuşmadayken bekleyen iş değildir
+    await su.conversation.update({ where: { id: convId }, data: { mode: "AI" } });
+    expect((await rcp.get("/conversations/summary").expect(200)).body).toMatchObject({ needsStaff: 0 });
+    // Personel yanıtı yazınca düşer; müşteri yeniden yazınca tekrar artar
+    await su.conversation.update({ where: { id: convId }, data: { mode: "HUMAN" } });
+    const reply = await su.conversationMessage.create({ data: { tenantId: A.tenant.id, conversationId: convId, direction: "OUT", author: "STAFF", text: "Merhaba", status: "SENT" } });
+    expect((await rcp.get("/conversations/summary").expect(200)).body).toMatchObject({ needsStaff: 0 });
+    await su.conversation.update({ where: { id: convId }, data: { lastInboundAt: new Date(Date.now() + 5_000) } });
+    expect((await rcp.get("/conversations/summary").expect(200)).body).toMatchObject({ needsStaff: 1 });
+    // 24 saatlik pencere kapanmışsa sayılmaz
+    await su.conversation.update({ where: { id: convId }, data: { lastInboundAt: new Date(Date.now() - 25 * 3_600_000) } });
+    expect((await rcp.get("/conversations/summary").expect(200)).body).toMatchObject({ needsStaff: 0 });
+    await su.conversationMessage.delete({ where: { id: reply.id } });
+    await su.conversation.update({ where: { id: convId }, data: { mode: before.mode, unread: before.unread, lastInboundAt: before.lastInboundAt } });
   });
 
   it("personel yanıtı müşteriye gider (test modunda işaretli) ve yapay zekâ susar", async () => {

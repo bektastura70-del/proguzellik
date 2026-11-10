@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { Logo } from "@/components/logo";
 import { Alert, Badge, Spinner } from "@/components/ui";
@@ -69,6 +69,25 @@ function BottomNav({ path, unread, onMenu }: { path: string; unread: number; onM
   );
 }
 
+/** Kısa uyarı sesi (tarayıcı kullanıcı etkileşimi olmadan sesi engelleyebilir; sessizce atlanır). */
+function beep() {
+  try {
+    const C = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new C();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.value = 880;
+    gain.gain.value = 0.05;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.25);
+    setTimeout(() => void ctx.close(), 500);
+  } catch {
+    /* ses çalınamadı */
+  }
+}
+
 export function PanelShell({ children }: { children: React.ReactNode }) {
   const { me, current, can, has, switchTenant, logout, pwa, tenantId } = useSession();
   const path = usePathname();
@@ -77,6 +96,8 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
   const [renewal, setRenewal] = useState(false);
   /** Personelin yanıtını bekleyen konuşma sayısı (yapay zekâ devretti ya da personel devraldı, okunmamış mesaj var). */
   const [waiting, setWaiting] = useState(0);
+  const [banner, setBanner] = useState(false);
+  const prevWaiting = useRef<number | null>(null);
   const mobileApp = !!pwa?.businessPwaEnabled;
 
   useEffect(() => {
@@ -111,6 +132,19 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
       document.removeEventListener("visibilitychange", load);
     };
   }, [canInbox, tenantId, path]);
+
+  // Yanıt bekleyen konuşma sayısı artınca (yeni devir) sayfada uyarı, ses ve izin verildiyse masaüstü bildirimi.
+  useEffect(() => {
+    const prev = prevWaiting.current;
+    prevWaiting.current = waiting;
+    if (waiting === 0) setBanner(false);
+    if (prev === null || waiting <= prev) return;
+    setBanner(true);
+    beep();
+    if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.visibilityState === "hidden") {
+      new Notification("Yanıt bekleyen konuşma var", { body: "Bir müşteri personel yanıtı bekliyor. Mesajlar sayfasını açın.", tag: "mesaj-bekliyor" });
+    }
+  }, [waiting]);
 
   // Sekme başlığında sayı: panel arka planda açıkken de yanıt bekleyen konuşma fark edilir.
   useEffect(() => {
@@ -223,6 +257,14 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
+    <>
+      {banner && (
+        <div role="alert" data-testid="mesaj-uyarisi" className="fixed left-1/2 top-3 z-50 flex max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-xl bg-rose-600 px-4 py-2.5 text-sm text-white shadow-lg">
+          <span>Bir konuşma personel yanıtı bekliyor</span>
+          <Link href="/panel/mesajlar" onClick={() => setBanner(false)} className="rounded-lg bg-white/20 px-2.5 py-1 font-medium hover:bg-white/30">Mesajlar</Link>
+          <button type="button" aria-label="Kapat" onClick={() => setBanner(false)} className="text-white/80 hover:text-white"><X className="size-4" /></button>
+        </div>
+      )}
     <div className="min-h-screen lg:pl-64">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 lg:block">{sidebar}</aside>
       {open && (
@@ -265,6 +307,7 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
       </main>
       {mobileApp && <BottomNav path={path} unread={unread} onMenu={() => setOpen(true)} />}
     </div>
+    </>
   );
 }
 

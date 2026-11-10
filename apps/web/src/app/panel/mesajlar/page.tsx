@@ -25,6 +25,16 @@ const AUTHOR: Record<Msg["author"], string> = { CUSTOMER: "Müşteri", AI: "Yapa
 const who = (c: { displayName: string | null; customer: { firstName: string; lastName: string } | null; externalUserId: string; channel: string }) =>
   c.customer ? `${c.customer.firstName} ${c.customer.lastName}` : c.displayName ?? (c.channel === "WHATSAPP" ? `+${c.externalUserId}` : "Instagram kullanıcısı");
 
+/** Sekme arka plandayken de uyarı için tarayıcı bildirim izni (yalnızca izin henüz sorulmadıysa görünür). */
+function NotifyButton() {
+  const [perm, setPerm] = useState<NotificationPermission | null>(null);
+  useEffect(() => {
+    if (typeof Notification !== "undefined") setPerm(Notification.permission);
+  }, []);
+  if (perm !== "default") return null;
+  return <Button variant="outline" size="sm" onClick={() => void Notification.requestPermission().then(setPerm)}>Masaüstü bildirimini aç</Button>;
+}
+
 export default function InboxPage() {
   const { has } = useSession();
   const [filter, setFilter] = useState<"" | "HUMAN">("");
@@ -45,6 +55,7 @@ export default function InboxPage() {
         action={<>
           <Button variant={filter === "" ? "default" : "outline"} size="sm" onClick={() => setFilter("")}>Tümü</Button>
           <Button variant={filter === "HUMAN" ? "default" : "outline"} size="sm" onClick={() => setFilter("HUMAN")}>Personel bekleyenler</Button>
+          <NotifyButton />
         </>}
       />
       {list.loading && !list.data ? <Spinner /> : !list.data?.length ? (
