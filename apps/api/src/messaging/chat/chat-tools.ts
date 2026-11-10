@@ -279,7 +279,18 @@ export class ChatTools {
       }
       let customer = conv.customerId ? await tx.customer.findUnique({ where: { id: conv.customerId } }) : null;
       if (customer?.anonymizedAt) customer = null;
-      customer ??= await tx.customer.findFirst({ where: { phone: { in: phoneCandidates(p.phone) }, anonymizedAt: null } });
+      if (!customer) {
+        const byPhone = await tx.customer.findFirst({ where: { phone: { in: phoneCandidates(p.phone) }, anonymizedAt: null } });
+        // Instagram'da numarayı müşteri yazar ve doğrulanmaz: var olan bir kayda otomatik bağlanmaz, personel doğrular.
+        if (byPhone && c.channel !== "WHATSAPP") {
+          return {
+            ok: false,
+            handoff: "Müşterinin yazdığı telefon numarası kayıtlı bir müşteriye ait; kimlik doğrulanmadan randevu oluşturulmadı",
+            error: "Bu numara için randevuyu ekibimiz onaylayacak; müşteriye ekibin kısa sürede dönüş yapacağını söyle",
+          } as ToolResult;
+        }
+        customer = byPhone;
+      }
       if (!customer) {
         await assertUsageLimit(tx, c.tenantId, "customer");
         customer = await tx.customer.create({
