@@ -52,7 +52,7 @@ export class WebPushDelivery {
       const m = await db.membership.findFirst({ where: { tenantId: n.tenantId, userId: ownerId, isActive: true }, select: { role: true } });
       if (!m) return this.skip(n.id, "Kullanıcı artık işletmede değil");
       role = m.role;
-      if (p.pref !== "test" && p.pref !== "appointments" && p.pref !== "reminders") {
+      if (p.pref !== "test" && p.pref !== "appointments" && p.pref !== "reminders" && p.pref !== "conversations") {
         const pref = await db.userNotificationPreference.findUnique({ where: { tenantId_userId: { tenantId: n.tenantId, userId: ownerId } } });
         if (pref && !pref[p.pref]) return this.skip(n.id, "Kullanıcı bu bildirimi kapattı");
       }

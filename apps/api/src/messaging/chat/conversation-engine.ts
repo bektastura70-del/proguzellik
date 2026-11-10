@@ -8,6 +8,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { InboundSink } from "../inbound-sink";
 import { InboxService, windowOpen } from "../inbox.service";
 import { ChatAgent, ChatTurn } from "./chat-agent";
+import { PushPlanner } from "../../notifications/push/push.planner";
 import { ChatTools } from "./chat-tools";
 
 export const CHAT_QUEUE = "conversations";
@@ -38,6 +39,7 @@ export class ConversationEngine {
     private readonly inbox: InboxService,
     private readonly tools: ChatTools,
     private readonly agent: ChatAgent,
+    private readonly push: PushPlanner,
   ) {}
 
   private ctx(tenantId: string) {
@@ -61,9 +63,19 @@ export class ConversationEngine {
     const { conv, tenant } = pre;
     const c: ChannelConnection = conv.connection;
 
-    if (conv.mode !== "AI") return "human";
-    if (!c.aiAutoReply || !c.aiDataConsentAt || c.status !== "CONNECTED") return "ai_off";
-    if (!tenant.plan.features.includes("AI_ASSISTANT") || !["TRIAL", "ACTIVE"].includes(tenant.status)) return "ai_off";
+    // Yapay zekâ yanıt vermeyecekse (konuşma personelde ya da yapay zekâ kapalı) müşteri mesajı personele bildirilir.
+    if (conv.mode !== "AI") {
+      await this.notifyStaff(tenantId, conversationId);
+      return "human";
+    }
+    if (!c.aiAutoReply || !c.aiDataConsentAt || c.status !== "CONNECTED") {
+      await this.notifyStaff(tenantId, conversationId);
+      return "ai_off";
+    }
+    if (!tenant.plan.features.includes("AI_ASSISTANT") || !["TRIAL", "ACTIVE"].includes(tenant.status)) {
+      await this.notifyStaff(tenantId, conversationId);
+      return "ai_off";
+    }
     if (!windowOpen(conv.lastInboundAt)) return "window_closed";
 
     if (this.agent.name === "disabled") {
@@ -128,10 +140,20 @@ export class ConversationEngine {
     return out.text ? "replied" : "no_text";
   }
 
-  private handoff(tenantId: string, conversationId: string, reason: string) {
-    return this.prisma.withTenant(this.ctx(tenantId), (tx) =>
+  /** Telefon bildirimi (salon uygulaması + Web Push açıksa). Hata yanıt akışını bozmaz. */
+  private async notifyStaff(tenantId: string, conversationId: string) {
+    try {
+      await this.prisma.withTenant(this.ctx(tenantId), (tx) => this.push.planConversation(tx, conversationId));
+    } catch (e) {
+      this.logger.error(`Personel bildirimi planlanamadı (${conversationId}): ${(e as Error).message.slice(0, 200)}`);
+    }
+  }
+
+  private async handoff(tenantId: string, conversationId: string, reason: string) {
+    await this.prisma.withTenant(this.ctx(tenantId), async (tx) =>
       tx.conversation.update({ where: { id: conversationId }, data: { mode: "HUMAN", handoffReason: reason.slice(0, 300), state: Prisma.DbNull } }),
     );
+    await this.notifyStaff(tenantId, conversationId);
   }
 }
 

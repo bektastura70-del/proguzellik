@@ -3,10 +3,14 @@ import { toZoned } from "../src/common/time";
 import { AnthropicChatAgent, ChatAgent, ChatInput, ChatOutput, DisabledChatAgent, MockChatAgent } from "../src/messaging/chat/chat-agent";
 import { ChatTools, isAffirmative } from "../src/messaging/chat/chat-tools";
 import { claimsBooking, ConversationEngine, toTurns } from "../src/messaging/chat/conversation-engine";
+import { NotificationQueue } from "../src/notifications/notification-queue";
+import { PushPlanner } from "../src/notifications/push/push.planner";
+import { MockWebPushSender } from "../src/notifications/push/web-push.sender";
 import { InboxService } from "../src/messaging/inbox.service";
 import { MockMetaGateway } from "../src/messaging/meta.gateway";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { signedPost, waText } from "./meta-helpers";
+import { enablePwa } from "./portal-helpers";
 import { api, createApp, createTenantWithUser, login, owner, resetDb, setupSalon } from "./helpers";
 
 async function waitFor<T>(fn: () => Promise<T>, ok: (v: T) => boolean, ms = 12_000): Promise<T> {
@@ -107,6 +111,33 @@ describe("Yapay zekâ sohbet motoru: yanıt, kampanya, randevu, personele devir"
     const before = (await aiMessages(c.id)).length;
     await new Promise((r) => setTimeout(r, 2500));
     expect((await aiMessages(c.id)).length).toBe(before);
+  });
+
+  it("devirde ve personelde bekleyen konuşmada telefon bildirimi: salon uygulaması + push açıksa masa rollerine gider, içerikte müşteri bilgisi yoktur", async () => {
+    const outbox = app.get(MockWebPushSender).outbox;
+    const sub = { endpoint: "https://fcm.googleapis.com/fcm/send/chat-owner", keys: { p256dh: "B" + "A".repeat(86), auth: "C".repeat(22) } };
+    const rows = () => su.notification.findMany({ where: { tenantId: A.tenant.id, channel: "WEBPUSH", template: "push_isletme_mesaj_bekliyor" }, orderBy: { createdAt: "asc" } });
+    // Bayraklar kapalıyken hiçbir kayıt yazılmaz
+    await inbound("905550000041", "Geçen hafta yaptırdığım işlemden sonra kızarıklık oldu");
+    await waitFor(() => convOf("905550000041"), (v) => v.mode === "HUMAN");
+    expect(await rows()).toHaveLength(0);
+    // Bayraklar açık + masa rolü (sahip) abone → devirde bildirim
+    await enablePwa(su, A.tenant.id, { businessPwaEnabled: true, webPushEnabled: true });
+    await a.post("/pwa/push/subscriptions").send(sub).expect(201);
+    await inbound("905550000042", "Cildimde kızarıklık oldu, ne yapmalıyım");
+    const first = await waitFor(rows, (r) => r.length === 1);
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({ recipient: `user:${A.user.id}`, status: "QUEUED" });
+    expect(first[0].payload).toMatchObject({ title: "Yanıt bekleyen konuşma", url: "/panel/mesajlar", pref: "conversations", requireActive: false });
+    expect(JSON.stringify(first[0].payload)).not.toMatch(/Zeynep|905550000042|kızarıklık/);
+    await app.get(NotificationQueue).process({ data: { notificationId: first[0].id }, attemptsMade: 0 } as never);
+    expect(outbox.at(-1)).toMatchObject({ endpoint: sub.endpoint, message: { title: "Yanıt bekleyen konuşma", url: "/panel/mesajlar" } });
+    // Konuşma personeldeyken müşteri yeniden yazarsa bir bildirim daha gider (aynı etiket cihazdaki eskisinin yerini alır)
+    await inbound("905550000042", "Cevap bekliyorum");
+    const both = await waitFor(rows, (r) => r.length === 2);
+    expect(both).toHaveLength(2);
+    expect(both[1].payload).toMatchObject({ tag: (first[0].payload as { tag: string }).tag });
+    await su.tenantPwaSettings.update({ where: { tenantId: A.tenant.id }, data: { webPushEnabled: false, businessPwaEnabled: false } });
   });
 
   it("aynı mesaja ikinci kez yanıt verilmez; eski mesajın işi yeni mesajı yanıtlamaz", async () => {
@@ -258,7 +289,7 @@ describe("Yapay zekâ sohbet motoru: yanıt, kampanya, randevu, personele devir"
     await su.conversationMessage.create({ data: { tenantId: A.tenant.id, conversationId: c.id, direction: "IN", author: "CUSTOMER", text: "Merhaba", status: "DELIVERED" } });
     const m = await su.conversationMessage.findFirstOrThrow({ where: { conversationId: c.id, direction: "IN" }, orderBy: { createdAt: "desc" } });
     const before = (await aiMessages(c.id)).length;
-    const engine = new ConversationEngine(app.get(PrismaService), app.get(InboxService), app.get(ChatTools), new DisabledChatAgent());
+    const engine = new ConversationEngine(app.get(PrismaService), app.get(InboxService), app.get(ChatTools), new DisabledChatAgent(), app.get(PushPlanner));
     expect(await engine.handle(A.tenant.id, c.id, m.id)).toBe("handoff");
     expect(await convOf("905550000001")).toMatchObject({ mode: "HUMAN", handoffReason: "Yapay zekâ yanıtları bu sunucuda kapalı" });
     expect((await aiMessages(c.id)).length).toBe(before);

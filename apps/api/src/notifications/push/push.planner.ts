@@ -21,6 +21,7 @@ export const PUSH_TEMPLATES = {
   staffCancel: "push_isletme_musteri_iptal",
   staffChange: "push_isletme_degisiklik",
   test: "push_deneme",
+  staffConversation: "push_isletme_mesaj_bekliyor",
 } as const;
 export const PUSH_REMINDER_TEMPLATES: string[] = [PUSH_TEMPLATES.reminder24, PUSH_TEMPLATES.reminder2];
 /** İptal bildirimleri randevu iptal edilmişken de gönderilir. */
@@ -45,7 +46,7 @@ export interface PushPayload {
   tag: string;
   startsAt: string;
   /** Gönderim anında yeniden denetlenen tercih */
-  pref: "appointments" | "reminders" | StaffPref | "test";
+  pref: "appointments" | "reminders" | StaffPref | "test" | "conversations";
   /** Randevu gönderim anında hâlâ planlı olmalı mı (iptal bildirimleri hariç) */
   requireActive: boolean;
   /** Hatırlatmalar randevu saatinden sonra cihaza ulaşmamalı */
@@ -181,6 +182,52 @@ export class PushPlanner {
       skipDuplicates: true,
     });
     const created = await tx.notification.findMany({ where: { tenantId: appt.tenantId, dedupeKey: { in: rows.map((r) => r.dedupeKey) }, status: "QUEUED" }, select: { id: true, scheduledFor: true } });
+    for (const n of created) {
+      await this.queue.enqueue(n.id, n.scheduledFor).catch((e) => this.logger.error(`Kuyruğa eklenemedi: ${(e as Error).message}`));
+    }
+  }
+
+  /**
+   * Personelin yanıtını bekleyen konuşma (yapay zekâ devretti, kanalda yapay zekâ kapalı ya da konuşma personelde):
+   * masa rolleri (sahip, yönetici, resepsiyon) telefonlarında bildirim alır. İçerikte müşteri adı/mesajı yoktur.
+   * Aynı müşteri mesajı için kişi başına bir kez planlanır; aynı etiket cihazdaki eski bildirimin yerini alır.
+   */
+  async planConversation(tx: Tx, conversationId: string) {
+    const conv = await tx.conversation.findUnique({ where: { id: conversationId }, select: { id: true, tenantId: true, lastInboundAt: true } });
+    if (!conv) return;
+    const pwa = await effectivePwa(tx, conv.tenantId);
+    if (!pwa.businessPwaEnabled || !pwa.webPushEnabled || webPushMode(loadEnv()) === "off") return;
+    const desk = await tx.membership.findMany({ where: { tenantId: conv.tenantId, isActive: true, role: { in: DESK as never[] } }, select: { userId: true } });
+    const subs = await tx.pushSubscription.findMany({
+      where: { tenantId: conv.tenantId, audience: "STAFF", userId: { in: desk.map((d) => d.userId) }, revokedAt: null },
+      select: { userId: true },
+    });
+    const users = [...new Set(subs.map((x) => x.userId).filter((x): x is string => !!x))];
+    if (!users.length) return;
+    const stamp = (conv.lastInboundAt ?? new Date()).toISOString();
+    const rows: PlanRow[] = users.map((userId) => ({
+      recipient: `user:${userId}`,
+      template: PUSH_TEMPLATES.staffConversation,
+      scheduledFor: new Date(),
+      dedupeKey: `wp:conv:${conv.id}:${stamp}:u:${userId}`,
+      payload: {
+        title: "Yanıt bekleyen konuşma",
+        body: "Bir müşteri personel yanıtı bekliyor.",
+        url: "/panel/mesajlar",
+        tag: `konusma-${conv.id}`,
+        startsAt: new Date().toISOString(),
+        pref: "conversations",
+        requireActive: false,
+      },
+    }));
+    await tx.notification.createMany({
+      data: rows.map((r) => ({
+        tenantId: conv.tenantId, channel: "WEBPUSH", recipient: r.recipient, template: r.template, kind: "SERVICE",
+        payload: r.payload as unknown as Prisma.InputJsonValue, scheduledFor: r.scheduledFor, dedupeKey: r.dedupeKey,
+      })),
+      skipDuplicates: true,
+    });
+    const created = await tx.notification.findMany({ where: { tenantId: conv.tenantId, dedupeKey: { in: rows.map((r) => r.dedupeKey) }, status: "QUEUED" }, select: { id: true, scheduledFor: true } });
     for (const n of created) {
       await this.queue.enqueue(n.id, n.scheduledFor).catch((e) => this.logger.error(`Kuyruğa eklenemedi: ${(e as Error).message}`));
     }
