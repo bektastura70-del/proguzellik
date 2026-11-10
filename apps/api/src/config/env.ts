@@ -2,6 +2,9 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
 
+/** Compose `${X:-}` boş dize verir: boş = tanımsız. */
+const blankToUndef = <T extends z.ZodTypeAny>(t: T) => z.preprocess((v) => (v === "" ? undefined : v), t);
+
 const schema = z.object({
   APP_DATABASE_URL: z.string().url(),
   PLATFORM_DATABASE_URL: z.string().url(),
@@ -27,10 +30,10 @@ const schema = z.object({
   INSTAGRAM_GRAPH_VERSION: z.string().default("v26.0"),
   // ProGüzellik'in kendi Meta uygulaması (Tech Provider): salonlar numaralarını Embedded Signup ile bağlar.
   // Dördü birden tanımlı değilse "WhatsApp'ı bağla" düğmesi kapalıdır; elle kurulum çalışmaya devam eder.
-  META_APP_ID: z.string().regex(/^\d{5,25}$/).optional(),
-  META_APP_SECRET: z.string().regex(/^[0-9a-f]{32}$/i).optional(),
-  META_ES_CONFIG_ID: z.string().regex(/^\d{5,25}$/).optional(),
-  META_WEBHOOK_VERIFY_TOKEN: z.string().min(16).optional(),
+  META_APP_ID: blankToUndef(z.string().regex(/^\d{5,25}$/).optional()),
+  META_APP_SECRET: blankToUndef(z.string().regex(/^[0-9a-f]{32}$/i).optional()),
+  META_ES_CONFIG_ID: blankToUndef(z.string().regex(/^\d{5,25}$/).optional()),
+  META_WEBHOOK_VERIFY_TOKEN: blankToUndef(z.string().min(16).optional()),
   // Toplu kampanya (ticari ileti) gönderimi. Tanımsızsa canlıda kapalı: İYS entegrasyonu yok.
   MARKETING_MESSAGES: z.enum(["0", "1"]).optional(),
   // Yapay zekâ asistanı: varsayılan "mock" (kural tabanlı). "anthropic" Claude API kullanır.

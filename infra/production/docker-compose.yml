@@ -101,6 +101,14 @@ services:
       EINVOICE_PROVIDER: none
       # Diğer entegrasyonlar pasif: gerçek servise bağlanılmaz
       WHATSAPP_MODE: mock
+      # Salonların kendi WhatsApp/Instagram hesapları. mock: Meta'ya hiç istek atılmaz (varsayılan). live: gerçek Graph API (egress gerekir).
+      META_MODE: ${META_MODE:-mock}
+      META_GRAPH_VERSION: ${META_GRAPH_VERSION:-v27.0}
+      # ProGüzellik Meta uygulaması (Embedded Signup + ortak webhook /api/webhooks/meta). Dördü dolu değilse "WhatsApp'ı bağla" kapalı.
+      META_APP_ID: ${META_APP_ID:-}
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_ES_CONFIG_ID: ${META_ES_CONFIG_ID:-}
+      META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-}
       # Online ödeme: varsayılan kapalı (mock + production = devre dışı). iyzico yalnız enable-iyzico-*.sh betikleriyle açılır
       # ve yalnız IYZICO_PILOT_TENANTS'taki işletmelerde ("*" = tümü) çalışır. Adres varsayılanı SANDBOX'tır (para çekilmez).
       IYZICO_BASE_URL: ${IYZICO_BASE_URL:-https://sandbox-api.iyzipay.com}
