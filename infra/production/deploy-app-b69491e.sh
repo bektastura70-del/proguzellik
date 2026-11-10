@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pro Güzellik: 87bafa1 → b69491e (api + worker + web). SİTEDEN SATIN ALMA KAPALI KALIR.
+# Pro Güzellik: 87bafa1 → b69491e (api + worker + web). Siteden satın alma ayarı (.env PURCHASE_ENABLED) olduğu gibi kalır.
 # İçerik: yeni salonlar için başlangıç sihirbazı (/panel/baslangic, GET/PATCH /onboarding, genel bakışta kurulum kartı).
 #         1 migration: 20261110120000_onboarding (Tenant."onboardingDismissedAt" boş sütun + app_tenant için UPDATE izni; mevcut veri değişmez).
 #         Compose dosyası değişmedi; mevcut salonların ödemesi ve randevuları olduğu gibi kalır.
@@ -7,7 +7,7 @@
 # Kullanım (sunucuda): bash /opt/proguzellik/infra/production/deploy-app-b69491e.sh
 #
 # Ne yapar: yedek + geri yükleme testi → çalışan imajı arşivler → compose dosyasını günceller (yedekli) → migration → api/worker/web.
-# Ne yapmaz: satın almayı açmaz (ayrı adım: enable-purchase.sh), iyzico anahtarlarına dokunmaz, Caddy/DNS'e dokunmaz.
+# Ne yapmaz: satın alma ayarını değiştirmez, iyzico anahtarlarına dokunmaz, Caddy/DNS'e dokunmaz.
 set -Eeuo pipefail
 cd /opt/proguzellik/infra/production
 OLD=87bafa1 NEW=b69491e
@@ -24,7 +24,7 @@ docker image inspect proguzellik-api:$NEW proguzellik-web:$NEW >/dev/null || fai
 [[ -f docker-compose.yml.$NEW && -f docker-compose.yml.$OLD ]] || fail "docker-compose.yml.$NEW / .$OLD bulunamadı"
 cmp -s docker-compose.yml docker-compose.yml.$OLD || fail "Sunucudaki docker-compose.yml depodaki $OLD sürümünden farklı (elle değişiklik?); üzerine yazılmadı"
 grep -q 'PURCHASE_ENABLED: ${PURCHASE_ENABLED:-0}' docker-compose.yml.$NEW || fail "Yeni compose dosyasında satın alma varsayılanı kapalı değil"
-if [[ "$(env_get PURCHASE_ENABLED)" == "1" ]]; then fail ".env'de PURCHASE_ENABLED=1 var: bu dağıtım satın alma kapalıyken yapılır"; fi
+PURCHASE_BEFORE=$(env_get PURCHASE_ENABLED); echo "Siteden satın alma ayarı: ${PURCHASE_BEFORE:-0} (değiştirilmeyecek)"
 
 log "2/8 Yedek + geri yükleme testi (geçici veritabanına)"
 RESTORE_TEST_WEEKDAY=$(date +%u) ./backup.sh
@@ -70,7 +70,8 @@ docker compose run --rm migrate node dist/cli/migrate.js status 2>&1 | tail -2
 owner=$(env_get PG_OWNER_USER); db=$(env_get PG_DB)
 q() { docker exec -i proguzellik-prod-postgres psql -X -tA -U "${owner:-proguzellik_owner}" -d "${db:-proguzellik}" -c "$1"; }
 st=$(docker exec proguzellik-prod-api node -e "fetch('http://localhost:4000/purchase/status').then(r=>r.text()).then(console.log).catch(()=>console.log('hata'))")
-echo "Satın alma durumu: $st ({\"enabled\":false} beklenir)"
+want=false; [[ "${PURCHASE_BEFORE:-0}" == "1" ]] && want=true
+echo "Satın alma durumu: $st ({\"enabled\":$want} beklenir, yayından önceki gibi)"
 echo "API PAYMENT_MODE: $(docker exec proguzellik-prod-api printenv PAYMENT_MODE) · iyzico adresi: $(docker exec proguzellik-prod-api printenv IYZICO_BASE_URL)"
 code=$(curl -s -o /dev/null -w '%{http_code}' https://proguzellik.com/fiyatlar || echo hata)
 echo "Fiyatlar sayfası: $code (200 beklenir)"
@@ -80,4 +81,4 @@ echo "Kurulum uç noktası girişsiz: $oc (401 beklenir)"
 pc=$(curl -s -o /dev/null -w '%{http_code}' https://proguzellik.com/panel/baslangic || echo hata)
 echo "Sihirbaz sayfası: $pc (200 beklenir)"
 trap - ERR
-log "TAMAM: $NEW çalışıyor (başlangıç sihirbazı açık), siteden satın alma KAPALI. Geri dönüş: cp -p docker-compose.yml.bak-$STAMP-$NEW docker-compose.yml && ./rollback.sh $OLD. Bu çıktıyı Claude'a gönderin."
+log "TAMAM: $NEW çalışıyor (başlangıç sihirbazı açık), satın alma ayarı değişmedi. Geri dönüş: cp -p docker-compose.yml.bak-$STAMP-$NEW docker-compose.yml && ./rollback.sh $OLD. Bu çıktıyı Claude'a gönderin."
