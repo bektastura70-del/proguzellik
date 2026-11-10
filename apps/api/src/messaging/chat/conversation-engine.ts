@@ -15,6 +15,11 @@ export const CHAT_QUEUE = "conversations";
 const DEBOUNCE_MS = 1500;
 /** Bir konuşmada saatte en fazla bu kadar yapay zekâ yanıtı; aşılırsa personele devredilir. */
 const MAX_AI_REPLIES_PER_HOUR = 20;
+
+/** Metin, randevunun oluşturulduğunu/onaylandığını söylüyor mu? ("onaylandıktan" gibi uzantılar sayılmaz) */
+export function claimsBooking(text: string): boolean {
+  return /randevu[^.!?\n]{0,60}(oluşturuldu|oluşturdum|oluşturulmuştur|onaylandı|onaylanmıştır|kaydedildi|kaydettim|alındı|aldım)(?![a-zçğıöşü])/.test(text.toLocaleLowerCase("tr-TR"));
+}
 const HISTORY = 20;
 
 const LABEL = { STAFF: "Salon personeli", SYSTEM: "Salonun otomatik bildirimi", AI: "", CUSTOMER: "" } as const;
@@ -83,13 +88,34 @@ export class ConversationEngine {
     const now = new Intl.DateTimeFormat("tr-TR", { timeZone: tenant.timezone, dateStyle: "full", timeStyle: "short" }).format(new Date());
     const ctx = { tenantId, conversationId, channel: conv.channel, externalUserId: conv.externalUserId, customerId: conv.customerId };
 
+    // Randevunun gerçekten oluşup oluşmadığını model değil sunucu bilir: yalnızca araç sonucu geçerlidir.
+    let booked: string | undefined;
+    const trace: string[] = [];
     let out;
     try {
-      out = await this.agent.reply({ salonName: tenant.name, now, today: z.date, channel: conv.channel, history, runTool: (n, i) => this.tools.run(ctx, n, i) });
+      out = await this.agent.reply({
+        salonName: tenant.name,
+        now,
+        today: z.date,
+        channel: conv.channel,
+        history,
+        runTool: async (n, i) => {
+          const r = await this.tools.run(ctx, n, i);
+          if (r.booked) booked = r.booked;
+          trace.push(r.ok ? `${n}:tamam` : `${n}:hata(${(r.error ?? "").slice(0, 60)})`);
+          return r;
+        },
+      });
     } catch (e) {
       this.logger.error(`Yapay zekâ hatası (${conversationId}): ${(e as Error).message.slice(0, 200)}`);
       await this.handoff(tenantId, conversationId, "Yapay zekâ şu anda yanıt veremedi");
       return "error";
+    }
+    this.logger.log(`Yapay zekâ (${conversationId}): araçlar [${trace.join(", ") || "yok"}], randevu ${booked ? "oluştu" : "oluşmadı"}`);
+    // Model "randevu oluşturuldu" dese de araç randevuyu oluşturmadıysa müşteriye yanlış söz verilmez; personele devredilir.
+    if (out.text && !booked && claimsBooking(out.text)) {
+      this.logger.warn(`Yapay zekâ randevu oluşmadan oluşturuldu dedi (${conversationId}); yanıt değiştirildi`);
+      out = { text: "Randevu talebinizi aldım ancak sisteme henüz kaydedemedim. Ekibimiz en kısa sürede sizinle iletişime geçecek.", handoff: "Yapay zekâ randevu oluşmadan oluşturuldu dedi", tools: out.tools };
     }
     // Yanıt hazırlanırken personel konuşmayı devraldıysa yapay zekâ yazmaz.
     const still = await this.prisma.withTenant(this.ctx(tenantId), (tx) => tx.conversation.findUnique({ where: { id: conversationId }, select: { mode: true } }));

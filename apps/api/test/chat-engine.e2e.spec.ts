@@ -2,7 +2,7 @@ import { INestApplication } from "@nestjs/common";
 import { toZoned } from "../src/common/time";
 import { AnthropicChatAgent, ChatAgent, ChatInput, ChatOutput, DisabledChatAgent, MockChatAgent } from "../src/messaging/chat/chat-agent";
 import { ChatTools, isAffirmative } from "../src/messaging/chat/chat-tools";
-import { ConversationEngine, toTurns } from "../src/messaging/chat/conversation-engine";
+import { claimsBooking, ConversationEngine, toTurns } from "../src/messaging/chat/conversation-engine";
 import { InboxService } from "../src/messaging/inbox.service";
 import { MockMetaGateway } from "../src/messaging/meta.gateway";
 import { PrismaService } from "../src/prisma/prisma.service";
@@ -171,6 +171,19 @@ describe("Yapay zekâ sohbet motoru: yanıt, kampanya, randevu, personele devir"
     expect(agent.calls.at(-1)!.history.map((h) => h.role)).toEqual(["user", "assistant", "user", "assistant", "user"]);
   });
 
+  it("model aracı çağırmadan \"randevunuz oluşturuldu\" derse müşteriye bu söylenmez; yanıt dürüst bir mesajla değişir ve konuşma personele devredilir", async () => {
+    const before = await su.appointment.count({ where: { tenantId: A.tenant.id } });
+    agent.steps.push(async () => ({ text: "Harika! Randevunuz oluşturuldu, görüşmek üzere.", tools: [] }));
+    await inbound("905550000077", "Yarın için randevu istiyorum");
+    const c = await waitFor(() => convOf("905550000077"), (v) => v.mode === "HUMAN");
+    expect(c.handoffReason).toBe("Yapay zekâ randevu oluşmadan oluşturuldu dedi");
+    const msgs = await aiMessages(c.id);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].text).toContain("sisteme henüz kaydedemedim");
+    expect(msgs[0].text).not.toContain("oluşturuldu");
+    expect(await su.appointment.count({ where: { tenantId: A.tenant.id } })).toBe(before);
+  });
+
   it("Instagram: müşterinin yazdığı numara kayıtlı bir müşteriye aitse o kayda bağlanmaz, personele devredilir", async () => {
     const tools = app.get(ChatTools);
     const conv = await su.conversation.create({ data: { tenantId: A.tenant.id, connectionId: conn, channel: "INSTAGRAM", externalUserId: "ig-1784000000001" } });
@@ -240,6 +253,11 @@ describe("Yapay zekâ sohbet motoru: yanıt, kampanya, randevu, personele devir"
 });
 
 describe("Sohbet yardımcıları", () => {
+  it("randevu oluştu iddiası", () => {
+    for (const t of ["Randevunuz oluşturuldu.", "Harika, randevunuzu oluşturdum!", "Randevunuz onaylandı. Görüşmek üzere", "Randevu kaydedildi", "RANDEVUNUZ ALINDI"]) expect(claimsBooking(t)).toBe(true);
+    for (const t of ["Randevunuzu onaylıyor musunuz?", "Randevunuz onaylandıktan sonra hatırlatma gelir.", "Randevu özeti: Lazer, Salı 14:00", "Boş saatler şunlar", "Evet onaylarsanız randevunuzu oluşturacağım."]) expect(claimsBooking(t)).toBe(false);
+  });
+
   it("onay ifadeleri", () => {
     for (const t of ["Evet", "evet onaylıyorum", "Tamam, olur", "Onaylıyorum"]) expect(isAffirmative(t)).toBe(true);
     for (const t of ["Hayır", "tamam değil", "vazgeçtim", "uygun olmaz", "Onaylamıyorum", "Bir sorum var"]) expect(isAffirmative(t)).toBe(false);
