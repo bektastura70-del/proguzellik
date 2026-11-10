@@ -37,7 +37,10 @@ const schema = z.object({
   // Toplu kampanya (ticari ileti) gönderimi. Tanımsızsa canlıda kapalı: İYS entegrasyonu yok.
   MARKETING_MESSAGES: z.enum(["0", "1"]).optional(),
   // Yapay zekâ asistanı: varsayılan "mock" (kural tabanlı). "anthropic" Claude API kullanır.
-  AI_MODE: z.enum(["mock", "anthropic"]).default("mock"),
+  AI_MODE: z.enum(["mock", "anthropic", "openai"]).default("mock"),
+  // AI_MODE=openai: gelen mesajları OpenAI (Chat Completions) yanıtlar. Model adı bilerek varsayılansız: resmi belgeden seçilir.
+  OPENAI_API_KEY: blankToUndef(z.string().min(20).optional()),
+  OPENAI_MODEL: blankToUndef(z.string().min(1).optional()),
   AI_MODEL: z.string().default("claude-opus-5-5"),
   // Kimlik doğrulama / oturum
   MFA_ENCRYPTION_KEY: z.string().regex(/^[0-9a-f]{64}$/i, "MFA_ENCRYPTION_KEY 64 karakter hex olmalı"),
@@ -223,6 +226,8 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
   if (env.META_MODE === "mock") warn("META_MODE=mock: işletmelerin WhatsApp/Instagram bağlantıları doğrulanamaz, mesaj alınıp gönderilmez");
   if (env.META_MODE === "live" && env.AI_MODE === "mock") warn("META_MODE=live, AI_MODE=mock: gelen mesajlara yapay zekâ yanıt vermez, tümü personel gelen kutusuna düşer");
   if (env.AI_MODE === "anthropic" && !raw.ANTHROPIC_API_KEY) err("AI_MODE=anthropic için ANTHROPIC_API_KEY gerekli");
+  if (env.AI_MODE === "openai" && (!env.OPENAI_API_KEY || !env.OPENAI_MODEL)) err("AI_MODE=openai için OPENAI_API_KEY ve OPENAI_MODEL gerekli");
+  if (env.AI_MODE === "openai") warn("AI_MODE=openai: müşteri mesajları OpenAI'a (ABD) gönderilir; işletme onayı ve KVKK aydınlatması gerekir. Sahip asistanı (Sorular) kural tabanlı kalır");
   if (env.JOBS_ENABLED !== "1") warn("JOBS_ENABLED=0: günlük abonelik görevi bu süreçte çalışmaz (başka bir süreçte çalıştığından emin olun)");
   if (env.PRICING_PUBLIC === "1") warn("PRICING_PUBLIC=1: paket fiyatları herkese açık ve satışta kullanılır");
   if (env.PRICING_PUBLIC === "0") warn("PRICING_PUBLIC=0: onaylı paket fiyatları dahil tüm tutarlar sitede ve işletme panelinde gizli");

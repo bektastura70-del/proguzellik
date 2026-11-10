@@ -32,8 +32,8 @@ Bu kodu canlıya almak tek başına hiçbir mesaj göndermez. Üretimde `META_MO
 Gerçek kullanım için sunucuda yapılacaklar:
 
 1. Veritabanı yedeği, ardından `prisma migrate deploy` (iki yeni migration: `20261031090000_plan_price_versions` ve `20261031120000_messaging`).
-2. `.env`: `META_MODE=live`. Asistan için ayrıca `AI_MODE=anthropic` ve `ANTHROPIC_API_KEY`. Toplu kampanya duyurusu için ayrıca `MARKETING_MESSAGES=1`.
-3. API ve worker konteynerlerinin dışarıya çıkabilmesi için `docker-compose.egress.yml` gerekir. Erişilecek adresler: `graph.facebook.com`, `graph.instagram.com`, `api.anthropic.com`.
+2. `.env`: `META_MODE=live`. Asistan için ayrıca `AI_MODE=openai`, `OPENAI_API_KEY` ve `OPENAI_MODEL` (model adı resmi belgeden seçilir; sunucu `docker-compose.egress.yml` ile `api.openai.com`'a çıkabilmelidir). `AI_MODE=anthropic` + `ANTHROPIC_API_KEY` de desteklenir. Sahip asistanı (Sorular sayfası) `openai` kipinde kural tabanlı kalır; yalnızca gelen mesaj yanıtları OpenAI kullanır. Toplu kampanya duyurusu için ayrıca `MARKETING_MESSAGES=1`.
+3. API ve worker konteynerlerinin dışarıya çıkabilmesi için `docker-compose.egress.yml` gerekir. Erişilecek adresler: `graph.facebook.com`, `graph.instagram.com`, `api.anthropic.com`, `api.openai.com`.
 4. Caddy: `/api/webhooks/meta/*` adresi herkese açık olmalıdır (şu anki snippet bunu engellemiyor). Güvenlik, her bağlantının kendi App Secret'ıyla yapılan imza kontrolündedir.
 
 ## Bektaş'ın yapması gerekenler

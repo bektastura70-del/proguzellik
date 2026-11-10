@@ -94,6 +94,15 @@ if [[ -f "$ENV_FILE" ]]; then
   else
     ok "Meta bağlantıları kapalı (mock)"
   fi
+  case "$(env_get AI_MODE)" in
+    openai)
+      warn "AI_MODE=openai: müşteri mesajları OpenAI'a (ABD) gönderilir; yalnızca onay veren işletmelerde ve Akıllı pakette çalışır"
+      [[ "$(env_get OPENAI_API_KEY)" =~ ^[A-Za-z0-9_-]{20,}$ ]] && ok "OpenAI anahtarı tanımlı" || bad "AI_MODE=openai ama OPENAI_API_KEY boş ya da geçersiz"
+      [[ -n "$(env_get OPENAI_MODEL)" ]] && ok "OpenAI modeli: $(env_get OPENAI_MODEL)" || bad "AI_MODE=openai ama OPENAI_MODEL boş"
+      [[ "$(env_get COMPOSE_FILE)" == *docker-compose.egress.yml* ]] && ok "OpenAI için çıkış ağı etkin" || bad "AI_MODE=openai ama COMPOSE_FILE'da docker-compose.egress.yml yok (api OpenAI'a ulaşamaz)" ;;
+    ""|mock) ok "Yapay zekâ yanıtı kapalı (mock)" ;;
+    *) bad "AI_MODE=$(env_get AI_MODE) desteklenmiyor (mock | openai)" ;;
+  esac
   [[ -n "$(env_get APP_VERSION)" ]] && ok "APP_VERSION tanımlı" || bad "APP_VERSION boş"
 else
   bad ".env yok: $ENV_FILE"

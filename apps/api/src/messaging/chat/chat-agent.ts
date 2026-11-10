@@ -24,7 +24,7 @@ export interface ChatOutput {
 }
 
 export abstract class ChatAgent {
-  abstract readonly name: "mock" | "anthropic" | "disabled";
+  abstract readonly name: "mock" | "anthropic" | "openai" | "disabled";
   abstract reply(input: ChatInput): Promise<ChatOutput>;
 }
 
@@ -114,6 +114,92 @@ export class AnthropicChatAgent extends ChatAgent {
   }
 }
 
+/* ----------------------------- OpenAI ----------------------------- */
+
+interface OaiToolCall { id: string; type: "function"; function: { name: string; arguments: string } }
+type OaiMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string | null; tool_calls?: OaiToolCall[] }
+  | { role: "tool"; tool_call_id: string; content: string };
+interface OaiResponse {
+  choices?: { finish_reason?: string; message?: { content?: string | null; refusal?: string | null; tool_calls?: OaiToolCall[] } }[];
+  error?: { code?: string | null; type?: string | null };
+}
+export type OpenAiFetch = (url: string, init: { method: "POST"; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+
+const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+
+/**
+ * OpenAI Chat Completions ile araç kullanan sohbet ajanı (elle yazılmış döngü, ek paket yok).
+ * Modele yalnızca bu konuşmanın mesajları ve araç sonuçları gider. Randevu yalnızca sunucudaki araç kurallarıyla
+ * (müşterinin açık "evet"i) oluşur; model bunu atlayamaz.
+ */
+@Injectable()
+export class OpenAiChatAgent extends ChatAgent {
+  readonly name = "openai" as const;
+  private readonly logger = new Logger("ChatAgent");
+
+  constructor(private readonly doFetch: OpenAiFetch = (url, init) => fetch(url, init)) {
+    super();
+  }
+
+  async reply(input: ChatInput): Promise<ChatOutput> {
+    const env = loadEnv();
+    if (!env.OPENAI_API_KEY || !env.OPENAI_MODEL) return { text: null, handoff: "Yapay zekâ ayarları eksik", tools: [] };
+    const tools = TOOL_DEFS.map((t) => ({ type: "function" as const, function: { name: t.name, description: t.description, parameters: t.input_schema } }));
+    const messages: OaiMessage[] = [
+      { role: "system", content: CHAT_SYSTEM_PROMPT },
+      { role: "system", content: `Salon: ${input.salonName}. Kanal: ${input.channel === "WHATSAPP" ? "WhatsApp" : "Instagram"}. Şu an: ${input.now} (bugün ${input.today}).` },
+      ...input.history.map((h): OaiMessage => ({ role: h.role, content: h.text })),
+    ];
+    const used: string[] = [];
+    let handoff: string | undefined;
+
+    for (let i = 0; i < 8; i++) {
+      const res = await this.doFetch(OPENAI_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${env.OPENAI_API_KEY}` },
+        body: JSON.stringify({ model: env.OPENAI_MODEL, max_completion_tokens: 4000, messages, tools }),
+        signal: AbortSignal.timeout(45_000),
+      });
+      const body = (await res.json().catch(() => ({}))) as OaiResponse;
+      // Hata gövdesindeki mesaj metni günlüğe yazılmaz: yalnızca durum kodu ve tür.
+      if (!res.ok) throw new Error(`OpenAI ${res.status} ${body.error?.code ?? body.error?.type ?? ""}`.trim());
+      const choice = body.choices?.[0];
+      const msg = choice?.message;
+      if (!msg) throw new Error("OpenAI boş yanıt döndürdü");
+
+      if (msg.refusal || choice?.finish_reason === "content_filter") return { text: null, handoff: "Yapay zekâ bu mesajı yanıtlamadı", tools: used };
+      if (choice?.finish_reason === "length") return { text: null, handoff: "Yapay zekâ yanıtı tamamlanamadı", tools: used };
+
+      const calls = msg.tool_calls ?? [];
+      if (!calls.length) return { text: msg.content?.trim() || null, handoff, tools: used };
+
+      messages.push({ role: "assistant", content: msg.content ?? null, tool_calls: calls });
+      for (const call of calls) {
+        used.push(call.function.name);
+        let args: unknown;
+        let content: string;
+        try {
+          args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
+        } catch {
+          args = undefined;
+        }
+        if (args === undefined || args === null || typeof args !== "object") {
+          content = JSON.stringify({ hata: "Araç girdisi geçerli bir JSON nesnesi değil" });
+        } else {
+          const r = await input.runTool(call.function.name, args);
+          if (r.handoff) handoff = r.handoff;
+          content = JSON.stringify(r.ok ? (r.data ?? { tamam: true }) : { hata: r.error });
+        }
+        messages.push({ role: "tool", tool_call_id: call.id, content });
+      }
+    }
+    this.logger.warn("Araç döngüsü sınırına ulaşıldı");
+    return { text: null, handoff: handoff ?? "Yapay zekâ konuşmayı sonuçlandıramadı", tools: used };
+  }
+}
+
 /**
  * Yerel geliştirme/test ajanı: dış servise veri göndermez. Gerçek araçları çağırır, böylece kurallar test edilir;
  * ancak dil anlama yeteneği yoktur — basit soruları yanıtlar, randevu ve anlaşılmayan her şeyi personele devreder.
@@ -165,5 +251,6 @@ export class DisabledChatAgent extends ChatAgent {
 export function chatAgentFactory(): ChatAgent {
   const env = loadEnv();
   if (env.AI_MODE === "anthropic") return new AnthropicChatAgent();
+  if (env.AI_MODE === "openai") return new OpenAiChatAgent();
   return env.NODE_ENV === "production" ? new DisabledChatAgent() : new MockChatAgent();
 }
