@@ -49,6 +49,8 @@ model Tenant {
   lowStockEmailEnabled    Boolean       @default(true)
   /// SaaS sahibi bu işletmede yenilenme hatırlatmasına izin verdi mi (pilot). İşletme kendi ayarını yalnızca izin varsa açabilir.
   renewalRemindersAllowed Boolean       @default(false)
+  /// Başlangıç sihirbazı gizlendi (adımlar mevcut verilerden hesaplanır)
+  onboardingDismissedAt   DateTime?
   suspendedAt             DateTime?
   suspendedReason         String?
   suspendedFromStatus     TenantStatus?
