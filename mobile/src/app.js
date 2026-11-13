@@ -83,6 +83,8 @@ async function startScan() {
   const video = $("video");
   video.srcObject = stream;
   $("scanner").hidden = false;
+  $("app").setAttribute("aria-hidden", "true");
+  $("scan-close").focus();
   await video.play().catch(() => undefined);
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -113,6 +115,8 @@ function stopScan() {
   if (stream) stream.getTracks().forEach((t) => t.stop());
   stream = null;
   $("scanner").hidden = true;
+  $("app").removeAttribute("aria-hidden");
+  $("scan").focus();
 }
 
 /* ---- Yerel hatırlatma izni (bildirimleri web sayfası değil, telefonun kendisi gösterir) ---- */
@@ -135,10 +139,10 @@ async function remindersInit() {
 function init() {
   const params = new URLSearchParams(location.search);
   const open = params.get("open");
-  const home = params.has("home");
+  const home = params.has("home") || params.get("open") === "proguzellik://home";
 
   // Derin bağlantı (yerel kod tarafından ?open= ile verilir) önce gelir.
-  if (open) {
+  if (open && !home) {
     const path = isAllowedPath(open) ? open : deepLinkToPath(open, BASE);
     if (path) {
       const m = /^\/r\/([a-z0-9-]+)/.exec(path);
