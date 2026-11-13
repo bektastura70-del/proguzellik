@@ -208,16 +208,29 @@ eklenmeli (taslak madde başlıkları, hukukçu yazmalı):
 5. Play Console > Uygulama imzalama sayfasındaki SHA-256 parmak izi, sunucuda `ANDROID_CERT_SHA256` değeri olarak
    girilir (bölüm 7).
 
-### 6.3 İnceleme (demo) hesapları: onayınız gerekiyor
-Apple ve Google inceleyicileri e-posta kodu alamaz. Çalışan bir giriş verilmesi gerekir. Önerim:
-- Canlıda bir **demo salon** açmak (gerçek müşteri verisi olmadan) ve portal bayraklarını yalnız onda açmak.
-- **İşletme girişi:** bu salona ait bir demo sahibi/personel hesabı. Parolasını inceleme notuna yazarsınız.
-- **Müşteri girişi:** sunucuya, varsayılan kapalı bir ayarla tek bir inceleme e-postası ve sabit kod eklenir. Bu kod
-  yalnız demo salonda geçerli olur. Bu bir canlı giriş değişikliği olduğu için ayrıca onayınızla yazılır ve açılır.
+### 6.3 İnceleme (demo) hesapları
+Apple ve Google inceleyicileri e-posta kodu alamaz, bu yüzden çalışan bir giriş verilir. Canlıda kuruldu (sürüm 7e991c0):
+- **Demo salon:** `https://proguzellik.com/r/demo-salon` (uygulamada salon kodu `demo-salon`). Gerçek veri yok:
+  örnek 4 hizmet, 2 personel (Pzt–Cmt 10:00–19:00). Müşteri, randevu, ödeme kaydı yok. 2 yıllık deneme, ödeme yok.
+- **İşletme girişi:** `demo-isletme@proguzellik.com` + rastgele üretilmiş parola (2FA kapalı).
+- **Müşteri girişi:** `demo-musteri@proguzellik.com` + sabit 6 haneli kod. Yalnızca demo salonda ve yalnızca bu adreste
+  geçer, e-posta gönderilmez. Başka salonda veya başka adreste normal (rastgele kod) akış çalışır.
+- **Bilgilerin yeri:** parola ve kod sohbete veya depoya yazılmaz. Sunucuda yalnızca root'un okuyabildiği dosyadadır:
+  `ssh -t prososyalmedya 'cat /opt/proguzellik/demo-inceleme.txt'`. Bunları App Store Connect > App Review Information
+  ve Play Console > App access bölümüne girin.
+- **İnceleme notu önerisi:** "Salon kodu: demo-salon. Müşteri girişi için e-postayı yazıp 'Kod gönder'e bir kez basın,
+  ardından verilen kodu girin." Aynı adres için saatte en fazla 5 kod isteği kabul edilir (kaba kuvvete karşı).
+- **İşletme parolasını yenilemek** (inceleme ekibi 2FA açarsa veya kilitlenirse; 2FA ve kilit de kalkar):
+  `docker exec proguzellik-prod-api node dist/cli/create-demo-salon.js --reset-password` çıktısını ekrana değil
+  600 izinli bir dosyaya yönlendirin.
+- **Müşteri girişini kapatmak:** sunucu `.env` dosyasından `REVIEW_LOGIN_*` satırlarını silip
+  `docker compose up -d api worker`. Kodu değiştirmek için `REVIEW_LOGIN_CODE` değerini değiştirip aynı komut.
+- Kodlar: `apps/api/src/cli/create-demo-salon*.ts`, `REVIEW_LOGIN_*` (`apps/api/src/config/env.ts`), testler
+  `test/demo-salon.e2e.spec.ts` ve `test/portal.e2e.spec.ts`.
 
 ## 7. Canlıya alma (her adım ayrı onayla)
 
-1. **Web ve API dağıtımı.** Migration yok.
+1. **Web ve API dağıtımı.** Migration yok. **Yapıldı: 7e991c0** (`infra/production/deploy-app-7e991c0.sh`; geri dönüş `./rollback.sh e4c0d2e`).
    - Hesap silme ucu, /hesap-silme, uygulama algılama, uygulamada gizlenen sayfalar, `.well-known` dosyaları.
    - Normal tarayıcıda görünen değişiklikler: Hesabım'da "Hesabımı sil" kartı ve /hesap-silme sayfası. Diğer her şey
      yalnızca uygulamada etkin.
@@ -226,7 +239,7 @@ Apple ve Google inceleyicileri e-posta kodu alamaz. Çalışan bir giriş verilm
 2. **Doğrulama dosyaları.** Sunucu `.env` dosyasına `ANDROID_CERT_SHA256` ve `APPLE_TEAM_ID` eklenir, ardından web
    konteyneri yeniden başlatılır.
    - Doğrulama adresleri: `https://proguzellik.com/.well-known/assetlinks.json` ve `/.well-known/apple-app-site-association`.
-3. **Demo salon ve inceleme hesabı** (bölüm 6.3).
+3. **Demo salon ve inceleme hesabı** (bölüm 6.3). **Yapıldı**, aynı betikle.
 
 ## 8. Sonraki sürüm (2. aşama)
 
