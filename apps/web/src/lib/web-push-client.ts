@@ -29,6 +29,8 @@ async function registration(scope: string, script: string) {
 }
 
 export async function pushState(scope: string): Promise<PushState> {
+  // Mağaza uygulamasının içinde tarayıcı bildirimi kullanılmaz (uygulama kendi hatırlatmalarını gösterir).
+  if (typeof navigator !== "undefined" && /ProGuzellikApp\/\d/.test(navigator.userAgent)) return "unsupported";
   if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
     return isIos() && !isStandalone() ? "ios-install" : "unsupported";
   }

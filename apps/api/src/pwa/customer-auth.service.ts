@@ -69,27 +69,7 @@ export class CustomerAuthService {
     const invalid = () => new HttpException({ message: "Kod hatalı veya süresi dolmuş", code: "OTP_INVALID" }, HttpStatus.UNAUTHORIZED);
     // Hatalı deneme sayacı kalıcı olmalı: hata transaction dışında fırlatılır (içeride fırlatılırsa artış geri alınır).
     const result = await this.prisma.withTenant(this.ctx(tenantId), async (tx) => {
-      const otp = await tx.customerOtp.findFirst({
-        where: { destination: dest, consumedAt: null, expiresAt: { gt: new Date() } },
-        orderBy: { createdAt: "desc" },
-      });
-      if (!otp) return null;
-      if (otp.attempts >= OTP_MAX_ATTEMPTS) {
-        await tx.customerOtp.update({ where: { id: otp.id }, data: { consumedAt: new Date() } });
-        return null;
-      }
-      const expected = Buffer.from(otp.codeHash, "hex");
-      const given = Buffer.from(codeHash(tenantId, dest, code), "hex");
-      if (!timingSafeEqual(expected, given)) {
-        await tx.customerOtp.update({
-          where: { id: otp.id },
-          data: { attempts: { increment: 1 }, ...(otp.attempts + 1 >= OTP_MAX_ATTEMPTS ? { consumedAt: new Date() } : {}) },
-        });
-        return null;
-      }
-      // Tek kullanımlık: koşullu güncelleme eşzamanlı ikinci kullanımı engeller.
-      const used = await tx.customerOtp.updateMany({ where: { id: otp.id, consumedAt: null }, data: { consumedAt: new Date() } });
-      if (used.count !== 1) return null;
+      if (!(await this.consumeCode(tx, tenantId, dest, code))) return null;
       const now = new Date();
       const identity = await tx.customerIdentity.upsert({
         where: { tenantId_email: { tenantId, email: dest } },
@@ -105,6 +85,58 @@ export class CustomerAuthService {
       return { token, expiresAt };
     });
     if (!result) throw invalid();
+    return result;
+  }
+
+  /**
+   * Kodu kontrol eder ve tek kullanımlık olarak tüketir. Hatalı denemede sayaç artar (5 hatada kod geçersizleşir).
+   * Çağıran, false dönünce hatayı transaction DIŞINDA fırlatmalıdır; yoksa sayaç artışı geri alınır.
+   */
+  private async consumeCode(tx: Tx, tenantId: string, dest: string, code: string): Promise<boolean> {
+    const otp = await tx.customerOtp.findFirst({
+      where: { destination: dest, consumedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!otp) return false;
+    if (otp.attempts >= OTP_MAX_ATTEMPTS) {
+      await tx.customerOtp.update({ where: { id: otp.id }, data: { consumedAt: new Date() } });
+      return false;
+    }
+    const expected = Buffer.from(otp.codeHash, "hex");
+    const given = Buffer.from(codeHash(tenantId, dest, code), "hex");
+    if (!timingSafeEqual(expected, given)) {
+      await tx.customerOtp.update({
+        where: { id: otp.id },
+        data: { attempts: { increment: 1 }, ...(otp.attempts + 1 >= OTP_MAX_ATTEMPTS ? { consumedAt: new Date() } : {}) },
+      });
+      return false;
+    }
+    // Tek kullanımlık: koşullu güncelleme eşzamanlı ikinci kullanımı engeller.
+    const used = await tx.customerOtp.updateMany({ where: { id: otp.id, consumedAt: null }, data: { consumedAt: new Date() } });
+    return used.count === 1;
+  }
+
+  /**
+   * Müşterinin portal hesabını kalıcı olarak siler (App Store / Google Play hesap silme şartı).
+   * Oturum açık olmalı VE e-postaya yeni gönderilen kod girilmelidir (çalınmış oturumla silme yapılamaz).
+   * Silinen: portal kimliği (e-posta ile giriş), tüm oturumlar, cihaz bildirim abonelikleri, uygulama içi bildirimler,
+   * bekleyen kodlar ve randevulardaki portal bağlantısı. İşletmenin kendi müşteri kaydı ve randevu geçmişi işletmede kalır
+   * (veri sorumlusu işletmedir); müşteri bunların silinmesini işletmeden ister.
+   */
+  async deleteIdentity(tenantId: string, token: string | undefined, code: string, meta: { ip?: string }) {
+    this.rateLimit.hit(`otp-verify-ip:${meta.ip}`, 30, 60 * 60_000);
+    const result = await this.prisma.withTenant(this.ctx(tenantId), async (tx) => {
+      const me = await this.resolve(tx, tenantId, token);
+      if (!(await this.consumeCode(tx, tenantId, me.email, code))) return null;
+      await tx.appointment.updateMany({ where: { portalIdentityId: me.identityId }, data: { portalIdentityId: null } });
+      await tx.inAppNotification.deleteMany({ where: { identityId: me.identityId } });
+      await tx.customerOtp.deleteMany({ where: { destination: me.email } });
+      // Oturumlar ve push abonelikleri yabancı anahtarla (CASCADE) birlikte silinir.
+      await tx.customerIdentity.delete({ where: { id: me.identityId } });
+      await this.audit.log(tx, { tenantId, action: "portal.identity_deleted", entity: "CustomerIdentity", entityId: me.identityId, ip: meta.ip });
+      return { deleted: true };
+    });
+    if (!result) throw new HttpException({ message: "Kod hatalı veya süresi dolmuş", code: "OTP_INVALID" }, HttpStatus.UNAUTHORIZED);
     return result;
   }
 

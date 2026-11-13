@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self'; object-src 'none'; base-uri 'none'" />
+  <title>Pro Güzellik</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main id="app" class="wrap" hidden>
+    <header class="brand">
+      <img src="logo.svg" alt="" width="56" height="56" />
+      <h1>Pro Güzellik</h1>
+      <p class="muted">Salonunuzdan randevu alın ya da işletme panelinize girin.</p>
+    </header>
+
+    <section class="card" aria-labelledby="musteri-baslik">
+      <h2 id="musteri-baslik">Randevu al</h2>
+      <ul id="recent" class="recent" hidden></ul>
+      <button id="scan" class="btn primary" type="button">Salonun QR kodunu tara</button>
+      <form id="slug-form" class="row" novalidate>
+        <label for="slug-input" class="sr">Salon bağlantısı veya kodu</label>
+        <input id="slug-input" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false"
+               placeholder="Salon bağlantısı veya kodu" />
+        <button class="btn" type="submit">Aç</button>
+      </form>
+      <p id="slug-error" class="error" role="alert" hidden></p>
+      <p class="hint">Salon kodunu salonunuzdan, randevu mesajınızdaki bağlantıdan ya da salondaki QR afişinden öğrenebilirsiniz.</p>
+    </section>
+
+    <section class="card" aria-labelledby="isletme-baslik">
+      <h2 id="isletme-baslik">İşletme girişi</h2>
+      <p class="muted">Salon sahibi, yöneticisi ve personeli için panel.</p>
+      <button id="panel" class="btn" type="button">Panele giriş yap</button>
+    </section>
+
+    <section class="card" id="reminders-card" hidden>
+      <h2>Randevu hatırlatmaları</h2>
+      <p class="muted" id="reminders-text">Randevularınızdan önce telefonunuz size hatırlatma gösterebilir.</p>
+      <button id="reminders" class="btn" type="button">Hatırlatmaları aç</button>
+    </section>
+
+    <footer class="foot">
+      <a id="privacy" href="#">Gizlilik politikası</a>
+      <span aria-hidden="true">·</span>
+      <a id="delete-info" href="#">Hesap silme</a>
+    </footer>
+  </main>
+
+  <div id="scanner" class="scanner" hidden>
+    <video id="video" playsinline muted></video>
+    <div class="frame" aria-hidden="true"></div>
+    <p class="scan-hint">Salonun QR kodunu çerçeveye getirin</p>
+    <button id="scan-close" class="btn" type="button">Vazgeç</button>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="jsQR.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

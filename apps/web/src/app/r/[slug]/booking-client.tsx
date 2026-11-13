@@ -1,5 +1,6 @@
 "use client";
 
+import { NativeHomeLink } from "@/components/native-home-link";
 import { CalendarDays, CheckCircle2, Clock, MapPin, Phone } from "lucide-react";
 import Link from "next/link";
 import { use, useEffect, useMemo, useState } from "react";
@@ -112,7 +113,7 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
     <div className="min-h-screen pb-16">
       <header className="bg-brand-900 px-5 pb-10 pt-6 text-white">
         <div className="mx-auto max-w-3xl">
-          <Logo light className="text-base" />
+          <div className="flex items-center justify-between gap-3"><Logo light className="text-base" /><NativeHomeLink light /></div>
           <h1 className="mt-6 font-display text-3xl font-semibold">{data.salon.name}</h1>
           <div className="mt-2 flex flex-wrap gap-4 text-sm text-brand-100">
             {data.salon.address && <span className="inline-flex items-center gap-1"><MapPin className="size-4" />{data.salon.address}</span>}

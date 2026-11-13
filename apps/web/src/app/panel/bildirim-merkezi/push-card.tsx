@@ -75,7 +75,7 @@ export function StaffPushCard() {
         {state === "ios-install" && (
           <p className="flex gap-2 text-neutral-600"><Smartphone className="size-4 shrink-0" aria-hidden /> iPhone'da bildirim için önce paneli Safari'de Paylaş → <b>Ana Ekrana Ekle</b> ile ekleyin, sonra ana ekrandaki simgeden açın (iOS 16.4 ve üzeri).</p>
         )}
-        {state === "unsupported" && <p className="text-neutral-600">Bu tarayıcı anlık bildirimleri desteklemiyor.</p>}
+        {state === "unsupported" && <p className="text-neutral-600">{/ProGuzellikApp\/\d/.test(navigator.userAgent) ? "Pro Güzellik uygulamasında anlık bildirim henüz yok. Bildirimlerinizi bu sayfada görebilirsiniz." : "Bu tarayıcı anlık bildirimleri desteklemiyor."}</p>}
         {status.data.devices > 0 && <p className="text-xs text-neutral-500">Hesabınızda bildirimi açık {status.data.devices} cihaz var.</p>}
         {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
       </CardBody>

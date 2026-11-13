@@ -3,13 +3,15 @@
 import { Bell, BellOff, Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { disablePush, enablePush, pushState, PushState, syncPush } from "@/lib/web-push-client";
+import { isNativeApp } from "@/lib/native-app";
 import { InstallGuide } from "./install";
+import { DeleteAccount, NativeReminders } from "./native";
 import { papi, type AppInfo } from "./portal-api";
 
 /** Salon service worker'ı: yalnızca /r/{slug}/ kapsamında, üretim derlemesinde kaydedilir. */
 export function SalonSwRegister({ slug }: { slug: string }) {
   useEffect(() => {
-    if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator)) return;
+    if (process.env.NODE_ENV !== "production" || !("serviceWorker" in navigator) || isNativeApp()) return;
     navigator.serviceWorker.register(`/r/${slug}/sw.js`, { scope: `/r/${slug}/`, updateViaCache: "none" }).catch(() => undefined);
     // Uygulama açılınca ana ekran simgesindeki bildirim sayısı silinir.
     (navigator as Navigator & { clearAppBadge?: () => Promise<void> }).clearAppBadge?.().catch(() => undefined);
@@ -87,11 +89,14 @@ function CustomerPush({ slug, app, me }: { slug: string; app: AppInfo; me: Me })
 }
 
 /** Hesabım sekmesi ekleri: randevu bildirimleri ve ana ekrana ekleme rehberi. */
-export function AccountExtras({ slug, app, me }: { slug: string; app: AppInfo; me: Me | null | undefined }) {
+export function AccountExtras({ slug, app, me, onDeleted }: { slug: string; app: AppInfo; me: Me | null | undefined; onDeleted: () => void }) {
+  const [native, setNative] = useState(false);
+  useEffect(() => setNative(isNativeApp()), []);
   return (
     <>
-      {me && <CustomerPush slug={slug} app={app} me={me} />}
+      {me && (native ? <NativeReminders /> : <CustomerPush slug={slug} app={app} me={me} />)}
       <InstallGuide app={app} />
+      {me && <DeleteAccount slug={slug} email={me.email} salonName={app.name} onDeleted={onDeleted} />}
     </>
   );
 }

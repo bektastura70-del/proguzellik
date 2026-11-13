@@ -27,6 +27,7 @@ const bookingSchema = z.object({
 });
 const rescheduleSchema = z.object({ startsAt: z.string().datetime({ offset: true }), staffId: z.string().uuid().optional() });
 const prefsSchema = z.object({ notifyAppointments: z.boolean().optional(), notifyReminders: z.boolean().optional() });
+const deleteSchema = z.object({ code: z.string().regex(/^\d{6}$/, "6 haneli kod girin") });
 const idemSchema = z.string().regex(/^[A-Za-z0-9_-]{8,80}$/).optional();
 
 /** Müşteri oturum belirteci yalnızca web vekilinden (httpOnly çerez → başlık) gelir; tarayıcı JS'i görmez. */
@@ -111,6 +112,14 @@ export class PortalController {
   @Patch("portal/me")
   prefs(@Param("slug", new ZodPipe(slug)) s: string, @Body(new ZodPipe(prefsSchema)) b: z.infer<typeof prefsSchema>, @Headers(SESSION_HEADER) token?: string) {
     return this.portal.updatePreferences(s, token, b);
+  }
+
+  /** Hesabı silme: önce POST portal/otp ile yeni kod istenir, sonra bu uca kod gönderilir. */
+  @Post("portal/me/delete")
+  @HttpCode(200)
+  async deleteMe(@Param("slug", new ZodPipe(slug)) s: string, @Body(new ZodPipe(deleteSchema)) b: z.infer<typeof deleteSchema>, @Req() req: Request, @Headers(SESSION_HEADER) token?: string) {
+    const { tenant } = await this.portal.portalTenant(s);
+    return this.auth.deleteIdentity(tenant.id, token, b.code, { ip: req.ip });
   }
 
   @Get("portal/appointments")

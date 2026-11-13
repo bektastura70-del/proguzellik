@@ -2,7 +2,9 @@
 
 import { Bell, Check, Download, ExternalLink, Share, Smartphone, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { isNativeApp } from "@/lib/native-app";
 import { pushState } from "@/lib/web-push-client";
+import { NativeReminders } from "./native";
 import type { AppInfo } from "./portal-api";
 
 /**
@@ -30,6 +32,7 @@ if (typeof window !== "undefined") {
 const IN_APP = /FBAN|FBAV|FB_IAB|Instagram|Line\/|Snapchat|TikTok|musical_ly|Twitter|LinkedInApp|Pinterest|; wv\)/;
 
 export function detectPlatform(): Platform {
+  if (isNativeApp()) return "installed"; // Pro Güzellik uygulamasının içindeyiz: ekleme önerisi yok.
   const standalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true;
   if (standalone || acceptedHere) return "installed";
   const ua = navigator.userAgent;
@@ -234,7 +237,7 @@ export function InstallBanner({ slug, app }: { slug: string; app: AppInfo }) {
 /** Hesabım sekmesindeki kalıcı rehber: yüklüyse "yüklü" bilgisini gösterir. */
 export function InstallGuide({ app }: { app: AppInfo }) {
   const { platform, install } = useInstall();
-  if (!app.features.installable || !platform) return null;
+  if (!app.features.installable || !platform || isNativeApp()) return null;
   return (
     <section aria-labelledby="install-title" className="rounded-2xl border border-sand-200 bg-white p-4 shadow-sm">
       <h2 id="install-title" className="flex items-center gap-2 font-semibold">
@@ -262,6 +265,7 @@ export function AfterBookingInstall({ slug, app, onOpenAccount }: { slug: string
   useEffect(() => {
     if (platform === "installed" && app.features.push) void pushState(`/r/${slug}/`).then(setPush).catch(() => setPush(null));
   }, [platform, slug, app.features.push]);
+  if (platform && isNativeApp()) return <div className="mt-5 text-left"><NativeReminders compact /></div>;
   if (!app.features.installable || !platform || platform === "desktop") return null;
   if (platform === "installed") {
     if (push !== "off") return null;

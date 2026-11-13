@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import { Logo } from "@/components/logo";
 import { Alert, Badge, Spinner } from "@/components/ui";
 import { STATUS_TR } from "@/lib/format";
+import { isNativeApp } from "@/lib/native-app";
 import { cn } from "@/lib/utils";
 import { Membership, useSession } from "./session";
 
@@ -99,6 +100,9 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
   const [banner, setBanner] = useState(false);
   const prevWaiting = useRef<number | null>(null);
   const mobileApp = !!pwa?.businessPwaEnabled;
+  // Mağaza uygulamasında abonelik/satın alma bağlantısı gösterilmez (mağaza ödeme kuralları).
+  const [native, setNative] = useState(false);
+  useEffect(() => setNative(isNativeApp()), []);
 
   useEffect(() => {
     if (!mobileApp || !tenantId) return;
@@ -173,7 +177,7 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const items = NAV.filter((i) => (!i.roles || can(...i.roles)) && (!i.feature || has(i.feature)) && (!i.pwa || mobileApp) && (!i.renewal || renewal) && (i.href !== "/panel/uygulama" || !!pwa?.customerPwaEnabled || !!pwa?.customerBookingEnabled));
+  const items = NAV.filter((i) => !(native && i.href === "/panel/abonelik") && (!i.roles || can(...i.roles)) && (!i.feature || has(i.feature)) && (!i.pwa || mobileApp) && (!i.renewal || renewal) && (i.href !== "/panel/uygulama" || !!pwa?.customerPwaEnabled || !!pwa?.customerBookingEnabled));
   const trialDays = current.tenant.status === "TRIAL" && current.tenant.trialEndsAt
     ? Math.max(0, Math.ceil((new Date(current.tenant.trialEndsAt).getTime() - Date.now()) / 86_400_000))
     : null;
@@ -292,14 +296,14 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
           <div className="mb-6">
             <Alert tone={trialDays <= 3 ? "amber" : "brand"}>
               Deneme sürenizin bitmesine <b>{trialDays} gün</b> kaldı.{" "}
-              {can("OWNER") && <Link href="/panel/abonelik" className="font-medium underline">Paket seçin</Link>}
+              {can("OWNER") && !native && <Link href="/panel/abonelik" className="font-medium underline">Paket seçin</Link>}
             </Alert>
           </div>
         )}
         {["PAST_DUE", "CANCELLED"].includes(current.tenant.status) && (
           <div className="mb-6">
             <Alert tone="amber">
-              Aboneliğiniz {current.tenant.status === "PAST_DUE" ? "ödeme bekliyor" : "sona erdi"}. <Link href="/panel/abonelik" className="font-medium underline">Abonelik sayfasına gidin</Link>
+              Aboneliğiniz {current.tenant.status === "PAST_DUE" ? "ödeme bekliyor" : "sona erdi"}.{!native && <> <Link href="/panel/abonelik" className="font-medium underline">Abonelik sayfasına gidin</Link></>}
             </Alert>
           </div>
         )}

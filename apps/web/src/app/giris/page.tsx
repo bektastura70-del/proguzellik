@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Logo } from "@/components/logo";
+import { NativeHomeLink } from "@/components/native-home-link";
 import { Alert, Button, Field, Input } from "@/components/ui";
+import { isNativeApp } from "@/lib/native-app";
 
 type LoginUser = { mustChangePassword?: boolean; isPlatformAdmin?: boolean; memberships?: unknown[] };
 
@@ -97,6 +99,18 @@ function LoginForm() {
   );
 }
 
+/** Deneme kaydı bağlantısı mağaza uygulamasında gösterilmez (uygulama içinde hesap/abonelik satışı yok). */
+function SignupHint() {
+  const [native, setNative] = useState<boolean | null>(null);
+  useEffect(() => setNative(isNativeApp()), []);
+  if (native !== false) return null;
+  return (
+    <p className="mt-6 text-center text-sm text-neutral-500">
+      Hesabınız yok mu? <Link href="/ucretsiz-deneme" className="font-medium text-brand-700">14 gün ücretsiz deneyin</Link>
+    </p>
+  );
+}
+
 export default function LoginPage() {
   return (
     <div className="grid min-h-screen place-items-center px-4 py-10">
@@ -107,9 +121,8 @@ export default function LoginPage() {
         <Suspense>
           <LoginForm />
         </Suspense>
-        <p className="mt-6 text-center text-sm text-neutral-500">
-          Hesabınız yok mu? <Link href="/ucretsiz-deneme" className="font-medium text-brand-700">14 gün ücretsiz deneyin</Link>
-        </p>
+        <SignupHint />
+        <div className="mt-4 text-center"><NativeHomeLink /></div>
       </div>
     </div>
   );

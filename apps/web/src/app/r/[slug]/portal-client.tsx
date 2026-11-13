@@ -10,6 +10,8 @@ import { AppInfo, MyAppointment, MyPackage, papi, PortalError, Salon, Slot } fro
 import { disablePush } from "@/lib/web-push-client";
 import { AfterBookingInstall, InstallBanner } from "./install";
 import { AccountExtras } from "./portal-extras";
+import { NativeHomeLink, NativeReminderSync } from "./native";
+import { syncNativeReminders } from "@/lib/native-app";
 
 type Tab = "book" | "mine" | "packages" | "account";
 type Me = { email: string; notifyAppointments: boolean; notifyReminders: boolean };
@@ -77,6 +79,7 @@ export function PortalClient({ slug, app }: { slug: string; app: AppInfo }) {
             <h1 className="truncate font-display text-2xl font-semibold">{app.name}</h1>
             {app.description && <p className="line-clamp-2 text-sm text-white/80">{app.description}</p>}
           </div>
+          <div className="ml-auto shrink-0"><NativeHomeLink light /></div>
         </div>
         {salon && (
           <div className="mx-auto mt-3 flex max-w-2xl flex-wrap gap-x-4 gap-y-1 text-sm text-white/85">
@@ -86,6 +89,7 @@ export function PortalClient({ slug, app }: { slug: string; app: AppInfo }) {
         )}
       </header>
 
+      <NativeReminderSync slug={slug} name={app.name} loggedIn={me === undefined ? undefined : me !== null} />
       <main className="mx-auto -mt-4 max-w-2xl space-y-4 px-4">
         {err && <Alert>{err}</Alert>}
         {!salon && !err && <div className="grid place-items-center py-16"><Spinner /></div>}
@@ -358,13 +362,15 @@ function MineTab({ slug, me, onLoggedIn, app }: { slug: string; me: Me | null | 
 
   const load = useCallback(async () => {
     try {
-      setData(await papi(slug, "portal/appointments"));
+      const d = await papi<{ upcoming: MyAppointment[]; past: MyAppointment[] }>(slug, "portal/appointments");
+      setData(d);
       setErr(null);
+      void syncNativeReminders(slug, app.name, d.upcoming);
     } catch (x) {
       if (x instanceof PortalError && x.status === 401) onLoggedIn();
       else setErr((x as Error).message);
     }
-  }, [slug, onLoggedIn]);
+  }, [slug, onLoggedIn, app.name]);
 
   useEffect(() => {
     if (me) void load();
@@ -524,13 +530,14 @@ function AccountTab({ slug, me, app, onLoggedIn, onLogout }: { slug: string; me:
             // Paylaşılan cihazda sonraki kişiye bu müşterinin bildirimleri gitmesin.
             await disablePush(`/r/${slug}/`, (endpoint) => papi(slug, "portal/push/subscriptions", { method: "DELETE", body: { endpoint } })).catch(() => undefined);
             await papi(slug, "portal/logout", { method: "POST" }).catch(() => null);
+            await syncNativeReminders(slug, app.name, null);
             onLogout();
           }}>
             <LogOut className="size-4" /> Çıkış yap
           </Button>
         </Card>
       )}
-      <AccountExtras slug={slug} app={app} me={me} />
+      <AccountExtras slug={slug} app={app} me={me} onDeleted={onLogout} />
     </>
   );
 }

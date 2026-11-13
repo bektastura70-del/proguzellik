@@ -219,6 +219,44 @@ describe("PWA müşteri portalı (Modül 1)", () => {
     await portal(app, A.tenant.slug, tk).get("/me").expect(401);
   });
 
+  it("hesap silme: yeni kod ister, yanlış kodla silinmez; doğru kodla kimlik, oturumlar ve abonelikler silinir, salon kaydı kalır", async () => {
+    const email = "sil@test.local";
+    const tk = await portalLogin(app, A.tenant.slug, email);
+    const p = portal(app, A.tenant.slug, tk);
+    const r = await p.post("/bookings").set("Idempotency-Key", "silme-testi-0001").send({ ...guest, phone: "0532 999 88 77", serviceId: s.service.id, startsAt: futureAt(6, "15:00") }).expect(201);
+    const apptId = r.body.id ?? r.body.appointment?.id;
+    const identity = await su.customerIdentity.findFirstOrThrow({ where: { tenantId: A.tenant.id, email } });
+    await su.pushSubscription.create({ data: { tenantId: A.tenant.id, audience: "CUSTOMER", identityId: identity.id, endpoint: "https://fcm.googleapis.com/fcm/send/silme", p256dh: "x", auth: "y" } });
+
+    // Oturumsuz silinemez
+    await portal(app, A.tenant.slug).post("/me/delete").send({ code: "123456" }).expect(401);
+    // Giriş kodu (tüketilmiş) yeniden kullanılamaz; yeni kod gerekir
+    await p.post("/me/delete").send({ code: "000000" }).expect(401);
+    await http().post(`/public/salons/${A.tenant.slug}/portal/otp`).send({ email }).expect(202);
+    const code = lastOtp(app, email)!;
+    const wrong = code === "111111" ? "222222" : "111111";
+    await p.post("/me/delete").send({ code: wrong }).expect(401);
+    expect(await su.customerIdentity.count({ where: { id: identity.id } })).toBe(1);
+    // Başka salonun oturumu bu salonda silemez
+    await portal(app, B.tenant.slug, tk).post("/me/delete").send({ code }).expect(401);
+
+    await p.post("/me/delete").send({ code }).expect(200);
+    expect(await su.customerIdentity.count({ where: { id: identity.id } })).toBe(0);
+    expect(await su.customerPortalSession.count({ where: { identityId: identity.id } })).toBe(0);
+    expect(await su.pushSubscription.count({ where: { identityId: identity.id } })).toBe(0);
+    expect(await su.customerOtp.count({ where: { tenantId: A.tenant.id, destination: email } })).toBe(0);
+    if (apptId) {
+      const appt = await su.appointment.findUniqueOrThrow({ where: { id: apptId } });
+      expect(appt.portalIdentityId).toBeNull();
+    }
+    expect(await su.appointment.count({ where: { tenantId: A.tenant.id, customer: { phone: { contains: "999" } } } })).toBeGreaterThan(0);
+    expect(await su.auditLog.count({ where: { tenantId: A.tenant.id, action: "portal.identity_deleted", entityId: identity.id } })).toBe(1);
+    await p.get("/me").expect(401);
+    // Aynı e-postayla yeniden giriş yeni (boş) bir hesap açar
+    const tk2 = await portalLogin(app, A.tenant.slug, email);
+    await portal(app, A.tenant.slug, tk2).get("/me").expect(200);
+  });
+
   it("işletme askıya alınınca portal kapanır", async () => {
     await su.tenant.update({ where: { id: B.tenant.id }, data: { status: "SUSPENDED" } });
     await http().get(`/public/salons/${B.tenant.slug}/app`).expect(404);
