@@ -5,7 +5,8 @@ Durum (13.11.2026):
 - Sunucu tarafı canlıda (7e991c0): hesap silme, uygulama algılama, demo salon, inceleme girişi.
 - Android: emülatörde baştan sona denendi (yerel sunucuyla), canlı siteye bağlı derleme de emülatörde açıldı.
   `.aab` derleniyor ama **imzasız** (yükleme anahtarı sizde üretilecek).
-- iOS: Xcode projesi var, **derlenmedi** (bu Mac'te Xcode yok; Apple hesabı inceleniyor).
+- iOS: Xcode 27.2 ile simülatör için **derlendi** ve iPhone 18 Pro Max simülatöründe (iOS 27.2) canlı siteye bağlı
+  denendi. Mağaza arşivi (imzalı) Apple şirket hesabı onaylanınca yapılabilir.
 - Gerçek telefonda hiçbir şey denenmedi. Mağazaya hiçbir şey gönderilmedi.
 - Yayıncı: BEKTAŞ TURA REKLAM MEDYA VE BİLGİ TEKNOLOJİLERİ LİMİTED ŞİRKETİ (Apple ve Google hesapları info@bektastura.com).
 
@@ -136,7 +137,7 @@ cd android && ./gradlew bundleRelease      # Google Play paketi: app/build/outpu
 | Hesabımı sil (yeni kodla): kimlik silindi, oturum kapandı, hatırlatmalar silindi | Çalıştı |
 | İnternet kapalıyken açılış → çevrimdışı ekranı | Çalıştı |
 | QR tarama | Emülatörde kamera yok, gerçek cihazda denenmeli |
-| iOS | Derlenmedi, Xcode gerekli |
+| iOS simülatör (14.11.2026, iOS 27.2, canlı site) | Derlendi. Giriş ekranı, `proguzellik://r/demo-salon` ile demo salon (hizmetler), Hesabım (kod ile giriş ekranı), Salon değiştir ile giriş ekranına dönüş, Hatırlatmaları aç → iOS bildirim izni penceresi, işletme giriş sayfası: çalıştı. Girişli akışlar denenmedi (simülatöre yazı girilemedi; inceleme bilgileri yalnızca sizde) |
 | Canlı siteye karşı (7e991c0 sonrası, mağaza yapılandırmasıyla derlenen uygulama) | Giriş ekranı, `proguzellik://` ile demo salon, işletme giriş sayfası açıldı. Girişli akışlar canlıda denenmedi (inceleme bilgileri yalnızca sizde) |
 | Gerçek telefon (Android/iPhone) | Denenmedi |
 
@@ -319,7 +320,7 @@ Apple ve Google inceleyicileri e-posta kodu alamaz, bu yüzden çalışan bir gi
 - `mobile/store/google-play/ekran-goruntuleri/yeni/`: canlı demo salondan alınan ilk 3 görüntü (giriş ekranı, salon,
   işletme girişi). Girişli ekranlar (Randevularım, Paketlerim, panel) inceleme bilgileri yalnızca sizde olduğu için
   sizin çekmeniz gerekir. Eski görüntüler yerel deneme verisiyle alınmıştı.
-- iPhone görüntüleri için Xcode simülatörü gerekir (6.9" 1320×2868).
+- `mobile/store/ios/ekran-goruntuleri/yeni/`: iPhone 6.9" (1320×2868) ilk 3 görüntü, canlı demo salondan.
 
 ## 7. Canlıya alma (her adım ayrı onayla)
 
