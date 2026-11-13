@@ -1,5 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
+import { loadEnv } from "../src/config/env";
 import { api, createApp, createTenantWithUser, futureAt, login, owner, resetDb, setupSalon } from "./helpers";
 import { enablePwa, lastOtp, portal, portalLogin } from "./portal-helpers";
 
@@ -217,6 +218,35 @@ describe("PWA müşteri portalı (Modül 1)", () => {
     const tk = await portalLogin(app, A.tenant.slug, "cikis@test.local");
     await portal(app, A.tenant.slug, tk).post("/logout").expect(200);
     await portal(app, A.tenant.slug, tk).get("/me").expect(401);
+  });
+
+  it("mağaza inceleme girişi: yalnızca tanımlı işletmede ve adreste sabit kod, e-posta gitmez; varsayılan kapalı", async () => {
+    const env = loadEnv();
+    const before = { REVIEW_LOGIN_SLUG: env.REVIEW_LOGIN_SLUG, REVIEW_LOGIN_EMAIL: env.REVIEW_LOGIN_EMAIL, REVIEW_LOGIN_CODE: env.REVIEW_LOGIN_CODE };
+    const email = "inceleme@test.local";
+    // Kapalıyken (tanımsız) sabit kod çalışmaz
+    await http().post(`/public/salons/${A.tenant.slug}/portal/otp`).send({ email }).expect(202);
+    await http().post(`/public/salons/${A.tenant.slug}/portal/verify`).send({ email, code: "246810" }).expect(401);
+    Object.assign(env, { REVIEW_LOGIN_SLUG: A.tenant.slug, REVIEW_LOGIN_EMAIL: email, REVIEW_LOGIN_CODE: "246810" });
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { MockEmailProvider } = require("../src/email/email.provider");
+      const outbox = app.get(MockEmailProvider).outbox as { to: string }[];
+      const sentBefore = outbox.filter((m) => m.to === email).length;
+      await http().post(`/public/salons/${A.tenant.slug}/portal/otp`).send({ email: " Inceleme@Test.local " }).expect(202);
+      expect(outbox.filter((m) => m.to === email).length).toBe(sentBefore);
+      const ok = await http().post(`/public/salons/${A.tenant.slug}/portal/verify`).send({ email, code: "246810" }).expect(200);
+      await portal(app, A.tenant.slug, ok.body.token).get("/me").expect(200);
+      // Başka işletmede aynı adres: normal akış (rastgele kod e-postayla), sabit kod geçmez
+      await http().post(`/public/salons/${B.tenant.slug}/portal/otp`).send({ email }).expect(202);
+      expect(outbox.filter((m) => m.to === email).length).toBe(sentBefore + 1);
+      await http().post(`/public/salons/${B.tenant.slug}/portal/verify`).send({ email, code: "246810" }).expect(401);
+      // Aynı işletmede başka adres: sabit kod geçmez
+      await http().post(`/public/salons/${A.tenant.slug}/portal/otp`).send({ email: "baska@test.local" }).expect(202);
+      await http().post(`/public/salons/${A.tenant.slug}/portal/verify`).send({ email: "baska@test.local", code: "246810" }).expect(401);
+    } finally {
+      Object.assign(env, before);
+    }
   });
 
   it("hesap silme: yeni kod ister, yanlış kodla silinmez; doğru kodla kimlik, oturumlar ve abonelikler silinir, salon kaydı kalır", async () => {

@@ -100,6 +100,14 @@ const schema = z.object({
   PWA_ENABLED: z.enum(["0", "1"]).optional(),
   /** Web Push gönderimi: off = gönderilmez; mock = ağ isteği yok, gönderildi sayılır (yerel/test); live = VAPID ile gerçek gönderim. Tanımsızsa canlıda off, diğer ortamlarda mock. */
   WEB_PUSH_MODE: z.enum(["off", "mock", "live"]).optional(),
+  /**
+   * Mağaza incelemesi (App Store / Google Play) için müşteri girişi. ÜÇÜ BİRDEN tanımlı değilse KAPALI.
+   * Yalnızca REVIEW_LOGIN_SLUG işletmesinde ve yalnızca REVIEW_LOGIN_EMAIL adresinde: e-posta gönderilmez, kod sabittir.
+   * Yalnızca gerçek verisi olmayan demo salon için kullanılır; inceleme bitince kaldırılabilir.
+   */
+  REVIEW_LOGIN_SLUG: z.preprocess((v) => (v === "" ? undefined : v), z.string().regex(/^[a-z0-9-]{2,60}$/).optional()),
+  REVIEW_LOGIN_EMAIL: z.preprocess((v) => (v === "" ? undefined : v), z.string().trim().toLowerCase().email().optional()),
+  REVIEW_LOGIN_CODE: z.preprocess((v) => (v === "" ? undefined : v), z.string().regex(/^\d{6}$/).optional()),
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().optional(),
@@ -164,6 +172,12 @@ export function metaApp(env: Pick<Env, "META_APP_ID" | "META_APP_SECRET" | "META
   const { META_APP_ID: appId, META_APP_SECRET: appSecret, META_ES_CONFIG_ID: configId, META_WEBHOOK_VERIFY_TOKEN: verifyToken } = env;
   return appId && appSecret && configId && verifyToken ? { appId, appSecret, configId, verifyToken } : null;
 }
+
+/** Mağaza inceleme girişi: üç değer birden tanımlıysa { slug, email, code }, değilse null (kapalı). */
+export const reviewLogin = (env: Pick<Env, "REVIEW_LOGIN_SLUG" | "REVIEW_LOGIN_EMAIL" | "REVIEW_LOGIN_CODE">) =>
+  env.REVIEW_LOGIN_SLUG && env.REVIEW_LOGIN_EMAIL && env.REVIEW_LOGIN_CODE
+    ? { slug: env.REVIEW_LOGIN_SLUG, email: env.REVIEW_LOGIN_EMAIL, code: env.REVIEW_LOGIN_CODE }
+    : null;
 
 /** PWA V1.0 özellikleri bu ortamda açılabilir mi? Canlıda yalnızca PWA_ENABLED=1 ile. */
 export const pwaEnabled = (env: Pick<Env, "PWA_ENABLED" | "NODE_ENV">) =>
@@ -241,6 +255,8 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
     if (env.PAYMENT_MODE !== "iyzico") warn("PURCHASE_ENABLED=1 ama PAYMENT_MODE iyzico değil: satın alma formu kapalı görünür");
     if (env.EMAIL_MODE !== "smtp") warn("PURCHASE_ENABLED=1 ama EMAIL_MODE smtp değil: doğrulama e-postası gönderilemez, satın alma alınmaz");
   }
+  if (reviewLogin(env)) warn(`Mağaza inceleme girişi AÇIK: yalnızca /r/${env.REVIEW_LOGIN_SLUG} işletmesinde, tek adres için sabit kod`);
+  else if (env.REVIEW_LOGIN_SLUG || env.REVIEW_LOGIN_EMAIL || env.REVIEW_LOGIN_CODE) warn("REVIEW_LOGIN_* eksik: mağaza inceleme girişi KAPALI (üçü birden gerekir)");
   if (env.PWA_ENABLED === "1") warn("PWA_ENABLED=1: PWA özellikleri SaaS sahibi panelinden işletme başına açılabilir");
   if (env.WEB_PUSH_MODE === "live") {
     for (const k of ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"] as const) if (!env[k]) err(`WEB_PUSH_MODE=live için ${k} gerekli`);

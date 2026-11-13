@@ -2,7 +2,7 @@ import { HttpException, HttpStatus, Injectable, Logger, ServiceUnavailableExcept
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import { RateLimitService } from "../auth/rate-limit.service";
-import { loadEnv } from "../config/env";
+import { loadEnv, reviewLogin } from "../config/env";
 import { EmailService } from "../email/email.service";
 import { PrismaService, Tx } from "../prisma/prisma.service";
 
@@ -42,14 +42,17 @@ export class CustomerAuthService {
   }
 
   /** Kod gönderir. Adresin kayıtlı olup olmadığı yanıttan anlaşılmaz (her zaman aynı yanıt). */
-  async requestCode(tenant: { id: string; name: string }, rawEmail: string, ip?: string) {
+  async requestCode(tenant: { id: string; name: string; slug?: string }, rawEmail: string, ip?: string) {
     const dest = rawEmail.trim().toLowerCase();
     this.rateLimit.hit(`otp-ip:${ip}`, 10, 60 * 60_000);
     this.rateLimit.hit(`otp-dest:${tenant.id}:${dest}`, 5, 60 * 60_000);
-    if (!this.email.deliveryConfigured) {
+    // Mağaza incelemesi: yalnızca tanımlı demo işletmede ve tek adreste sabit kod; e-posta gönderilmez. Varsayılan kapalı.
+    const review = reviewLogin(loadEnv());
+    const isReview = !!review && !!tenant.slug && tenant.slug === review.slug && dest === review.email;
+    if (!isReview && !this.email.deliveryConfigured) {
       throw new ServiceUnavailableException({ message: "Doğrulama e-postası şu anda gönderilemiyor. Lütfen işletmeyle iletişime geçin.", code: "OTP_UNAVAILABLE" });
     }
-    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    const code = isReview ? review!.code : String(randomInt(0, 1_000_000)).padStart(6, "0");
     await this.prisma.withTenant(this.ctx(tenant.id), async (tx) => {
       // Önceki açık kodlar geçersiz olur: aynı anda yalnızca son kod çalışır.
       await tx.customerOtp.updateMany({ where: { destination: dest, consumedAt: null }, data: { consumedAt: new Date() } });
@@ -57,6 +60,7 @@ export class CustomerAuthService {
         data: { tenantId: tenant.id, destination: dest, codeHash: codeHash(tenant.id, dest, code), expiresAt: new Date(Date.now() + OTP_MINUTES * 60_000), ip },
       });
     });
+    if (isReview) return { sent: true, minutes: OTP_MINUTES };
     const res = await this.email.send(dest, { name: "customer_otp", vars: { salon: tenant.name, code, minutes: OTP_MINUTES } }, { tenantId: tenant.id });
     if ("failed" in res) this.logger.warn(`Doğrulama kodu e-postası gönderilemedi (${res.code})`);
     return { sent: true, minutes: OTP_MINUTES };

@@ -132,6 +132,10 @@ services:
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       # Yenilenme hatırlatması (uygulama bildirimi + e-posta). 0: kapalı. 1 olsa da işletme kendi ayarından ayrıca açar.
       RENEWAL_REMINDERS: ${RENEWAL_REMINDERS:-0}
+      # Mağaza incelemesi müşteri girişi: üçü birden tanımlı değilse KAPALI. Yalnızca demo salonda, tek adres, e-posta gönderilmez.
+      REVIEW_LOGIN_SLUG: ${REVIEW_LOGIN_SLUG:-}
+      REVIEW_LOGIN_EMAIL: ${REVIEW_LOGIN_EMAIL:-}
+      REVIEW_LOGIN_CODE: ${REVIEW_LOGIN_CODE:-}
       # Kuyruk işçileri ve günlük görev yalnızca "worker" servisinde çalışır.
       JOBS_ENABLED: "0"
       NOTIFICATIONS_WORKER: "0"
