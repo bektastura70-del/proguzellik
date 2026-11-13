@@ -181,6 +181,9 @@ services:
       HOSTNAME: 0.0.0.0
       # Kanonik adres (site haritası, robots, Open Graph)
       SITE_URL: ${PUBLIC_URL:?PUBLIC_URL gerekli}
+      # Mobil uygulama bağlantı doğrulaması (boşsa /.well-known dosyaları 404 döner)
+      ANDROID_CERT_SHA256: ${ANDROID_CERT_SHA256:-}
+      APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
     # Ortak vekil ağına (edge_proxy) yalnızca docker-compose.edge.yml ile bağlanır (Caddy adımında).
     networks: [internal]
     read_only: true

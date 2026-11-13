@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bildirim çubuğu simgesi: Pro Güzellik işareti, tek renk (Android rengi kendisi boyar). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="512" android:viewportHeight="512">
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="44"
+        android:strokeLineCap="round" android:pathData="M150,372c0,-110 52,-196 106,-196s106,86 106,196" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M256,90a46,46 0,1 1,0 92a46,46 0,1 1,0 -92z" />
+</vector>

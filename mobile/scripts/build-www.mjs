@@ -41,7 +41,7 @@ const config = {
   ios: { contentInset: "never", limitsNavigationsToAppBoundDomains: false },
   plugins: {
     SplashScreen: { launchShowDuration: 600, backgroundColor: "#faf8f5", showSpinner: false },
-    LocalNotifications: { iconColor: "#933c63" },
+    LocalNotifications: { smallIcon: "ic_stat_notify", iconColor: "#933c63" },
   },
 };
 writeFileSync(join(root, "capacitor.config.json"), JSON.stringify(config, null, 2) + "\n");

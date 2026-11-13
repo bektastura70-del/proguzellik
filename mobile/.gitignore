@@ -9,3 +9,4 @@ android/app/release/
 *.jks
 ios/App/build/
 ios/DerivedData/
+keystore.properties

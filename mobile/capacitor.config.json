@@ -7,15 +7,14 @@
   "server": {
     "androidScheme": "https",
     "allowNavigation": [
-      "10.0.2.2",
-      "http://10.0.2.2:3000"
+      "proguzellik.com",
+      "www.proguzellik.com"
     ],
-    "errorPath": "offline.html",
-    "cleartext": true
+    "errorPath": "offline.html"
   },
   "android": {
     "allowMixedContent": false,
-    "webContentsDebuggingEnabled": true
+    "webContentsDebuggingEnabled": false
   },
   "ios": {
     "contentInset": "never",
@@ -28,6 +27,7 @@
       "showSpinner": false
     },
     "LocalNotifications": {
+      "smallIcon": "ic_stat_notify",
       "iconColor": "#933c63"
     }
   }
