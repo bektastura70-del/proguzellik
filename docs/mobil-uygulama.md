@@ -253,22 +253,11 @@ eklenmeli (taslak madde başlıkları, hukukçu yazmalı):
    - "En az 12 test kullanıcısı, 14 gün kapalı test" kuralı Google'ın sayfasında 13.11.2023 sonrası açılan
      **kişisel** hesaplar için yazılı. Sizin hesabınız kurumsal olduğu için bu kuralın uygulanmaması beklenir; Play Console
      "Yayına hazırlık" sayfasında ne istendiğini kontrol edin.
-2. **Yükleme anahtarı** üretin ve parolayla birlikte güvenli yerde saklayın. Kaybolursa Play desteği gerekir:
-   ```bash
-   ~/Android/jdk/Contents/Home/bin/keytool -genkeypair -v -keystore ~/proguzellik-upload.jks -alias upload -keyalg RSA -keysize 2048 -validity 10000
-   ```
-   Ardından `mobile/android/keystore.properties` dosyasını oluşturun. Bu dosya git'e girmez:
-   ```
-   storeFile=/Users/bektastura/proguzellik-upload.jks
-   storePassword=...
-   keyAlias=upload
-   keyPassword=...
-   ```
-3. Paketi derleyin:
-   ```bash
-   cd mobile && npm run sync && cd android && ./gradlew bundleRelease
-   ```
-   Çıktıyı (`app-release.aab`) Play Console'a yükleyin. **Play App Signing** açık kalsın.
+2. **Yükleme anahtarı** (bir kez): `cd mobile && bash scripts/create-upload-key.sh`. Parolayı keytool gizli sorar.
+   Anahtar `~/ProGuzellik-Anahtar/proguzellik-upload.jks` olur; `android/keystore.properties` yalnızca yolu tutar,
+   parola hiçbir dosyaya yazılmaz. **.jks dosyasını ve parolayı şirketin güvenli yerine yedekleyin.**
+3. **İmzalı paket:** `bash scripts/build-release.sh` (parolayı gizli sorar, canlı site yapılandırmasıyla derler, imzayı
+   doğrular). Çıktı: `android/app/build/outputs/bundle/release/app-release.aab`. Play App Signing açık kalsın.
 4. Play Console'da doldurulacaklar:
    - Mağaza girişi (bölüm 4).
    - Veri güvenliği formu (bölüm 5).

@@ -1,7 +1,8 @@
 apply plugin: 'com.android.application'
 
 // Yayın imzası: android/keystore.properties (git'e girmez). Dosya yoksa yayın paketi imzasız üretilir.
-// İçerik: storeFile=/tam/yol/upload.jks  storePassword=...  keyAlias=upload  keyPassword=...
+// İçerik: storeFile=/tam/yol/upload.jks  keyAlias=upload. Parola dosyaya YAZILMAZ: derleme sırasında
+// PG_UPLOAD_PASSWORD ortam değişkeninden okunur (scripts/build-release.sh gizli olarak sorar).
 def keystorePropsFile = rootProject.file("keystore.properties")
 def keystoreProps = new Properties()
 if (keystorePropsFile.exists()) { keystorePropsFile.withInputStream { keystoreProps.load(it) } }
@@ -26,9 +27,10 @@ android {
         release {
             if (keystorePropsFile.exists()) {
                 storeFile file(keystoreProps["storeFile"])
-                storePassword keystoreProps["storePassword"]
+                def pw = System.getenv("PG_UPLOAD_PASSWORD")
+                storePassword keystoreProps["storePassword"] ?: pw
                 keyAlias keystoreProps["keyAlias"]
-                keyPassword keystoreProps["keyPassword"]
+                keyPassword keystoreProps["keyPassword"] ?: pw
             }
         }
     }
