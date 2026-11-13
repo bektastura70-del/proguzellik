@@ -131,7 +131,7 @@ async function createAccounts(db: PrismaClient, raw: Partial<DemoInput>, opts: {
     const owner = await tx.user.create({ data: { email: input.ownerEmail, fullName: input.ownerName, passwordHash, emailVerifiedAt: now } });
     await tx.membership.create({ data: { tenantId: created.id, userId: owner.id, role: "OWNER" } });
     await tx.tenantPwaSettings.create({
-      data: { tenantId: created.id, businessPwaEnabled: true, customerPwaEnabled: true, customerBookingEnabled: true, flagsUpdatedAt: now },
+      data: { tenantId: created.id, businessPwaEnabled: true, customerPwaEnabled: true, customerBookingEnabled: true, customerSessionTrackingEnabled: true, flagsUpdatedAt: now },
     });
     await tx.auditLog.create({
       data: { tenantId: created.id, actorId: owner.id, action: "demo.salon_created", entity: "Tenant", entityId: created.id, metadata: { via: "cli", trialDays: input.trialDays } },

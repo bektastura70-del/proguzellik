@@ -1,8 +1,10 @@
 import { INestApplication } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
+import { loadEnv } from "../src/config/env";
 import { createDemoSalon, DemoSetupError, generatePassword } from "../src/cli/create-demo-salon.lib";
-import { createApp, createTenantWithUser, owner, resetDb } from "./helpers";
+import { createApp, createTenantWithUser, futureAt, owner, resetDb } from "./helpers";
+import { portal } from "./portal-helpers";
 
 describe("Demo salon (mağaza incelemesi)", () => {
   const su = owner();
@@ -60,6 +62,43 @@ describe("Demo salon (mağaza incelemesi)", () => {
     expect(reset.password).toBeTruthy();
     expect(await loginStatus("demo-isletme@proguzellik.com", firstPassword)).toBe(401);
     expect(await loginStatus("demo-isletme@proguzellik.com", reset.password!)).toBe(200);
+  });
+
+  it("inceleme ekibinin yolu: sabit kodla giriş, randevu, Randevularım, hesap silme, yeniden giriş", async () => {
+    const env = loadEnv();
+    const before = { REVIEW_LOGIN_SLUG: env.REVIEW_LOGIN_SLUG, REVIEW_LOGIN_EMAIL: env.REVIEW_LOGIN_EMAIL, REVIEW_LOGIN_CODE: env.REVIEW_LOGIN_CODE };
+    const email = "demo-musteri@proguzellik.com";
+    const code = "731942";
+    Object.assign(env, { REVIEW_LOGIN_SLUG: "demo-salon", REVIEW_LOGIN_EMAIL: email, REVIEW_LOGIN_CODE: code });
+    const slug = "demo-salon";
+    const signIn = async () => {
+      await http().post(`/public/salons/${slug}/portal/otp`).send({ email }).expect(202);
+      return (await http().post(`/public/salons/${slug}/portal/verify`).send({ email, code }).expect(200)).body.token as string;
+    };
+    try {
+      const info = await http().get(`/public/salons/${slug}/app`).expect(200);
+      expect(info.body.features).toMatchObject({ portal: true, packages: true });
+      const token = await signIn();
+      const t = await su.tenant.findUniqueOrThrow({ where: { slug } });
+      const service = await su.service.findFirstOrThrow({ where: { tenantId: t.id, name: "Manikür" } });
+      // En yakın iş günü (Pazar kapalı), 11:00
+      let d = 3;
+      while (new Date(futureAt(d, "11:00")).getUTCDay() === 0) d++;
+      const r = await portal(app, slug, token).post("/bookings").set("Idempotency-Key", "demo-review-0001")
+        .send({ firstName: "Demo", lastName: "Müşteri", phone: "0532 000 00 00", kvkkConsent: true, serviceId: service.id, startsAt: futureAt(d, "11:00") }).expect(201);
+      expect(r.body.status).toBe("BOOKED");
+      const mine = await portal(app, slug, token).get("/appointments").expect(200);
+      expect(JSON.stringify(mine.body)).toContain(r.body.bookingId);
+      // Hesap silme: yeni kod istenir, sabit kod geçer
+      await portal(app, slug, token).post("/otp").send({ email }).expect(202);
+      await portal(app, slug, token).post("/me/delete").send({ code }).expect(200);
+      await portal(app, slug, token).get("/me").expect(401);
+      expect(await su.customerIdentity.count({ where: { tenantId: t.id } })).toBe(0);
+      // Tekrar giriş çalışır (inceleme ekibi yeniden deneyebilir)
+      await portal(app, slug, await signIn()).get("/me").expect(200);
+    } finally {
+      Object.assign(env, before);
+    }
   });
 
   it("adres veya e-posta başka işletmeye aitse hiçbir şey değiştirmez", async () => {
