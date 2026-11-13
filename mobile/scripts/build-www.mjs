@@ -21,7 +21,9 @@ cpSync(join(root, "src"), www, { recursive: true });
 cpSync(join(root, "node_modules/jsqr/dist/jsQR.js"), join(www, "jsQR.js"));
 writeFileSync(join(www, "config.js"), `window.PG_CONFIG = ${JSON.stringify({ base, version: pkg.version })};\n`);
 
-const hosts = dev ? [url.host] : [url.host, "www." + url.host.replace(/^www\./, "")];
+// Gezinme izni ana bilgisayar adıyla eşleşir; köprü (yerel eklentiler) ise köken listesine göre eklenir:
+// http yerel denemede kökenin (port dahil) ayrıca yazılması gerekir.
+const hosts = dev ? [url.hostname, url.origin] : [url.hostname, "www." + url.hostname.replace(/^www\./, "")];
 const config = {
   appId: "com.proguzellik.app",
   appName: "Pro Güzellik",

@@ -82,7 +82,7 @@ const OFFSETS = [
 
 /** Planlanacak hatırlatmalar (saf işlev; test edilir). Geçmiş ve iptal edilmiş randevular için hatırlatma yoktur. */
 export function plannedReminders(slug: string, salonName: string, appts: ReminderAppointment[], now = Date.now()) {
-  const out: { id: number; title: string; body: string; schedule: { at: string; allowWhileIdle: boolean }; extra: { pg: string; url: string } }[] = [];
+  const out: { id: number; title: string; body: string; schedule: { at: string }; isExactNotification: false; extra: { pg: string; url: string } }[] = [];
   for (const a of appts) {
     if (!ACTIVE.has(a.status)) continue;
     const start = new Date(a.startsAt).getTime();
@@ -94,7 +94,9 @@ export function plannedReminders(slug: string, salonName: string, appts: Reminde
         id: reminderId(a.id, o.kind),
         title: salonName,
         body: `${o.label} saat ${time}: ${a.service} randevunuz var.`,
-        schedule: { at: new Date(at).toISOString(), allowWhileIdle: true },
+        schedule: { at: new Date(at).toISOString() },
+        // Android'de tam zamanlı alarm izni istenmez (ayarlar ekranı açılmaz); hatırlatma birkaç dakika oynayabilir.
+        isExactNotification: false,
         extra: { pg: slug, url: `/r/${slug}` },
       });
     }

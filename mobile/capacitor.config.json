@@ -7,14 +7,15 @@
   "server": {
     "androidScheme": "https",
     "allowNavigation": [
-      "proguzellik.com",
-      "www.proguzellik.com"
+      "10.0.2.2",
+      "http://10.0.2.2:3000"
     ],
-    "errorPath": "offline.html"
+    "errorPath": "offline.html",
+    "cleartext": true
   },
   "android": {
     "allowMixedContent": false,
-    "webContentsDebuggingEnabled": false
+    "webContentsDebuggingEnabled": true
   },
   "ios": {
     "contentInset": "never",
