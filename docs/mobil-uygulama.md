@@ -144,8 +144,9 @@ Otomatik testler (13.11.2026, bu dalda):
 - API: `portal` (giriş, randevu, değiştirme, iptal, hesap silme, inceleme girişi), `demo-salon` (inceleme ekibinin yolu
   uçtan uca), `rls` (kiracı yalıtımı), `pwa-business` (personel yetkileri), `pwa-packages`, `pwa-security-perf`,
   `public-booking`: **88 test geçti**.
-- `auth-security` 2 testi kalıyor: deneme kaydı ve abonelik ödemesi akışı (400/409). Aynı aile testler bu işten önceki
-  sürümde de kalıyordu (kayıt/ödeme testleri, mobil değişiklikle ilgisiz); ayrıca incelenmeli.
+- `auth-security` 2 testi kalıyor: deneme kaydı ve abonelik ödemesi akışı (400/409). Aynı kayıt hatasıyla `auth.e2e`
+  bu işten önceki sürümde (37cf904) de kalıyordu; `auth-security` o sürümde ayrıca çalıştırılmadı. Mobil değişikliklerle
+  ilgisi görünmüyor ama ayrıca incelenmeli.
 - `mobile`: bağlantı kuralları ve sürüm betiği, 7 test geçti. Web tip denetimi temiz.
 
 ## 4. Mağaza metinleri (taslak, Türkçe)
