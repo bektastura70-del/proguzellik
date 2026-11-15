@@ -48,7 +48,7 @@ export function PricingCards({ plans, purchase = false }: { plans: SitePlan[]; v
                 {Number(p.yearlyPrice) > 0 && <Link href={`/satin-al?paket=${p.code}&donem=YEARLY`} className={buttonVariants({ className: "w-full", variant: "outline" })}>Yıllık satın al</Link>}
               </div>
             )}
-            <Link href={`/ucretsiz-deneme?paket=${p.code}`} className={buttonVariants({ className: purchase ? "mt-2 w-full" : "mt-6 w-full", variant: purchase ? "ghost" : "outline" })}>14 Gün Ücretsiz Dene</Link>
+            <Link href={`/ucretsiz-deneme?paket=${p.code}`} className={buttonVariants({ className: purchase ? "mt-2 w-full" : "mt-6 w-full", variant: purchase ? "ghost" : "outline" })}>7 Gün Ücretsiz Dene</Link>
           </article>
         ))}
       </div>

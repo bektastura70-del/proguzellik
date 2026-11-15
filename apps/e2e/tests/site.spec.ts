@@ -25,12 +25,12 @@ const PAGES = [
 
 test.describe("Tanıtım sitesi", () => {
   for (const [path, h1] of PAGES) {
-    test(`${path}: başlık, Giriş Yap ve 14 Gün Ücretsiz Dene görünür`, async ({ page }) => {
+    test(`${path}: başlık, Giriş Yap ve 7 Gün Ücretsiz Dene görünür`, async ({ page }) => {
       const res = await page.goto(path);
       expect(res?.status()).toBe(200);
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(h1);
       const header = page.getByRole("banner");
-      await expect(header.getByRole("link", { name: "14 Gün Ücretsiz Dene" })).toBeVisible();
+      await expect(header.getByRole("link", { name: "7 Gün Ücretsiz Dene" })).toBeVisible();
       expect(await page.title()).toMatch(/ProGüzellik/);
       expect(await page.locator('meta[name="description"]').getAttribute("content")).toBeTruthy();
       // Doğrulanmamış iddialar yok

@@ -10,7 +10,7 @@ import { RegisterForm, type PublicPlan } from "./register-form";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: "14 Gün Ücretsiz Dene",
+  title: "7 Gün Ücretsiz Dene",
   description: "ProGüzellik'i 7 gün ücretsiz deneyin. Kredi kartı gerekmez; hesabınız e-posta doğrulamasından sonra açılır.",
   alternates: { canonical: "/ucretsiz-deneme" },
 };

@@ -10,7 +10,7 @@ export function TrialCta({ title = "Salonunuzu 7 gün ücretsiz deneyin" }: { ti
           <p className="mt-2 text-white/75">Kredi kartı gerekmez. Deneme bitince verileriniz silinmez.</p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Link href="/ucretsiz-deneme" className={buttonVariants({ size: "lg" })}>14 Gün Ücretsiz Dene</Link>
+          <Link href="/ucretsiz-deneme" className={buttonVariants({ size: "lg" })}>7 Gün Ücretsiz Dene</Link>
           <Link href="/giris" className={buttonVariants({ size: "lg", variant: "outline", className: "border-white/40 bg-transparent text-white hover:bg-white/10" })}>Giriş Yap</Link>
         </div>
       </div>

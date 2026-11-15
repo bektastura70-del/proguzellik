@@ -42,7 +42,7 @@ export default async function Home() {
           <h1 className="font-display text-4xl font-semibold leading-tight sm:text-5xl">Randevudan kasaya, salonunuz <span className="text-brand-600">tek panelde.</span></h1>
           <p className="mt-5 max-w-lg text-lg text-neutral-600">Randevu, müşteri, personel, kasa, paket ve stok yönetimi. Telefondan, tabletten ve bilgisayardan çalışır.</p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/ucretsiz-deneme" className={buttonVariants({ size: "lg" })}>14 Gün Ücretsiz Dene</Link>
+            <Link href="/ucretsiz-deneme" className={buttonVariants({ size: "lg" })}>7 Gün Ücretsiz Dene</Link>
             <Link href="/giris" className={buttonVariants({ size: "lg", variant: "outline" })}>Giriş Yap</Link>
           </div>
           <p className="mt-3 text-sm text-neutral-500">Kredi kartı gerekmez · Deneme bitince verileriniz silinmez</p>
