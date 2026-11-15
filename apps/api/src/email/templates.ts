@@ -108,7 +108,7 @@ export function render(t: EmailTemplate, override?: TemplateOverride | null): { 
       break;
     case "trial_verify":
       subject = "Ücretsiz denemenizi başlatmak için e-postanızı doğrulayın";
-      paras = [`Merhaba ${esc(t.vars.fullName)},`, `${esc(t.vars.salon)} için ProGüzellik ücretsiz deneme başvurunuzu aldık. Hesabınız ve 14 günlük deneme süreniz e-posta adresinizi doğruladığınızda başlar.`, `Bağlantı ${t.vars.hours} saat geçerlidir ve bir kez kullanılabilir. Bu başvuruyu siz yapmadıysanız e-postayı dikkate almayın; hesap açılmaz.`];
+      paras = [`Merhaba ${esc(t.vars.fullName)},`, `${esc(t.vars.salon)} için ProGüzellik ücretsiz deneme başvurunuzu aldık. Hesabınız ve 7 günlük deneme süreniz e-posta adresinizi doğruladığınızda başlar.`, `Bağlantı ${t.vars.hours} saat geçerlidir ve bir kez kullanılabilir. Bu başvuruyu siz yapmadıysanız e-postayı dikkate almayın; hesap açılmaz.`];
       cta = { label: "E-postamı doğrula ve denemeyi başlat", link: t.vars.link };
       break;
     case "trial_application_verify":

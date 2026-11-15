@@ -106,7 +106,7 @@ function SignupHint() {
   if (native !== false) return null;
   return (
     <p className="mt-6 text-center text-sm text-neutral-500">
-      Hesabınız yok mu? <Link href="/ucretsiz-deneme" className="font-medium text-brand-700">14 gün ücretsiz deneyin</Link>
+      Hesabınız yok mu? <Link href="/ucretsiz-deneme" className="font-medium text-brand-700">7 gün ücretsiz deneyin</Link>
     </p>
   );
 }

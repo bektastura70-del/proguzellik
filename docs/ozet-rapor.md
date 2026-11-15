@@ -25,7 +25,7 @@ Yerelde çalışan, test edilmiş çok kiracılı SaaS uygulaması hazır. 10 a�
 | # | Modül | Durum |
 | --- | --- | --- |
 | 1 | Multi-tenant, RLS, güvenli giriş, kullanıcılar, roller | Tamam |
-| 2 | SaaS sahibi paneli, işletme yönetimi, 14 gün deneme, paketler (3/8/20) | Tamam, ödeme test sağlayıcısıyla |
+| 2 | SaaS sahibi paneli, işletme yönetimi, 7 gün deneme, paketler (3/8/20) | Tamam, ödeme test sağlayıcısıyla |
 | 3 | Müşteri CRM ve geçmiş, KVKK dışa aktarma/anonimleştirme | Tamam |
 | 4 | Hizmetler, personel, çalışma saatleri, randevu takvimi | Tamam |
 | 5 | Online rezervasyon, paket ve seans yönetimi | Tamam |

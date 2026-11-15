@@ -27,7 +27,7 @@ Tarayıcı testleri ayrı `proguzellik_e2e` veritabanında uydurma demo verisiyl
 | Ayarlar / ekip | İşletme bilgisi kalıcılığı, kullanıcı ekleme, geçici parolayla ilk girişte zorunlu parola değişimi |
 | SaaS sahibi paneli | İstatistik/MRR, işletme listesi, askıya alma (işletme erişemez) ve geri açma, paket fiyatı |
 | Online rezervasyon | Hizmet → gün → saat → bilgiler → onay → imzalı bağlantıyla iptal; KVKK onaysız gönderim engeli; kapalı işletme |
-| Kayıt | Yeni işletme kaydı, 14 günlük deneme |
+| Kayıt | Yeni işletme kaydı, 7 günlük deneme |
 | Ekran düzeni | 15 panel sayfası ve 5 herkese açık sayfada üç ekran boyutunda yatay taşma yok; mobil menü; diyaloglar ekrana sığıyor |
 
 ## Güvenlik ve kiracı izolasyonu

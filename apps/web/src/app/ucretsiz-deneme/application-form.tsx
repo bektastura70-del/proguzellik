@@ -60,7 +60,7 @@ export function ApplicationForm({ plans }: { plans: PublicPlan[] }) {
         <p className="mt-2 text-sm text-neutral-700">
           <strong>{sent.email}</strong> adresine bir doğrulama bağlantısı gönderdik. Bağlantıya tıkladığınızda başvurunuz ekibimize iletilir.
         </p>
-        <p className="mt-2 text-sm text-neutral-600">Başvurunuz onaylandığında hesabınızı oluşturmanız için ayrı bir davet e-postası alırsınız; 14 günlük deneme süreniz hesabınız açıldığında başlar.</p>
+        <p className="mt-2 text-sm text-neutral-600">Başvurunuz onaylandığında hesabınızı oluşturmanız için ayrı bir davet e-postası alırsınız; 7 günlük deneme süreniz hesabınız açıldığında başlar.</p>
         <p className="mt-2 text-sm text-neutral-600">Bağlantı {sent.hours} saat geçerlidir. E-posta gelmediyse gereksiz/spam klasörünü kontrol edin.</p>
         <Button variant="outline" className="mt-4" onClick={() => setSent(null)}>Formu yeniden doldur</Button>
       </div>

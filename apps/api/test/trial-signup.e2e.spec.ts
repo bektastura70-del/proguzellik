@@ -16,7 +16,7 @@ describe("Telefon normalleştirme (birim)", () => {
   });
 });
 
-describe("14 gün ücretsiz deneme: başvuru → e-posta doğrulama → işletme", () => {
+describe("7 gün ücretsiz deneme: başvuru → e-posta doğrulama → işletme", () => {
   const su = owner();
   const env = loadEnv();
   let app: INestApplication;
@@ -56,7 +56,7 @@ describe("14 gün ücretsiz deneme: başvuru → e-posta doğrulama → işletme
     const tenant = c.body.user.memberships[0].tenant;
     expect(tenant.status).toBe("TRIAL");
     const days = (new Date(tenant.trialEndsAt).getTime() - Date.now()) / DAY;
-    expect(days).toBeGreaterThan(13.99);
+    expect(days).toBeGreaterThan(6.99);
     expect(await su.signupRequest.count({ where: { email: "yeni.salon@test.local" } })).toBe(0);
     const user = await su.user.findUniqueOrThrow({ where: { email: "yeni.salon@test.local" } });
     const consents = await su.userConsent.findMany({ where: { userId: user.id }, orderBy: { type: "asc" } });

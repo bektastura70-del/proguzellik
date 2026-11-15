@@ -76,7 +76,7 @@ test.describe("Tanıtım sitesi", () => {
     await expect(page.getByRole("link", { name: "Aylık satın al" })).toHaveCount(0);
     await page.goto("/satin-al?paket=PROFESSIONAL");
     await expect(page.getByTestId("purchase-closed")).toBeVisible();
-    await expect(page.getByRole("link", { name: "14 gün ücretsiz dene" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "7 gün ücretsiz dene" })).toBeVisible();
     // Doğrudan API çağrısı da reddedilir (işletme/kullanıcı açılmaz)
     const r = await request.post("/api/p/purchase", { data: { email: "x@test.local" } });
     expect([400, 403, 503]).toContain(r.status());

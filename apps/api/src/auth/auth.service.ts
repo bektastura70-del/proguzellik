@@ -19,7 +19,7 @@ const MAX_FAILED_ACCOUNT = 30;
 const MAX_FAILED_MFA = 5;
 const LOCK_MINUTES = 15;
 const LOCK_MS = LOCK_MINUTES * 60_000;
-const TRIAL_DAYS = 14;
+const TRIAL_DAYS = 7;
 const RESET_MINUTES = 30;
 const VERIFY_HOURS = 48;
 /** Ücretsiz deneme doğrulama bağlantısının geçerlilik süresi (saat) */
@@ -462,7 +462,7 @@ export class AuthService {
   }
 
   /**
-   * 2. adım: e-posta doğrulanır; kullanıcı, işletme ve 14 günlük deneme bu anda oluşturulur, oturum açılır.
+   * 2. adım: e-posta doğrulanır; kullanıcı, işletme ve 7 günlük deneme bu anda oluşturulur, oturum açılır.
    * Bağlantı tek kullanımlıktır; eşzamanlı isteklerde yalnızca biri hesap açar.
    */
   async confirmTrial(token: string, meta: ClientMeta) {

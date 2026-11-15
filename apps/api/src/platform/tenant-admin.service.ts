@@ -10,7 +10,7 @@ import { randomToken, sha256 } from "../security/crypto";
 export const INVITE_DAYS = 7;
 /** Davet e-postasında rol adı (sahip daveti mevcut metni korur). */
 export const ROLE_LABEL_TR: Record<Role, string> = { OWNER: "sahip", MANAGER: "yönetici", RECEPTION: "resepsiyon görevlisi", STAFF: "personel" };
-export const DEFAULT_TRIAL_DAYS = 14;
+export const DEFAULT_TRIAL_DAYS = 7;
 /** Denetim kaydı ön eki: işlemi SaaS sahibi mi işletme mi yaptı. */
 export type InviteActor = "platform" | "tenant";
 

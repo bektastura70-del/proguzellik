@@ -543,7 +543,7 @@ test.describe("SaaS sahibi paneli", () => {
   });
 });
 
-test("ücretsiz deneme: başvuru → e-posta doğrulama → 14 günlük deneme ile panel açılır", async ({ page }) => {
+test("ücretsiz deneme: başvuru → e-posta doğrulama → 7 günlük deneme ile panel açılır", async ({ page }) => {
   const email = `${uniq("kayit").replace(" ", "-")}@proguzellik.local`;
   await page.goto("/kayit?paket=STARTER");
   await expect(page).toHaveURL(/\/ucretsiz-deneme\?paket=STARTER/);
@@ -556,7 +556,7 @@ test("ücretsiz deneme: başvuru → e-posta doğrulama → 14 günlük deneme i
   await page.goto(link);
   await page.getByRole("button", { name: "E-postamı doğrula ve denemeyi başlat" }).click();
   await expect(page).toHaveURL(/\/panel/);
-  await expect(page.getByText(/Deneme sürenizin bitmesine/)).toContainText("14 gün");
+  await expect(page.getByText(/Deneme sürenizin bitmesine/)).toContainText("7 gün");
   await expect(page.getByText("E-posta adresiniz henüz doğrulanmadı.")).toHaveCount(0);
   await login(page, email);
 });

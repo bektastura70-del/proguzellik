@@ -38,7 +38,7 @@ function Confirm() {
         <div className="mt-4"><Alert>Doğrulama bağlantısı eksik. E-postadaki bağlantıyı kullanın.</Alert></div>
       ) : (
         <>
-          <p className="mt-2 text-sm text-neutral-600">Onayladığınızda işletme hesabınız açılır ve 14 günlük ücretsiz deneme süreniz bugünden itibaren başlar.</p>
+          <p className="mt-2 text-sm text-neutral-600">Onayladığınızda işletme hesabınız açılır ve 7 günlük ücretsiz deneme süreniz bugünden itibaren başlar.</p>
           {error && <div className="mt-4"><Alert>{error}</Alert></div>}
           <Button className="mt-6 w-full" size="lg" disabled={busy} onClick={confirm}>{busy ? "Hesap açılıyor…" : "E-postamı doğrula ve denemeyi başlat"}</Button>
         </>

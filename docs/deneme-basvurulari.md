@@ -2,7 +2,7 @@
 
 Kendi kendine kayıt kapalıyken (`REGISTRATION_ENABLED` canlıda kapalı), proguzellik.com/ucretsiz-deneme
 sayfası bir **başvuru formu** gösterebilir. Gelen başvuru, bilgileri doldurulmuş olarak SaaS sahibi
-panelinde onay bekler. SaaS sahibi **Onayla**'ya basınca işletme 14 günlük denemede açılır ve sahibine
+panelinde onay bekler. SaaS sahibi **Onayla**'ya basınca işletme 7 günlük denemede açılır ve sahibine
 hesap oluşturma daveti gider.
 
 ## Akış
@@ -14,7 +14,7 @@ hesap oluşturma daveti gider.
 3. E-posta doğrulanınca başvuru **Onay bekliyor** durumuna geçer. SaaS sahibine "Yeni deneme başvurusu"
    e-postası gider (Şirket ayarlarındaki e-posta adresine, o yoksa `SUPPORT_EMAIL` adresine).
 4. SaaS paneli → **Başvurular** sekmesi (sekmedeki rozet bekleyen başvuru sayısını gösterir) → **İncele**:
-   - İşletme adı, sahip, e-posta, telefon, paket ve deneme süresi (14 gün) başvurudan doldurulmuş gelir; gerekirse düzeltilir.
+   - İşletme adı, sahip, e-posta, telefon, paket ve deneme süresi (7 gün) başvurudan doldurulmuş gelir; gerekirse düzeltilir.
    - **Onayla ve davet gönder**: işletme TRIAL durumunda açılır, sahibine tek kullanımlık davet gider (mevcut davet akışı:
      sahip parolasını kendisi belirler ve KVKK onayını davet sayfasında verir).
    - **Reddet**: gerekçe zorunludur ve yalnızca kayıtlarda tutulur. Başvurana otomatik e-posta **gitmez**

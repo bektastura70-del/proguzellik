@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button-variants";
 
-export function TrialCta({ title = "Salonunuzu 14 gün ücretsiz deneyin" }: { title?: string }) {
+export function TrialCta({ title = "Salonunuzu 7 gün ücretsiz deneyin" }: { title?: string }) {
   return (
     <section className="bg-ink py-14 text-white" aria-labelledby="cta-baslik">
       <div className="mx-auto flex max-w-6xl flex-col items-start gap-5 px-5 md:flex-row md:items-center md:justify-between">

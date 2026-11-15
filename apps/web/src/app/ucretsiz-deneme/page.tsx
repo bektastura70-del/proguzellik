@@ -11,7 +11,7 @@ import { RegisterForm, type PublicPlan } from "./register-form";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "14 Gün Ücretsiz Dene",
-  description: "ProGüzellik'i 14 gün ücretsiz deneyin. Kredi kartı gerekmez; hesabınız e-posta doğrulamasından sonra açılır.",
+  description: "ProGüzellik'i 7 gün ücretsiz deneyin. Kredi kartı gerekmez; hesabınız e-posta doğrulamasından sonra açılır.",
   alternates: { canonical: "/ucretsiz-deneme" },
 };
 
@@ -46,7 +46,7 @@ export default async function TrialPage() {
         <Link href="/" aria-label="ProGüzellik ana sayfa"><Logo /></Link>
         {open && plans.length > 0 ? (
           <>
-            <h1 className="mt-8 font-display text-3xl font-semibold">14 gün ücretsiz deneyin</h1>
+            <h1 className="mt-8 font-display text-3xl font-semibold">7 gün ücretsiz deneyin</h1>
             <p className="mb-6 mt-1 text-sm text-neutral-500">Kredi kartı gerekmez. E-posta adresinizi doğruladığınızda hesabınız açılır ve deneme süreniz başlar.</p>
             <Suspense>
               <RegisterForm plans={plans} />
@@ -54,7 +54,7 @@ export default async function TrialPage() {
           </>
         ) : applications ? (
           <>
-            <h1 className="mt-8 font-display text-3xl font-semibold">14 gün ücretsiz deneme başvurusu</h1>
+            <h1 className="mt-8 font-display text-3xl font-semibold">7 gün ücretsiz deneme başvurusu</h1>
             <p className="mb-6 mt-1 text-sm text-neutral-500" data-testid="application-intro">Kredi kartı gerekmez. Başvurunuzu inceleyip onayladığımızda hesabınızı oluşturmanız için size bir davet e-postası göndeririz.</p>
             <Suspense>
               <ApplicationForm plans={plans} />

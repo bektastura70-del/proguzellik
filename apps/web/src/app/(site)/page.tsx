@@ -10,7 +10,7 @@ import { getPlans, getPurchaseOpen, getSiteInfo, SITE_URL } from "@/lib/site";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: { absolute: "ProGüzellik — Güzellik salonu yönetim yazılımı" },
-  description: "Randevu, müşteri, personel, kasa, paket ve stok yönetimi tek panelde. Güzellik salonları için Türkçe bulut yazılım. 14 gün ücretsiz deneyin.",
+  description: "Randevu, müşteri, personel, kasa, paket ve stok yönetimi tek panelde. Güzellik salonları için Türkçe bulut yazılım. 7 gün ücretsiz deneyin.",
   alternates: { canonical: "/" },
   openGraph: { title: "ProGüzellik — Güzellik salonu yönetim yazılımı", description: "Randevu, müşteri, kasa, paket ve stok yönetimi tek panelde.", url: SITE_URL, siteName: "ProGüzellik", locale: "tr_TR", type: "website" },
 };

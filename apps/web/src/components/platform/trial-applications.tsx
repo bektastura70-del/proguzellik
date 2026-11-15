@@ -245,7 +245,7 @@ function ApplicationDialog({ app, onClose, onDone }: { app: TrialApplication; on
                   <PlanOptions plans={plans.data} current={app.planCode ?? undefined} />
                 </Select>
               </Field>
-              <Field label="Deneme süresi (gün)"><Input name="trialDays" type="number" min={1} max={60} defaultValue={14} required /></Field>
+              <Field label="Deneme süresi (gün)"><Input name="trialDays" type="number" min={1} max={60} defaultValue={7} required /></Field>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Button className="flex-1" disabled={busy || (app.warnings.length > 0 && !ack)}>{busy ? "Açılıyor…" : "Onayla ve davet gönder"}</Button>

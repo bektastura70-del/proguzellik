@@ -65,7 +65,7 @@ pnpm turbo run typecheck build
 | --- | --- |
 | Multi-tenant altyapı, PostgreSQL RLS, roller (Sahip/Yönetici/Resepsiyon/Personel) | Tamam |
 | Güvenli giriş (bcrypt, hesap kilitleme, hız sınırı, httpOnly çerez) | Tamam |
-| SaaS sahibi paneli, işletme yönetimi, 14 gün deneme, paketler (3/8/20 personel) | Tamam (test ödeme sağlayıcısı) |
+| SaaS sahibi paneli, işletme yönetimi, 7 gün deneme, paketler (3/8/20 personel) | Tamam (test ödeme sağlayıcısı) |
 | Müşteri CRM, notlar, geçmiş, bakiye, KVKK dışa aktarma/anonimleştirme | Tamam |
 | Hizmetler, personel, çalışma saatleri, izinler, randevu takvimi | Tamam |
 | Online rezervasyon (herkese açık sayfa, imzalı iptal bağlantısı) | Tamam |

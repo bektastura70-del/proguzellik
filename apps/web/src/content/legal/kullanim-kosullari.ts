@@ -13,7 +13,7 @@ Abonelik, yazılımın mülkiyetinin veya kaynak kodunun devri anlamına gelmez.
 
 ## 2. Ücretsiz Deneme
 
-Pro Güzellik, uygun gördüğü işletmelere 14 günlük ücretsiz deneme imkânı sağlayabilir.
+Pro Güzellik, uygun gördüğü işletmelere 7 günlük ücretsiz deneme imkânı sağlayabilir.
 
 Deneme süresinin sona ermesi, kullanıcı tarafından ücretli abonelik açıkça onaylanmadıkça otomatik ödeme yükümlülüğü oluşturmaz.
 

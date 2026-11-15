@@ -33,9 +33,9 @@ export default async function PurchasePage() {
           <>
             <h1 className="mt-8 font-display text-3xl font-semibold">Online satın alma şu an kapalı</h1>
             <p className="mt-2 text-sm text-neutral-600" data-testid="purchase-closed">
-              Paket almak için <a className="text-brand-700 underline" href={`mailto:${site.company.email}`}>{site.company.email}</a> adresine yazabilir ya da 14 gün ücretsiz denemeyle başlayabilirsiniz.
+              Paket almak için <a className="text-brand-700 underline" href={`mailto:${site.company.email}`}>{site.company.email}</a> adresine yazabilir ya da 7 gün ücretsiz denemeyle başlayabilirsiniz.
             </p>
-            <p className="mt-4 text-sm"><Link href="/ucretsiz-deneme" className="text-brand-700 underline">14 gün ücretsiz dene</Link> · <Link href="/fiyatlar" className="text-brand-700 underline">Fiyatlar</Link></p>
+            <p className="mt-4 text-sm"><Link href="/ucretsiz-deneme" className="text-brand-700 underline">7 gün ücretsiz dene</Link> · <Link href="/fiyatlar" className="text-brand-700 underline">Fiyatlar</Link></p>
           </>
         )}
         <p className="mt-6 text-center text-sm text-neutral-500">Hesabınız var mı? <Link href="/giris" className="text-brand-700">Giriş yapın</Link>, paketinizi Abonelik sayfasından alın.</p>

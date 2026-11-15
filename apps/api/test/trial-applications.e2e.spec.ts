@@ -183,17 +183,17 @@ describe("Deneme başvurusu (kayıt kapalıyken): başvuru → doğrulama → Ow
       expect((await su.trialApplication.findUniqueOrThrow({ where: { id } })).status).toBe("PENDING");
     });
 
-    it("onay: işletme 14 gün denemede açılır, sahibine davet gider, başvuru işletmeye bağlanır ve denetlenir", async () => {
+    it("onay: işletme 7 gün denemede açılır, sahibine davet gider, başvuru işletmeye bağlanır ve denetlenir", async () => {
       const id = await pendingApplication({ email: "onay@basvuru.test", businessName: "Papatya Salon", fullName: "Papatya Er", planCode: "STARTER" });
       const r = await admin
         .post(`/platform/trial-applications/${id}/approve`)
-        .send({ name: "Papatya Güzellik", ownerName: "Papatya Er", ownerEmail: "onay@basvuru.test", planCode: "STARTER", trialDays: 14 })
+        .send({ name: "Papatya Güzellik", ownerName: "Papatya Er", ownerEmail: "onay@basvuru.test", planCode: "STARTER", trialDays: 7 })
         .expect(200);
       expect(r.body.invite.delivered).toBe(true);
       expect(r.body.application).toMatchObject({ status: "APPROVED", tenantId: r.body.tenant.id });
       const t = await su.tenant.findUniqueOrThrow({ where: { id: r.body.tenant.id } });
       expect(t).toMatchObject({ name: "Papatya Güzellik", status: "TRIAL", planCode: "STARTER", email: "onay@basvuru.test" });
-      expect((t.trialEndsAt!.getTime() - Date.now()) / DAY).toBeGreaterThan(13.99);
+      expect((t.trialEndsAt!.getTime() - Date.now()) / DAY).toBeGreaterThan(6.99);
       const inv = await su.tenantInvite.findFirstOrThrow({ where: { tenantId: t.id } });
       expect(inv).toMatchObject({ role: "OWNER", status: "SENT", email: "onay@basvuru.test", fullName: "Papatya Er" });
       expect(outbox.some((m) => m.to === "onay@basvuru.test" && /davet\?token=/.test(m.text))).toBe(true);

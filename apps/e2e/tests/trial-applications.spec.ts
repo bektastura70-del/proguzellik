@@ -20,7 +20,7 @@ test.describe("Deneme başvurusu", () => {
     const email = `${uniq("basvuru").replace(" ", "-")}@proguzellik.local`;
 
     await page.goto("/ucretsiz-deneme");
-    await expect(page.getByRole("heading", { name: "14 gün ücretsiz deneme başvurusu" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "7 gün ücretsiz deneme başvurusu" })).toBeVisible();
     await expect(page.getByTestId("registration-closed")).toHaveCount(0);
     await page.getByLabel("Salon adı").fill(salon);
     await page.getByLabel("Yetkili adı soyadı").fill("Başvuru Sahibi");

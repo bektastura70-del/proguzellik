@@ -50,7 +50,7 @@ const publicSelect = {
 
 /**
  * Kayıt kapalıyken siteden gelen deneme başvuruları.
- * Akış: form → e-posta doğrulama (çift onay) → Owner listesinde "bekliyor" → Onayla (işletme + 14 gün deneme + sahip daveti) / Reddet.
+ * Akış: form → e-posta doğrulama (çift onay) → Owner listesinde "bekliyor" → Onayla (işletme + 7 gün deneme + sahip daveti) / Reddet.
  * Başvuruda parola alınmaz; sahip hesabını davet bağlantısıyla kendisi oluşturur.
  */
 @Injectable()
@@ -205,7 +205,7 @@ export class TrialApplicationService {
   }
 
   /**
-   * Onay: başvuru sahiplenilir (yalnızca bir onay başarılı olur), işletme 14 günlük denemede açılır ve sahibine davet gider.
+   * Onay: başvuru sahiplenilir (yalnızca bir onay başarılı olur), işletme 7 günlük denemede açılır ve sahibine davet gider.
    * Sahiplenme, işletme ve davet tek işlemde yazılır; biri başarısız olursa hiçbiri kalmaz.
    */
   async approve(id: string, actorId: string, input: ApproveInput, ip?: string) {

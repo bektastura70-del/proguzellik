@@ -194,12 +194,12 @@ SMTP bilgisi gelmeden e-posta açılmaz; `mock` modda hiçbir e-posta gönderilm
 4. `/platform` → E-postalar → bir hizmet bilgilendirmesini kendinize gönderin veya bekleyen daveti yeniden gönderin; geçmişte `SENT` görünmeli. Gelen kutusunda SPF/DKIM `pass` kontrol edilir.
 5. Geri alma: `EMAIL_MODE=mock`, egress dosyasını `COMPOSE_FILE`'dan çıkarıp `docker compose up -d api worker`.
 
-### 14 gün ücretsiz denemeyi açma
+### 7 gün ücretsiz denemeyi açma
 Ön koşul: SMTP çalışıyor (doğrulama e-postası gidemezse başvuru alınmaz, 503), hukuki metinler onaylı, fiyatlar doğru.
 1. `.env`: `REGISTRATION_ENABLED=1`; preflight smtp olmadan bunu **engeller**.
 2. Caddy bloğundaki kayıt engelini (`/auth/register` ve `/auth/register/*` → 403) kaldırın: `/opt/edge/Caddyfile` yedeği → düzenle → `caddy validate` → `caddy reload`.
 3. `docker compose up -d api web`.
-4. Deneme: `/ucretsiz-deneme` → doğrulama e-postası → bağlantı → `/panel` açılır; `/platform`'da işletme `TRIAL`, bitiş tarihi doğrulama anından 14 gün sonra.
+4. Deneme: `/ucretsiz-deneme` → doğrulama e-postası → bağlantı → `/panel` açılır; `/platform`'da işletme `TRIAL`, bitiş tarihi doğrulama anından 7 gün sonra.
 5. Kapatma: `REGISTRATION_ENABLED=0` + Caddy engelini geri koyun. Açık başvurular 24 saatte geçersizleşir, günlük görev siler.
 
 Akış: başvuru yalnızca `SignupRequest` olarak (parola özeti, KVKK/koşul sürümü, IP) 24 saat tutulur; işletme, kullanıcı ve onay kayıtları (`UserConsent`, değiştirilemez) ancak e-posta doğrulandığında oluşur. Bağlantı tek kullanımlıktır. Aynı e-postayla başvuru aynı yanıtı alır (hesap varlığı sızdırılmaz), etkin deneme/aboneliği olan telefonla ikinci deneme açılamaz, IP ve e-posta başına hız sınırı vardır.

@@ -64,15 +64,15 @@ describe("Giriş, kayıt, roller ve işletme erişimi (API)", () => {
     expect(JSON.stringify(res.body)).not.toMatch(/passwordHash|\$2[aby]\$/);
   });
 
-  it("yeni işletme kaydı 14 günlük deneme ile başlar", async () => {
+  it("yeni işletme kaydı 7 günlük deneme ile başlar", async () => {
     const res = await registerTrial(app, { businessName: "Işıl Güzellik Stüdyosu", fullName: "Test Sahip", email: "yeni@test.local" });
     const m = res.body.user.memberships[0];
     expect(m.role).toBe("OWNER");
     expect(m.tenant.status).toBe("TRIAL");
     expect(m.tenant.slug).toBe("isil-guzellik-studyosu");
     const days = (new Date(m.tenant.trialEndsAt).getTime() - Date.now()) / 86_400_000;
-    expect(days).toBeGreaterThan(13.9);
-    expect(days).toBeLessThanOrEqual(14);
+    expect(days).toBeGreaterThan(6.9);
+    expect(days).toBeLessThanOrEqual(7);
   });
 
   it("zayıf parola, telefonsuz ve KVKK/koşul onaysız kayıt reddedilir", async () => {

@@ -65,7 +65,7 @@ export const FEATURES: FeatureSection[] = [
 ];
 
 export const FAQ: { q: string; a: string }[] = [
-  { q: "Ücretsiz deneme nasıl başlar?", a: "Formu doldurduktan sonra e-posta adresinize doğrulama bağlantısı gelir. Bağlantıyı onayladığınızda hesabınız açılır ve 14 günlük deneme süreniz o anda başlar. Kredi kartı veya ödeme bilgisi istenmez." },
+  { q: "Ücretsiz deneme nasıl başlar?", a: "Formu doldurduktan sonra e-posta adresinize doğrulama bağlantısı gelir. Bağlantıyı onayladığınızda hesabınız açılır ve 7 günlük deneme süreniz o anda başlar. Kredi kartı veya ödeme bilgisi istenmez." },
   { q: "Deneme süresi bitince verilerim silinir mi?", a: "Hayır. Deneme bittiğinde hesabınız salt okunur hâle gelir; verileriniz korunur. Ücretli paket tanımlandığında kaldığınız yerden devam edersiniz." },
   { q: "Ücretli pakete nasıl geçerim?", a: "Panelinizdeki Abonelik sayfasından paketleri inceleyebilir, bize e-posta ile ulaşarak paketinizi tanımlatabilirsiniz." },
   { q: "Kaç personel ekleyebilirim?", a: "Her paketin personel sınırı Fiyatlar sayfasında yazar. Sınırı aşarsanız yeni personel eklenemez; paketinizi yükseltebilirsiniz." },

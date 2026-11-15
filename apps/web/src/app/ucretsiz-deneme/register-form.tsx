@@ -52,7 +52,7 @@ export function RegisterForm({ plans }: { plans: PublicPlan[] }) {
       <div className="rounded-xl border border-brand-200 bg-brand-50 p-5" role="status">
         <h2 className="font-display text-xl font-semibold">E-postanızı kontrol edin</h2>
         <p className="mt-2 text-sm text-neutral-700">
-          <strong>{sent.email}</strong> adresine bir doğrulama bağlantısı gönderdik. Bağlantıya tıkladığınızda hesabınız açılır ve 14 günlük deneme süreniz başlar.
+          <strong>{sent.email}</strong> adresine bir doğrulama bağlantısı gönderdik. Bağlantıya tıkladığınızda hesabınız açılır ve 7 günlük deneme süreniz başlar.
         </p>
         <p className="mt-2 text-sm text-neutral-600">Bağlantı {sent.hours} saat geçerlidir. E-posta gelmediyse gereksiz/spam klasörünü kontrol edin veya formu yeniden gönderin.</p>
         <Button variant="outline" className="mt-4" onClick={() => setSent(null)}>Formu yeniden doldur</Button>

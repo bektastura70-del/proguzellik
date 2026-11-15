@@ -79,7 +79,7 @@ export function NewTenantDialog({ onClose, onCreated }: { onClose: () => void; o
               <PlanOptions plans={plans.data} />
             </Select>
           </Field>
-          <Field label="Deneme süresi (gün)"><Input name="trialDays" type="number" min={1} max={60} defaultValue={14} required /></Field>
+          <Field label="Deneme süresi (gün)"><Input name="trialDays" type="number" min={1} max={60} defaultValue={7} required /></Field>
         </div>
         <Button className="w-full" disabled={busy}>{busy ? "Oluşturuluyor…" : "Oluştur ve davet et"}</Button>
       </form>
