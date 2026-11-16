@@ -2,7 +2,7 @@
 
 import { BellRing, Check, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-export { NativeHomeLink } from "@/components/native-home-link";
+export { NativeDirectoryLink, NativeHomeLink } from "@/components/native-home-link";
 import { isNativeApp, reminderPermission, ReminderPermission, requestReminderPermission, syncNativeReminders } from "@/lib/native-app";
 import { MyAppointment, papi, PortalError } from "./portal-api";
 
@@ -91,7 +91,7 @@ export function DeleteAccount({ slug, email, salonName, onDeleted }: { slug: str
       <h2 id="delete-title" className="flex items-center gap-2 font-semibold"><Trash2 className="size-5 text-red-700" aria-hidden /> Hesabımı sil</h2>
       {step === "idle" && (
         <>
-          <p className="mt-1 text-sm text-neutral-600">Bu salondaki uygulama hesabınızı kalıcı olarak silebilirsiniz.</p>
+          <p className="mt-1 text-sm text-neutral-600">{salonName} salonundaki uygulama hesabınızı kalıcı olarak silebilirsiniz. Hesap her salon için ayrıdır: başka salonlarda da giriş yaptıysanız her birinde ayrıca silmeniz gerekir.</p>
           <button type="button" onClick={() => setStep("confirm")} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-red-200 px-4 text-sm font-semibold text-red-700">
             Hesabımı silmek istiyorum
           </button>
@@ -101,6 +101,7 @@ export function DeleteAccount({ slug, email, salonName, onDeleted }: { slug: str
         <div className="mt-2 space-y-2 text-sm text-neutral-700">
           <p><b>Silinecekler:</b> {email} ile giriş hesabınız, bu cihazdaki ve diğer cihazlardaki oturumlarınız, bildirim kayıtlarınız ve uygulama tercihleriniz. Bu işlem geri alınamaz.</p>
           <p><b>Salonda kalanlar:</b> {salonName} salonunun sizin için tuttuğu müşteri kaydı ve geçmiş randevular salonun kendi kayıtlarıdır; uygulama hesabınızla birlikte silinmez. Bunların silinmesini salondan isteyebilirsiniz.</p>
+          <p>Bu silme yalnızca {salonName} içindir; başka salonlardaki hesaplarınız etkilenmez.</p>
           <p>Yaklaşan randevularınız iptal edilmez. İptal etmek istiyorsanız önce Randevularım bölümünden iptal edin.</p>
         </div>
       )}

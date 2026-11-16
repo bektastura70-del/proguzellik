@@ -10,7 +10,7 @@ import { AppInfo, MyAppointment, MyPackage, papi, PortalError, Salon, Slot } fro
 import { disablePush } from "@/lib/web-push-client";
 import { AfterBookingInstall, InstallBanner } from "./install";
 import { AccountExtras } from "./portal-extras";
-import { NativeHomeLink, NativeReminderSync } from "./native";
+import { NativeDirectoryLink, NativeHomeLink, NativeReminderSync } from "./native";
 import { syncNativeReminders } from "@/lib/native-app";
 
 type Tab = "book" | "mine" | "packages" | "account";
@@ -79,7 +79,7 @@ export function PortalClient({ slug, app }: { slug: string; app: AppInfo }) {
             <h1 className="truncate font-display text-2xl font-semibold">{app.name}</h1>
             {app.description && <p className="line-clamp-2 text-sm text-white/80">{app.description}</p>}
           </div>
-          <div className="ml-auto shrink-0"><NativeHomeLink light /></div>
+          <div className="ml-auto flex shrink-0 flex-col items-end"><NativeHomeLink light /><NativeDirectoryLink light /></div>
         </div>
         {salon && (
           <div className="mx-auto mt-3 flex max-w-2xl flex-wrap gap-x-4 gap-y-1 text-sm text-white/85">

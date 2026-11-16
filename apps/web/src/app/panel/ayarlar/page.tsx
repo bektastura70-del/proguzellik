@@ -6,6 +6,7 @@ import { useSession } from "@/components/panel/session";
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Dialog, Field, Input, PageHeader, Select, Spinner, Table, Td, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 import { ROLE_TR } from "@/lib/format";
+import { SalonListingCard } from "@/components/panel/salon-listing-card";
 
 type Settings = { name: string; slug: string; phone: string | null; email: string | null; address: string | null; timezone: string; onlineBookingEnabled: boolean; requireMfa: boolean; packageReminderDays: number; renewalRemindersEnabled: boolean; lowStockEmailEnabled?: boolean; features?: { renewalReminders: boolean } };
 type TeamInvite = { id: string; email: string; fullName: string; role: string; status: "PENDING_DELIVERY" | "SENT"; expiresAt: string | null; sentAt: string | null };
@@ -120,6 +121,11 @@ export default function SettingsPage() {
               <p className="text-xs text-neutral-500">Açmadan önce kendi hesabınızda 2FA'yı etkinleştirip 2FA ile giriş yapmış olmalısınız. <Link className="text-brand-700" href="/guvenlik">Hesap güvenliği</Link></p>
             </CardBody>
           </Card>
+        )}
+        {can("OWNER", "MANAGER") && (
+          <div className="lg:col-span-2">
+            <SalonListingCard canEdit={can("OWNER")} />
+          </div>
         )}
         <Card>
           <CardHeader title="Ekip ve yetkiler" action={<Button size="sm" onClick={() => setInviting(true)}>Kullanıcı davet et</Button>} />

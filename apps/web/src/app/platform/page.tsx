@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Building2, CalendarClock, CreditCard, Inbox, LogOut, Mail, Menu, Package, Receipt, Settings, ShieldCheck, Store, Users, type LucideIcon } from "lucide-react";
+import { Building2, CalendarClock, CreditCard, Inbox, LogOut, Mail, MapPin, Menu, Package, Receipt, Settings, ShieldCheck, Store, Users, type LucideIcon } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { InviteBadge, NewTenantDialog, TenantDetailDialog } from "@/components/platform/tenant-admin";
 import { EmailCenter } from "@/components/platform/email-admin";
 import { CompanySettingsCard, FinanceOverview } from "@/components/platform/finance-admin";
 import { PlansCard, SubscriptionsCard } from "@/components/platform/plan-admin";
 import { UsersCard } from "@/components/platform/user-admin";
+import { DirectoryCard } from "@/components/platform/directory-admin";
 import { NotificationsButton, TrialApplicationsCard, usePendingApplications } from "@/components/platform/trial-applications";
 import { Alert, Badge, Button, Card, CardHeader, Dialog, Field, Input, Select, Spinner, Stat, Table, Td, statusTone, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -17,13 +18,14 @@ import { dateTr, STATUS_TR, tl } from "@/lib/format";
 type Stats = { tenants: { total: number; byStatus: Record<string, number> }; byPlan: Record<string, number>; signupsLast30Days: number; appointmentsLast30Days: number; mrr: string; activeSubscriptions: number; manualSubscriptions: { total: number; complimentary: number } };
 const TENANT_PAGE_SIZE = 100;
 
-type Section = "tenants" | "applications" | "plans" | "subscriptions" | "users" | "finance" | "emails" | "company" | "jobs";
+type Section = "tenants" | "applications" | "directory" | "plans" | "subscriptions" | "users" | "finance" | "emails" | "company" | "jobs";
 const GROUPS = ["Müşteriler", "Gelir", "Sistem"] as const;
 /** Yan menü bölümleri. slug: adres çubuğundaki ?sekme= değeri (İşletmeler varsayılan bölümdür). */
 const SECTIONS: { key: Section; slug: string; label: string; icon: LucideIcon; group: (typeof GROUPS)[number] }[] = [
   { key: "tenants", slug: "isletmeler", label: "İşletmeler", icon: Building2, group: "Müşteriler" },
   { key: "applications", slug: "basvurular", label: "Başvurular", icon: Inbox, group: "Müşteriler" },
   { key: "users", slug: "kullanicilar", label: "Kullanıcılar", icon: Users, group: "Müşteriler" },
+  { key: "directory", slug: "salon-rehberi", label: "Salon rehberi", icon: MapPin, group: "Müşteriler" },
   { key: "plans", slug: "paketler", label: "Paketler", icon: Package, group: "Gelir" },
   { key: "subscriptions", slug: "abonelikler", label: "Abonelikler", icon: CreditCard, group: "Gelir" },
   { key: "finance", slug: "finans", label: "Finans", icon: Receipt, group: "Gelir" },
@@ -137,6 +139,7 @@ export default function PlatformPage() {
       ))}
       {tab === "applications" && <TrialApplicationsCard onOpenTenant={setDetail} onChanged={() => { pendingApps.reload(); tenants.reload(); stats.reload(); allTenants.reload(); }} />}
       {tab === "users" && <UsersCard tenants={allTenants.data ?? []} />}
+      {tab === "directory" && <DirectoryCard />}
       {tab === "subscriptions" && <SubscriptionsCard onOpenTenant={setDetail} />}
       {tab === "finance" && <div className="mt-6"><FinanceOverview tenants={allTenants.data ?? []} /></div>}
       {tab === "emails" && <EmailCenter tenants={allTenants.data ?? []} />}

@@ -115,8 +115,9 @@ export class DirectoryService {
         provinceName: listing.provinceName,
         districtName: listing.districtName,
       },
-      hasAddress: !!t.address,
-      hasPhone: !!t.phone,
+      /** İşletmenin kendi kayıtlı adres/telefonu (önizleme için; rehberde yalnızca izinle görünür) */
+      salonAddress: t.address,
+      salonPhone: t.phone,
     };
   }
 
