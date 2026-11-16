@@ -34,6 +34,9 @@ const schema = z.object({
   META_APP_SECRET: blankToUndef(z.string().regex(/^[0-9a-f]{32}$/i).optional()),
   META_ES_CONFIG_ID: blankToUndef(z.string().regex(/^\d{5,25}$/).optional()),
   META_WEBHOOK_VERIFY_TOKEN: blankToUndef(z.string().min(16).optional()),
+  // "Instagram'ı bağla" (Instagram API with Unified Login): ayrı bir Facebook Login for Business yapılandırması
+  // (instagram_basic + instagram_manage_messages). Tanımsızsa düğme kapalıdır; elle kurulum çalışmaya devam eder.
+  META_IG_CONFIG_ID: blankToUndef(z.string().regex(/^\d{5,25}$/).optional()),
   // Toplu kampanya (ticari ileti) gönderimi. Tanımsızsa canlıda kapalı: İYS entegrasyonu yok.
   MARKETING_MESSAGES: z.enum(["0", "1"]).optional(),
   // Yapay zekâ asistanı: varsayılan "mock" (kural tabanlı). "anthropic" Claude API kullanır.
@@ -171,6 +174,12 @@ export const inviteDeliveryEnabled = (env: Pick<Env, "EMAIL_MODE" | "NODE_ENV">)
 export function metaApp(env: Pick<Env, "META_APP_ID" | "META_APP_SECRET" | "META_ES_CONFIG_ID" | "META_WEBHOOK_VERIFY_TOKEN">) {
   const { META_APP_ID: appId, META_APP_SECRET: appSecret, META_ES_CONFIG_ID: configId, META_WEBHOOK_VERIFY_TOKEN: verifyToken } = env;
   return appId && appSecret && configId && verifyToken ? { appId, appSecret, configId, verifyToken } : null;
+}
+
+/** "Instagram'ı bağla" için ProGüzellik Meta uygulaması + Instagram yapılandırması; eksikse null (özellik kapalı). */
+export function metaIgApp(env: Pick<Env, "META_APP_ID" | "META_APP_SECRET" | "META_ES_CONFIG_ID" | "META_WEBHOOK_VERIFY_TOKEN" | "META_IG_CONFIG_ID">) {
+  const app = metaApp(env);
+  return app && env.META_IG_CONFIG_ID ? { ...app, igConfigId: env.META_IG_CONFIG_ID } : null;
 }
 
 /** Mağaza inceleme girişi: üç değer birden tanımlıysa { slug, email, code }, değilse null (kapalı). */

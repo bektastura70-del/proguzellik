@@ -4,8 +4,10 @@ export const META_APP = {
   appSecret: "fedcba9876543210fedcba9876543210",
   configId: "1234567890123",
   verifyToken: "test-app-webhook-verify-token",
+  igConfigId: "9876543210987",
 };
 process.env.META_APP_ID = META_APP.appId;
 process.env.META_APP_SECRET = META_APP.appSecret;
 process.env.META_ES_CONFIG_ID = META_APP.configId;
 process.env.META_WEBHOOK_VERIFY_TOKEN = META_APP.verifyToken;
+process.env.META_IG_CONFIG_ID = META_APP.igConfigId;

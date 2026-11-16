@@ -12,7 +12,7 @@ import {
 import { ChannelConnection, ChannelType, Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { TenantInfo } from "../common/decorators";
-import { appUrl, loadEnv, metaApp } from "../config/env";
+import { appUrl, loadEnv, metaApp, metaIgApp } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 import { decrypt, deriveKeyHex, encrypt, randomToken } from "../security/crypto";
 import { IgCreds, MetaApiError, MetaDisabledError, MetaGateway, WaCreds } from "./meta.gateway";
@@ -36,7 +36,7 @@ export function waCreds(c: ChannelConnection): WaCreds {
   return { phoneNumberId: c.externalId, accessToken: openSecret(c.accessTokenEnc), businessAccountId: c.businessAccountId };
 }
 export function igCreds(c: ChannelConnection): IgCreds {
-  return { igId: c.externalId, accessToken: openSecret(c.accessTokenEnc) };
+  return { igId: c.externalId, accessToken: openSecret(c.accessTokenEnc), managed: c.managed };
 }
 
 /** Meta hatasını kullanıcıya gösterilecek hataya çevirir (anahtar/mesaj içeriği yazılmaz). */
@@ -93,6 +93,8 @@ export class ChannelsService {
       metaMode: this.meta.mode,
       // "WhatsApp'ı bağla" düğmesi için tarayıcıya yalnızca herkese açık kimlikler gider (uygulama sırrı asla).
       embeddedSignup: app ? { appId: app.appId, configId: app.configId, graphVersion: env.META_GRAPH_VERSION } : null,
+      // "Instagram'ı bağla" düğmesi: ayrı Instagram yapılandırması tanımlıysa (yine yalnızca herkese açık kimlikler).
+      instagramConnect: app && metaIgApp(env) ? { appId: app.appId, configId: metaIgApp(env)!.igConfigId, graphVersion: env.META_GRAPH_VERSION } : null,
       aiMode: env.AI_MODE,
       aiAvailable: t.features.includes("AI_ASSISTANT"),
       connections: rows.map(ChannelsService.view),
@@ -258,6 +260,69 @@ export class ChannelsService {
     }
   }
 
+  /**
+   * "Instagram'ı bağla" tamamlandı (Instagram API with Unified Login). Tarayıcıdan YALNIZCA kısa ömürlü kod gelir:
+   * hesap kimliği tarayıcıdan alınmaz, sunucuda anahtarla Meta'dan okunur (salon yalnız kendi paylaştığı hesabı
+   * bağlayabilir). Hesap başka bir işletmede bağlıysa Meta'da hiçbir şey değiştirilmez.
+   */
+  async instagramSignup(t: TenantInfo, b: { code: string }) {
+    const app = metaIgApp(loadEnv());
+    if (!app) throw new ServiceUnavailableException({ message: "Instagram'ı bağla özelliği bu sunucuda açık değil", code: "IG_CONNECT_DISABLED" });
+    const existing = await this.prisma.withTenant(t, (tx) => tx.channelConnection.findUnique({ where: { tenantId_channel: { tenantId: t.tenantId, channel: "INSTAGRAM" } } }));
+    let token: string;
+    let account: { id: string; username: string | null };
+    try {
+      ({ accessToken: token } = await this.meta.exchangeCode(app, b.code));
+      const accounts = await this.meta.instagramAccounts(token);
+      if (accounts.length === 0) throw new MetaApiError("Meta penceresinde bir Instagram profesyonel hesabı paylaşılmadı. Tekrar deneyip salonunuzun hesabını seçin.", 400);
+      if (accounts.length > 1) throw new MetaApiError("Meta penceresinde birden fazla Instagram hesabı seçildi. Tekrar deneyip yalnızca salonunuzun hesabını seçin.", 400);
+      account = accounts[0];
+    } catch (e) {
+      metaHttpError(e);
+    }
+    if (existing && existing.status === "CONNECTED" && existing.externalId !== account.id) {
+      throw new ConflictException("Bu işletmede bağlı bir Instagram hesabı var; önce bağlantıyı kapatın");
+    }
+    const taken = await this.prisma.platform.channelConnection.findFirst({ where: { channel: "INSTAGRAM", externalId: account.id, status: "CONNECTED", NOT: { tenantId: t.tenantId } }, select: { id: true } });
+    if (taken) throw new ConflictException("Bu Instagram hesabı başka bir işletmeye bağlı. Destek için bizimle iletişime geçin.");
+    let displayName: string | null = account.username ? `@${account.username}` : null;
+    let error: string | null = null;
+    try {
+      await this.meta.subscribeInstagram(account.id, token);
+      displayName = (await this.meta.verifyInstagram({ igId: account.id, accessToken: token, managed: true })).displayName;
+    } catch (e) {
+      if (!(e instanceof MetaApiError)) metaHttpError(e);
+      error = (e as MetaApiError).message;
+    }
+    const data = {
+      externalId: account.id,
+      businessAccountId: null,
+      managed: true,
+      status: error ? ("ERROR" as const) : ("CONNECTED" as const),
+      displayName,
+      verifiedAt: error ? null : new Date(),
+      lastError: error,
+      accessTokenEnc: sealSecret(token),
+      tokenLast4: token.slice(-4),
+      appSecretEnc: "",
+      ...(existing?.externalId !== account.id ? { webhookVerifiedAt: null, lastWebhookAt: null } : {}),
+    };
+    return this.prisma.withTenant(t, async (tx) => {
+      const c = existing
+        ? await tx.channelConnection.update({ where: { id: existing.id }, data })
+        : await tx.channelConnection.create({ data: { ...data, tenantId: t.tenantId, channel: "INSTAGRAM", createdById: t.userId, verifyTokenEnc: sealSecret(randomToken()) } });
+      await this.audit.log(tx, {
+        tenantId: t.tenantId,
+        actorId: t.userId,
+        action: "channel.instagram_connect",
+        entity: "ChannelConnection",
+        entityId: c.id,
+        metadata: { channel: "INSTAGRAM", ok: !error, mode: this.meta.mode },
+      });
+      return { ...ChannelsService.view(c), simulated: this.meta.mode === "mock" };
+    });
+  }
+
   /** Gerekli WhatsApp şablonlarının işletmenin Meta hesabındaki onay durumu. */
   async templates(t: TenantInfo) {
     const c = await this.get(t, "WHATSAPP");
@@ -320,8 +385,11 @@ export class ChannelsService {
   async disconnect(t: TenantInfo, channel: ChannelType) {
     const c = await this.get(t, channel);
     // ProGüzellik uygulamasıyla bağlıysa WABA aboneliği de kaldırılır; Meta'ya ulaşılamazsa bağlantı yine kapanır.
-    if (c.managed && c.businessAccountId && c.accessTokenEnc) {
+    if (c.managed && c.channel === "WHATSAPP" && c.businessAccountId && c.accessTokenEnc) {
       await this.meta.unsubscribeApp(c.businessAccountId, openSecret(c.accessTokenEnc)).catch((e: Error) => this.logger.warn(`Abonelik kaldırılamadı: ${e.message}`));
+    }
+    if (c.managed && c.channel === "INSTAGRAM" && c.accessTokenEnc) {
+      await this.meta.unsubscribeInstagram(c.externalId, openSecret(c.accessTokenEnc)).catch((e: Error) => this.logger.warn(`Instagram aboneliği kaldırılamadı: ${e.message}`));
     }
     return this.prisma.withTenant(t, async (tx) => {
       const u = await tx.channelConnection.update({

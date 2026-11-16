@@ -4,32 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { useSession } from "@/components/panel/session";
 import { Alert, Button, Card, CardBody, CardHeader, PageHeader, Spinner } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
+import { loadSdk } from "@/lib/meta-sdk";
 
 type Es = { appId: string; configId: string; graphVersion: string };
 type ListRes = { metaMode: "mock" | "live" | "disabled"; embeddedSignup: Es | null };
 type SessionInfo = { phone_number_id?: string; waba_id?: string };
-type FbLoginResponse = { authResponse?: { code?: string } | null };
-type FB = { init: (o: Record<string, unknown>) => void; login: (cb: (r: FbLoginResponse) => void, o: Record<string, unknown>) => void };
-declare global {
-  interface Window { FB?: FB; fbAsyncInit?: () => void }
-}
-
-/** Meta JavaScript SDK'yı bir kez yükler. Bu sayfanın güvenlik politikası yalnız Meta alan adlarına izin verir. */
-function loadSdk(es: Es): Promise<FB> {
-  return new Promise((resolve, reject) => {
-    if (window.FB) return resolve(window.FB);
-    window.fbAsyncInit = () => {
-      window.FB!.init({ appId: es.appId, autoLogAppEvents: true, xfbml: false, version: es.graphVersion });
-      resolve(window.FB!);
-    };
-    const s = document.createElement("script");
-    s.src = "https://connect.facebook.net/en_US/sdk.js";
-    s.async = true;
-    s.crossOrigin = "anonymous";
-    s.onerror = () => reject(new Error("Meta bağlantı penceresi yüklenemedi. Reklam engelleyiciyi kapatıp sayfayı yenileyin."));
-    document.body.appendChild(s);
-  });
-}
 
 /**
  * "WhatsApp'ı bağla": Meta'nın Embedded Signup penceresi. Salon kendi işletme hesabını ve numarasını seçer;

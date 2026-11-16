@@ -91,6 +91,7 @@ if [[ -f "$ENV_FILE" ]]; then
     [[ "$(env_get COMPOSE_FILE)" == *docker-compose.egress.yml* ]] && ok "Meta için çıkış ağı etkin" || bad "META_MODE=live ama COMPOSE_FILE'da docker-compose.egress.yml yok (api Meta'ya ulaşamaz)"
     [[ "$(env_get META_APP_SECRET)" =~ ^[0-9a-fA-F]{32}$ ]] && ok "Meta uygulama sırrı biçimi doğru" || bad "META_MODE=live ama META_APP_SECRET 32 haneli onaltılık değil"
     for k in META_APP_ID META_ES_CONFIG_ID META_WEBHOOK_VERIFY_TOKEN; do [[ -n "$(env_get $k)" ]] || bad "META_MODE=live ama $k boş"; done
+    [[ -n "$(env_get META_IG_CONFIG_ID)" ]] && ok "Instagram'ı bağla açık (META_IG_CONFIG_ID tanımlı)" || ok "Instagram'ı bağla kapalı (META_IG_CONFIG_ID boş; elle kurulum çalışır)"
   else
     ok "Meta bağlantıları kapalı (mock)"
   fi
