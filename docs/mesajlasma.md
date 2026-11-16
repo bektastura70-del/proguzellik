@@ -69,3 +69,22 @@ Salonlar kendi WhatsApp numaralarını tek ProGüzellik Meta uygulaması (Tech P
 - Salon, bağladıktan sonra WhatsApp Yöneticisi'nde ödeme yöntemi ekler (Meta ücretleri doğrudan salona yansır).
 - Embedded Signup v2/v3 15 Ekim 2026'da kullanımdan kalktı; uygulama panelinde yapılandırma oluşturulurken güncel sürüm seçilmeli (resmi belgeden teyit edilecek).
 - Yerelde `http://localhost` üzerinde Meta penceresi açılır ama giriş https ister; uçtan uca deneme canlı (https) alan adında yapılır.
+
+## Instagram'ı bağla (Instagram API with Unified Login) — 16 Kasım 2026
+
+Salonlar Instagram profesyonel hesaplarını aynı ProGüzellik Meta uygulaması üzerinden, anahtar girmeden bağlar. Elle kurulum (Instagram ile giriş, salonun kendi uygulaması, `graph.instagram.com`) yedek olarak durur.
+
+- Neden bu yol: Meta uygulama sırrı ve ortak webhook WhatsApp ile aynı; sistem kullanıcısı anahtarı süresiz seçilebilir (60 günlük yenileme işi ve migration gerekmez); Facebook Sayfası şartı yok. Belge: developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login/get-started
+- Ortam değişkeni: `META_IG_CONFIG_ID` (Instagram için AYRI Facebook Login for Business yapılandırması; WhatsApp'ın 2374458413319534 yapılandırması kullanılamaz). Boşsa düğme kapalıdır. Ayrıca `META_APP_*` dördü ve gerçek istek için `META_MODE=live` gerekir.
+- Akış: `/panel/kanallar/instagram-bagla` (Meta alan adlarına izinli ayrı CSP) → `FB.login({config_id, response_type: "code", override_default_response_type: true})` → tarayıcıdan yalnızca kod gelir (`POST /channels/instagram/connect`, yalnız sahip) → `oauth/access_token` → `GET /me/assigned_instagram_accounts?fields=id,username` (tam bir hesap şart; hesap kimliği tarayıcıdan alınmaz) → başka işletmede BAĞLI ise 409 ve Meta'da değişiklik yapılmaz → `POST /{ig-id}/subscribed_apps?subscribed_fields=messages` → `GET /{ig-id}?fields=id,username`. Anahtar şifreli saklanır; denetim kaydı `channel.instagram_connect`. Kapatınca `DELETE /{ig-id}/subscribed_apps`.
+- Gönderim: `POST graph.facebook.com/{ver}/{ig-id}/messages` (sistem kullanıcısı anahtarıyla; belge bu yolu Unified Login için açıkça yazmıyor, ilk canlı denemede doğrulanacak).
+- Ortak webhook `object: "instagram"`: imza `META_APP_SECRET` ile; `entry.id` yalnızca o hesabı BAĞLI tutan tek salona yönlendirilir, yankılar alınmaz. Eşleşmeyen kimlik sayısı günlüğe yazılır ("Instagram webhook: N hesap kimliği hiçbir bağlantıyla eşleşmedi") — ilk canlı denemede bu satır görülürse Meta'nın gönderdiği kimlik ile `assigned_instagram_accounts` kimliği farklıdır.
+- Güvenlik: Instagram konuşmaları telefonla müşteriye otomatik bağlanmaz; müşterinin yazdığı numara kayıtlı birine aitse personele devredilir (5db42bd). Testler: `apps/api/test/instagram-connect.e2e.spec.ts`.
+- Yerel deneme: `META_MODE=mock` iken sayfada "Test modunda bağla (Meta'sız)" düğmesi çıkar.
+
+### Meta tarafında Bektaş'ın yapacakları
+1. ProGüzellik uygulamasına "Instagram'da mesajları ve içeriği yönet" (Manage messaging & content on Instagram) kullanım senaryosunu ekle.
+2. "API setup with Unified login" sekmesinde yeni bir Facebook Login for Business yapılandırması oluştur: izinler `instagram_basic` + `instagram_manage_messages`, anahtar süresi **Hiçbir zaman**, "Instagram Login Compatible". Yapılandırma kimliği → sunucuda `META_IG_CONFIG_ID`.
+3. Webhook'larda **Instagram** nesnesi için aynı Callback URL (`https://proguzellik.com/api/webhooks/meta`) ve aynı doğrulama belirteci; `messages` alanına abone ol (şu an yalnız `whatsapp_business_account` abone).
+4. `instagram_basic` ve `instagram_manage_messages` için ayrı App Review (gelişmiş erişim); 10 Kasım başvurusu yalnız WhatsApp izinlerini kapsıyor. Onaya kadar yalnız uygulamada rolü olanlar bağlayabilir; uygulama Live modda olmalı.
+5. Her salon: Instagram hesabı profesyonel + bir işletme portföyünde, Instagram ayarlarında "Mesajlara erişime izin ver" açık.

@@ -85,6 +85,7 @@ const nextConfig = {
       { source: "/panel/abonelik/odeme", headers: paymentPageHeaders },
       { source: "/satin-al/odeme", headers: paymentPageHeaders },
       { source: "/panel/kanallar/whatsapp-bagla", headers: metaConnectHeaders },
+      { source: "/panel/kanallar/instagram-bagla", headers: metaConnectHeaders },
     ];
   },
 };

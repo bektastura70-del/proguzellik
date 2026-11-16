@@ -109,6 +109,7 @@ export class MetaWebhooksController {
     const app = metaApp(loadEnv());
     if (!app) throw new NotFoundException();
     this.checkSignature(req, app.appSecret, signature);
+    if ((req.body as IgBody)?.object === "instagram") return this.receiveInstagram(req.body as IgBody);
     const body = req.body as WaBody;
     if (body?.object !== "whatsapp_business_account") return { received: true, stored: 0, updated: 0 };
     const ids = new Set<string>();
@@ -123,6 +124,28 @@ export class MetaWebhooksController {
       updated += r.updated;
     }
     return { received: true, stored, updated };
+  }
+
+  /**
+   * Ortak webhook, Instagram ("Instagram'ı bağla" ile bağlanan hesaplar): her olay entry.id (Instagram profesyonel
+   * hesap kimliği) ile yalnızca o hesabı BAĞLI (CONNECTED) tutan tek salona yönlendirilir. Elle kurulan
+   * Instagram bağlantıları buradan olay almaz (kendi adresleri ve sırları vardır).
+   */
+  private async receiveInstagram(body: IgBody) {
+    const ids = new Set((body.entry ?? []).map((e) => e.id).filter((x): x is string => !!x));
+    let stored = 0;
+    let unmatched = 0;
+    for (const igId of ids) {
+      const rows = await this.prisma.platform.channelConnection.findMany({ where: { channel: "INSTAGRAM", externalId: igId, managed: true, status: "CONNECTED" }, take: 2 });
+      if (rows.length !== 1) {
+        unmatched++;
+        continue;
+      }
+      stored += (await this.process(rows[0], body)).stored;
+    }
+    // Kimlik eşleşmezse (ör. Meta farklı bir kimlik gönderirse) yalnız sayı yazılır; kimlik/mesaj yazılmaz.
+    if (unmatched) this.logger.warn(`Instagram webhook: ${unmatched} hesap kimliği hiçbir bağlantıyla eşleşmedi`);
+    return { received: true, stored, updated: 0 };
   }
 
   private checkSignature(req: RawBodyRequest<Request>, secret: string, signature?: string) {

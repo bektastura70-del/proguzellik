@@ -17,6 +17,7 @@ const esSchema = z.object({
   phoneNumberId: metaId,
   wabaId: metaId,
 });
+const igConnectSchema = z.object({ code: z.string().trim().min(10).max(2048) });
 const aiSchema = z.object({ aiAutoReply: z.boolean(), aiDataConsent: z.boolean().optional() });
 const testSchema = z.object({
   to: z.string().trim().regex(/^\+?[0-9 ()-]{10,20}$/, "Geçerli bir telefon numarası girin"),
@@ -66,6 +67,14 @@ export class ChannelsController {
   @Roles("OWNER")
   embeddedSignup(@CurrentTenant() t: TenantInfo, @Body(new ZodPipe(esSchema)) b: z.infer<typeof esSchema>) {
     return this.channels.embeddedSignup(t, b);
+  }
+
+  /** "Instagram'ı bağla" (Meta penceresi) sonrası: yalnızca kısa ömürlü kod gelir, hesap sunucuda okunur. */
+  @Post("instagram/connect")
+  @HttpCode(200)
+  @Roles("OWNER")
+  instagramConnect(@CurrentTenant() t: TenantInfo, @Body(new ZodPipe(igConnectSchema)) b: z.infer<typeof igConnectSchema>) {
+    return this.channels.instagramSignup(t, b);
   }
 
   @Get("whatsapp/templates")

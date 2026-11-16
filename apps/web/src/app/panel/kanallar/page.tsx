@@ -19,6 +19,8 @@ type ListRes = {
   metaMode: "mock" | "live" | "disabled"; aiMode: string; aiAvailable: boolean; connections: Conn[];
   /** ProGüzellik Meta uygulamasıyla "WhatsApp'ı bağla" açıksa dolu */
   embeddedSignup: { appId: string; configId: string } | null;
+  /** ProGüzellik Meta uygulamasıyla "Instagram'ı bağla" açıksa dolu */
+  instagramConnect: { appId: string; configId: string } | null;
 };
 type Tpl = { name: string; label: string; category: string; body: string; status: string; language: string | null };
 
@@ -65,7 +67,9 @@ export default function ChannelsPage() {
   const [open, setOpen] = useState<Channel | null>(null);
   // "WhatsApp'ı bağla" sayfasından dönüşte sihirbaz açık gelir.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("kurulum") === "whatsapp") setOpen("WHATSAPP");
+    const k = new URLSearchParams(window.location.search).get("kurulum");
+    if (k === "whatsapp") setOpen("WHATSAPP");
+    if (k === "instagram") setOpen("INSTAGRAM");
   }, []);
 
   if (!has("WHATSAPP")) {
@@ -111,7 +115,7 @@ export default function ChannelsPage() {
                 </div>
                 {c && (
                   <ul className="space-y-1 text-xs text-neutral-600">
-                    <li>Webhook: {c.webhookVerifiedAt ? `doğrulandı (${dateTimeTr(c.webhookVerifiedAt)})` : "henüz doğrulanmadı"}</li>
+                    <li>Webhook: {c.managed ? "ProGüzellik uygulaması (otomatik)" : c.webhookVerifiedAt ? `doğrulandı (${dateTimeTr(c.webhookVerifiedAt)})` : "henüz doğrulanmadı"}</li>
                     <li>Son gelen olay: {c.lastWebhookAt ? dateTimeTr(c.lastWebhookAt) : "—"}</li>
                     <li>Yapay zekâ yanıtı: {c.aiAutoReply ? "açık" : "kapalı"}</li>
                   </ul>
@@ -134,7 +138,7 @@ export default function ChannelsPage() {
 function Wizard({ channel, conn, meta, onChange }: { channel: Channel; conn?: Conn; meta: ListRes; onChange: () => void }) {
   const toast = useToast();
   const steps = stepsFor(channel);
-  const initial = !conn || conn.status === "DISABLED" ? 0 : conn.managed && conn.status === "CONNECTED" ? steps.findIndex((x) => x.s === "Şablonlar") : conn.status === "CONNECTED" ? steps.findIndex((x) => x.s === "Webhook") : conn.managed ? 0 : 2;
+  const initial = !conn || conn.status === "DISABLED" ? 0 : conn.managed && conn.status === "CONNECTED" ? steps.findIndex((x) => x.s === (channel === "WHATSAPP" ? "Şablonlar" : "Yapay zekâ")) : conn.status === "CONNECTED" ? steps.findIndex((x) => x.s === "Webhook") : conn.managed ? 0 : 2;
   const [step, setStep] = useState(Math.max(0, initial));
   const [busy, setBusy] = useState(false);
   const path = PATH[channel];
@@ -160,7 +164,8 @@ function Wizard({ channel, conn, meta, onChange }: { channel: Channel; conn?: Co
         </ol>
 
         {current === "Hazırlık" && channel === "WHATSAPP" && meta.embeddedSignup && <ConnectWithMeta conn={conn} onManual={next} />}
-        {current === "Hazırlık" && !(channel === "WHATSAPP" && meta.embeddedSignup) && <Prep channel={channel} onNext={next} />}
+        {current === "Hazırlık" && channel === "INSTAGRAM" && meta.instagramConnect && <ConnectInstagramWithMeta conn={conn} onManual={next} />}
+        {current === "Hazırlık" && !(channel === "WHATSAPP" && meta.embeddedSignup) && !(channel === "INSTAGRAM" && meta.instagramConnect) && <Prep channel={channel} onNext={next} />}
 
         {current === "Hesap bilgileri" && (
           <form className="space-y-4" onSubmit={(e) => {
@@ -251,6 +256,25 @@ function ConnectWithMeta({ conn, onManual }: { conn?: Conn; onManual: () => void
   );
 }
 
+/** Önerilen yol: ProGüzellik Meta uygulamasıyla Instagram hesabını bağlama (anahtar girmeden). */
+function ConnectInstagramWithMeta({ conn, onManual }: { conn?: Conn; onManual: () => void }) {
+  return (
+    <div className="space-y-4 text-sm">
+      <p>Salonunuzun Instagram profesyonel hesabını Meta penceresinden seçerek bağlayın. Anahtar veya uygulama kurmanıza gerek yoktur; gelen DM'ler Mesajlar sayfasına düşer.</p>
+      <ul className="list-disc space-y-1 pl-5">
+        <li>Instagram profesyonel (İşletme veya İçerik üreticisi) hesabı</li>
+        <li>Bir Facebook hesabı ve (yoksa pencerede açılacak) bir Meta işletme portföyü</li>
+        <li>Instagram ayarlarında "Bağlı araçların mesajlara erişimi" açık</li>
+      </ul>
+      {conn?.managed && conn.status === "ERROR" && conn.lastError && <Alert>Önceki deneme tamamlanamadı: {conn.lastError}</Alert>}
+      {conn?.status === "CONNECTED"
+        ? <Alert tone="green">Bağlı: <b>{conn.displayName ?? conn.externalId}</b>. Başka bir hesap bağlamak için önce bu bağlantıyı kapatın.</Alert>
+        : <Button onClick={() => window.location.assign("/panel/kanallar/instagram-bagla")}>Instagram'ı bağla</Button>}
+      <p className="text-xs text-neutral-500">Kendi Meta uygulamanızla kurmak mı istiyorsunuz? <button type="button" className="underline" onClick={onManual}>Elle kurulum (ileri düzey)</button></p>
+    </div>
+  );
+}
+
 function Prep({ channel, onNext }: { channel: Channel; onNext: () => void }) {
   const [ok, setOk] = useState(false);
   const items = channel === "WHATSAPP"
@@ -287,7 +311,7 @@ function WebhookStep({ channel, conn, onRefresh }: { channel: Channel; conn: Con
   if (conn.managed) {
     return (
       <div className="space-y-3 text-sm">
-        <p>Numaranız ProGüzellik uygulamasıyla bağlı; webhook ayarı otomatik yapıldı, sizin bir şey girmenize gerek yok.</p>
+        <p>{channel === "WHATSAPP" ? "Numaranız" : "Hesabınız"} ProGüzellik uygulamasıyla bağlı; webhook ayarı otomatik yapıldı, sizin bir şey girmenize gerek yok.</p>
         <div className="rounded-xl bg-sand-50 p-3 text-xs">Son gelen olay: {conn.lastWebhookAt ? dateTimeTr(conn.lastWebhookAt) : "henüz yok"}</div>
         <Button variant="outline" onClick={onRefresh}>Durumu yenile</Button>
       </div>
@@ -355,7 +379,7 @@ function AiStep({ channel, conn, meta, onChange }: { channel: Channel; conn: Con
       {meta.aiMode === "mock" && <Alert tone="amber">Bu sunucuda gerçek yapay zekâ sağlayıcısı henüz açık değil. Ayar kaydedilir; o zamana kadar mesajlar personele düşer (yerel geliştirmede kural tabanlı test asistanı yanıtlar).</Alert>}
       <label className="flex items-start gap-2 rounded-xl border border-sand-200 p-3">
         <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 accent-brand-600" />
-        <span>Müşterilerimin mesaj içeriklerinin, yanıt üretmek amacıyla yurt dışındaki yapay zekâ hizmet sağlayıcısına (Anthropic) aktarılacağını biliyorum; aydınlatma metnimde bu aktarımı belirttim ve gerekli hukuki dayanağı sağladım.</span>
+        <span>Müşterilerimin mesaj içeriklerinin, yanıt üretmek amacıyla yurt dışındaki yapay zekâ hizmet sağlayıcısına{meta.aiMode === "openai" ? " (OpenAI)" : meta.aiMode === "anthropic" ? " (Anthropic)" : ""} aktarılacağını biliyorum; aydınlatma metnimde bu aktarımı belirttim ve gerekli hukuki dayanağı sağladım.</span>
       </label>
       <div className="flex gap-2">
         <Button disabled={!consent || conn.aiAutoReply} onClick={() => void save(true)}>Yapay zekâ yanıtlarını aç</Button>

@@ -109,6 +109,7 @@ services:
       META_APP_SECRET: ${META_APP_SECRET:-}
       META_ES_CONFIG_ID: ${META_ES_CONFIG_ID:-}
       META_WEBHOOK_VERIFY_TOKEN: ${META_WEBHOOK_VERIFY_TOKEN:-}
+      META_IG_CONFIG_ID: ${META_IG_CONFIG_ID:-}
       # Online ödeme: varsayılan kapalı (mock + production = devre dışı). iyzico yalnız enable-iyzico-*.sh betikleriyle açılır
       # ve yalnız IYZICO_PILOT_TENANTS'taki işletmelerde ("*" = tümü) çalışır. Adres varsayılanı SANDBOX'tır (para çekilmez).
       IYZICO_BASE_URL: ${IYZICO_BASE_URL:-https://sandbox-api.iyzipay.com}

@@ -11,6 +11,12 @@ export interface WaCreds {
 export interface IgCreds {
   igId: string;
   accessToken: string;
+  /** ProGüzellik uygulamasıyla (Unified Login) bağlandı: istekler graph.facebook.com'a sistem kullanıcısı anahtarıyla gider. */
+  managed?: boolean;
+}
+export interface IgAccount {
+  id: string;
+  username: string | null;
 }
 export interface MetaTemplate {
   name: string;
@@ -57,6 +63,17 @@ export abstract class MetaGateway {
   abstract unsubscribeApp(wabaId: string, accessToken: string): Promise<void>;
   /** Numarayı Cloud API'ye kaydeder; PIN iki adımlı doğrulama PIN'i olur. */
   abstract registerPhone(phoneNumberId: string, accessToken: string, pin: string): Promise<void>;
+  /*
+   * "Instagram'ı bağla" (Instagram API with Unified Login). Kod aynı exchangeCode ile anahtara çevrilir; anahtar
+   * salonun işletme portföyüne ait sistem kullanıcısı anahtarıdır.
+   * Belge: developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login/get-started
+   */
+  /** Salonun Meta penceresinde paylaştığı Instagram profesyonel hesapları. */
+  abstract instagramAccounts(accessToken: string): Promise<IgAccount[]>;
+  /** Hesabı uygulamanın webhook'larına (messages) abone eder. */
+  abstract subscribeInstagram(igId: string, accessToken: string): Promise<void>;
+  /** Aboneliği kaldırır (bağlantı kapatılınca). */
+  abstract unsubscribeInstagram(igId: string, accessToken: string): Promise<void>;
 }
 
 export interface MetaAppCreds {
@@ -109,6 +126,15 @@ export class DisabledMetaGateway extends MetaGateway {
     return this.fail();
   }
   registerPhone(_p: string, _t: string, _pin: string) {
+    return this.fail();
+  }
+  instagramAccounts(_t: string) {
+    return this.fail();
+  }
+  subscribeInstagram(_i: string, _t: string) {
+    return this.fail();
+  }
+  unsubscribeInstagram(_i: string, _t: string) {
     return this.fail();
   }
 }
@@ -183,6 +209,25 @@ export class MockMetaGateway extends MetaGateway {
     this.check(accessToken);
     this.registered.set(phoneNumberId, pin);
   }
+  /**
+   * Test: koda göre paylaşılan Instagram hesapları (`igAccounts`, anahtar kodda geçen ifade). Yerel arayüz
+   * denemesi için "yerel-deneme" içeren kod tek bir sahte hesap döner.
+   */
+  readonly igAccounts = new Map<string, IgAccount[]>();
+  readonly igSubscribed = new Set<string>();
+  async instagramAccounts(accessToken: string) {
+    this.check(accessToken);
+    for (const [k, v] of this.igAccounts) if (accessToken.includes(k)) return v;
+    return accessToken.includes("yerel-deneme") ? [{ id: "17841400000000001", username: "deneme_salon" }] : [];
+  }
+  async subscribeInstagram(igId: string, accessToken: string) {
+    this.check(accessToken);
+    this.igSubscribed.add(igId);
+  }
+  async unsubscribeInstagram(igId: string, accessToken: string) {
+    this.check(accessToken);
+    this.igSubscribed.delete(igId);
+  }
 }
 
 type Fetch = typeof fetch;
@@ -190,7 +235,8 @@ type Fetch = typeof fetch;
 /**
  * Gerçek Graph API istemcisi. Uç noktalar Meta belgelerine göre yazıldı; GERÇEK BİR HESAPLA HENÜZ DENENMEDİ.
  *  - WhatsApp Cloud API: graph.facebook.com/{ver}/{phone_number_id}/messages
- *  - Instagram (Instagram Login): graph.instagram.com/{ver}/{ig_id}/messages
+ *  - Instagram (Instagram Login, elle kurulum): graph.instagram.com/{ver}/{ig_id}/messages
+ *  - Instagram (Unified Login, "Instagram'ı bağla"): graph.facebook.com/{ver}/{ig_id}/messages
  */
 @Injectable()
 export class LiveMetaGateway extends MetaGateway {
@@ -230,6 +276,10 @@ export class LiveMetaGateway extends MetaGateway {
   }
 
   async verifyInstagram(c: IgCreds) {
+    if (c.managed) {
+      const r = await this.call<{ id?: string; username?: string }>(this.wa(`${encodeURIComponent(c.igId)}?fields=id,username`), c.accessToken);
+      return { displayName: r.username ? `@${r.username}` : c.igId };
+    }
     const r = await this.call<{ username?: string; user_id?: string }>(this.ig(`me?fields=user_id,username`), c.accessToken);
     if (r.user_id && r.user_id !== c.igId) throw new MetaApiError("Erişim anahtarı girilen Instagram hesabına ait değil", 400);
     return { displayName: r.username ? `@${r.username}` : c.igId };
@@ -271,7 +321,8 @@ export class LiveMetaGateway extends MetaGateway {
   }
 
   async sendInstagramText(c: IgCreds, to: string, text: string) {
-    const r = await this.call<{ message_id?: string }>(this.ig(`${encodeURIComponent(c.igId)}/messages`), c.accessToken, {
+    const url = c.managed ? this.wa(`${encodeURIComponent(c.igId)}/messages`) : this.ig(`${encodeURIComponent(c.igId)}/messages`);
+    const r = await this.call<{ message_id?: string }>(url, c.accessToken, {
       method: "POST",
       body: { recipient: { id: to }, message: { text: truncateBytes(text, 1000) } },
     });
@@ -301,6 +352,19 @@ export class LiveMetaGateway extends MetaGateway {
 
   async unsubscribeApp(wabaId: string, accessToken: string) {
     await this.call(this.wa(`${encodeURIComponent(wabaId)}/subscribed_apps`), accessToken, { method: "DELETE" });
+  }
+
+  async instagramAccounts(accessToken: string) {
+    const r = await this.call<{ data?: { id: string; username?: string }[] }>(this.wa(`me/assigned_instagram_accounts?fields=id,username&limit=100`), accessToken);
+    return (r.data ?? []).map((a) => ({ id: a.id, username: a.username ?? null }));
+  }
+
+  async subscribeInstagram(igId: string, accessToken: string) {
+    await this.call(this.wa(`${encodeURIComponent(igId)}/subscribed_apps?subscribed_fields=messages`), accessToken, { method: "POST" });
+  }
+
+  async unsubscribeInstagram(igId: string, accessToken: string) {
+    await this.call(this.wa(`${encodeURIComponent(igId)}/subscribed_apps`), accessToken, { method: "DELETE" });
   }
 
   async registerPhone(phoneNumberId: string, accessToken: string, pin: string) {
