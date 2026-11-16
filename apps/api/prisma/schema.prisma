@@ -70,6 +70,7 @@ model Tenant {
   ledgerEntries     PlatformLedgerEntry[]
   invoices          PlatformInvoice[]
   pwaSettings       TenantPwaSettings?
+  salonListing      SalonListing?
   assets            TenantAsset[]
   identities        CustomerIdentity[]
   trialApplications TrialApplication[]
@@ -1640,4 +1641,26 @@ model ProductSaleReturnLine {
   saleItem ProductSaleItem   @relation(fields: [tenantId, saleItemId], references: [tenantId, id], onDelete: Restrict)
 
   @@index([tenantId, saleItemId])
+}
+
+/// Mobil uygulamadaki salon rehberi (il > ilçe > salon). İşletme sahibi açıkça açmadıkça listelenmez (varsayılan kapalı).
+/// Ad ve logo listelemenin kendisidir; adres ve telefon ayrı izinle görünür. Konum (koordinat) tutulmaz.
+model SalonListing {
+  tenantId      String    @id @db.Uuid
+  enabled       Boolean   @default(false)
+  /// İçişleri Bakanlığı il kodu (plaka) ve ilçe kodu (src/directory/tr-admin-units.ts)
+  provinceCode  Int?
+  districtCode  Int?
+  showAddress   Boolean   @default(false)
+  showPhone     Boolean   @default(false)
+  enabledById   String?   @db.Uuid
+  enabledAt     DateTime?
+  /// SaaS sahibi listeden çıkardıysa işletme yeniden açamaz (bu iki alanı yalnızca platform rolü yazar)
+  blockedAt     DateTime?
+  blockedReason String?
+  updatedAt     DateTime  @default(now()) @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([enabled, provinceCode, districtCode])
 }
