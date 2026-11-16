@@ -40,7 +40,7 @@ model Tenant {
   phone                   String?
   email                   String?
   address                 String?
-  /// Mahalle (serbest metin; açık adres + mahalle + ilçe/il salon sayfasında tam adres olarak gösterilir)
+  /// Mahalle adı (rehber kartında resmî listeden seçilir: SalonListing.neighborhoodSlug); açık adres + mahalle + ilçe/il tam adres olur
   neighborhood            String?
   timezone                String        @default("Europe/Istanbul")
   /// Süreli paket bitimine kaç gün kala müşteriye hatırlatma planlanır (WhatsApp)
@@ -1653,6 +1653,8 @@ model SalonListing {
   /// İçişleri Bakanlığı il kodu (plaka) ve ilçe kodu (src/directory/tr-admin-units.ts)
   provinceCode  Int?
   districtCode  Int?
+  /// Resmî listedeki mahalle kodu (src/directory/tr-neighborhoods.ts, ilçe içinde benzersiz)
+  neighborhoodSlug String?
   showAddress   Boolean   @default(false)
   showPhone     Boolean   @default(false)
   /// "Yol tarifi al" bağlantısı (adres harita uygulamasında açılır; yalnızca adres de gösteriliyorsa)

@@ -3,7 +3,8 @@ import { API_URL } from "@/lib/server-api";
 
 export type Unit = { code: number; name: string; slug: string; count?: number };
 export type DirectorySalon = { slug: string; name: string; logoUrl: string | null; address: string | null; phone: string | null; directionsUrl?: string | null };
-export type SalonPage = { province: Unit; district: Unit; salons: DirectorySalon[]; total: number; page: number; pageSize: number };
+export type Hood = { slug: string; name: string; count?: number };
+export type SalonPage = { province: Unit; district: Unit; neighborhoods: Hood[]; neighborhood: Hood | null; salons: DirectorySalon[]; total: number; page: number; pageSize: number };
 
 const UNIT_RE = /^[a-z0-9-]{1,40}$/;
 
@@ -25,6 +26,8 @@ async function get<T>(path: string): Promise<T | null> {
 export const directory = {
   provinces: () => get<{ provinces: Unit[] }>("provinces"),
   districts: (il: string) => (UNIT_RE.test(il) ? get<{ province: Unit; districts: Unit[] }>(`provinces/${il}`) : Promise.resolve(null)),
-  salons: (il: string, ilce: string, page: number) =>
-    UNIT_RE.test(il) && UNIT_RE.test(ilce) ? get<SalonPage>(`provinces/${il}/${ilce}?sayfa=${page}`) : Promise.resolve(null),
+  salons: (il: string, ilce: string, page: number, mahalle?: string) =>
+    UNIT_RE.test(il) && UNIT_RE.test(ilce) && (!mahalle || /^[a-z0-9-]{1,120}$/.test(mahalle))
+      ? get<SalonPage>(`provinces/${il}/${ilce}?sayfa=${page}${mahalle ? `&mahalle=${mahalle}` : ""}`)
+      : Promise.resolve(null),
 };

@@ -11,8 +11,6 @@ const settingsSchema = z.object({
   phone: phoneSchema.optional(),
   email: z.string().email().max(200).optional(),
   address: z.string().max(300).optional(),
-  /** Mahalle; boş gönderilirse silinir. */
-  neighborhood: z.string().trim().max(80).transform((v) => v || null).nullable().optional(),
   timezone: z.string().refine((tz) => {
     try {
       new Intl.DateTimeFormat("en", { timeZone: tz });

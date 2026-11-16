@@ -4,12 +4,15 @@ import { AuditService } from "../audit/audit.service";
 import { TenantInfo } from "../common/decorators";
 import { PrismaService } from "../prisma/prisma.service";
 import { directionsUrl, fullAddress } from "./address";
-import { allUnits, districtBySlug, districtIn, provinceByCode, provinceBySlug, sortTr } from "./admin-units";
+import { neighborhoodIn, neighborhoodsOf } from "./neighborhoods";
+import { allUnits, districtByCode, districtBySlug, districtIn, provinceByCode, provinceBySlug, sortTr } from "./admin-units";
 
 export interface ListingInput {
   enabled: boolean;
   provinceCode: number | null;
   districtCode: number | null;
+  /** undefined: değiştirilmez (eski panel); null: mahalle seçilmedi */
+  neighborhoodSlug?: string | null;
   showAddress: boolean;
   showPhone: boolean;
   showDirections: boolean;
@@ -21,6 +24,7 @@ type ListingRow = {
   enabled: boolean;
   provinceCode: number | null;
   districtCode: number | null;
+  neighborhoodSlug: string | null;
   showAddress: boolean;
   showPhone: boolean;
   showDirections: boolean;
@@ -62,7 +66,7 @@ function eligibilityIssues(
 
 function shape(row: ListingRow | null) {
   const r: ListingRow = row ?? {
-    enabled: false, provinceCode: null, districtCode: null, showAddress: false, showPhone: false, showDirections: false,
+    enabled: false, provinceCode: null, districtCode: null, neighborhoodSlug: null, showAddress: false, showPhone: false, showDirections: false,
     enabledAt: null, blockedAt: null, blockedReason: null,
   };
   const province = provinceByCode(r.provinceCode);
@@ -73,6 +77,8 @@ function shape(row: ListingRow | null) {
     districtCode: r.districtCode,
     provinceName: province?.name ?? null,
     districtName: district?.name ?? null,
+    neighborhoodSlug: r.neighborhoodSlug,
+    neighborhoodName: neighborhoodIn(r.districtCode, r.neighborhoodSlug)?.name ?? null,
     showAddress: r.showAddress,
     showPhone: r.showPhone,
     showDirections: r.showDirections,
@@ -92,6 +98,11 @@ export class DirectoryService {
 
   units() {
     return allUnits();
+  }
+
+  neighborhoods(districtCode: number) {
+    if (!districtByCode(districtCode)) throw new NotFoundException("İlçe bulunamadı");
+    return { neighborhoods: neighborhoodsOf(districtCode) };
   }
 
   /** İşletme paneli: mevcut ayar ve rehberde tam olarak ne görüneceği (önizleme). */
@@ -141,6 +152,13 @@ export class DirectoryService {
 
     await this.prisma.withTenant(ti, async (tx) => {
       const before = await tx.salonListing.findUnique({ where: { tenantId: ti.tenantId } });
+      // Mahalle: gönderilmediyse (eski panel) önceki seçim, ilçe değiştiyse geçersiz olacağından silinir.
+      let nSlug = b.neighborhoodSlug === undefined ? (before?.neighborhoodSlug ?? null) : b.neighborhoodSlug;
+      const hood = nSlug ? neighborhoodIn(b.districtCode, nSlug) : undefined;
+      if (nSlug && !hood) {
+        if (b.neighborhoodSlug !== undefined) throw new BadRequestException("Seçilen mahalle bu ilçeye ait değil");
+        nSlug = null;
+      }
       if (b.enabled && before?.blockedAt) {
         throw new ConflictException("Salonunuz Pro Güzellik tarafından rehberden çıkarıldı. Bilgi için bize yazın.");
       }
@@ -149,6 +167,7 @@ export class DirectoryService {
         enabled: b.enabled,
         provinceCode: b.provinceCode,
         districtCode: b.districtCode,
+        neighborhoodSlug: nSlug,
         showAddress: b.showAddress,
         showPhone: b.showPhone,
         showDirections: b.showDirections,
@@ -156,14 +175,18 @@ export class DirectoryService {
       };
       if (before) await tx.salonListing.update({ where: { tenantId: ti.tenantId }, data });
       else await tx.salonListing.create({ data: { tenantId: ti.tenantId, ...data } });
+      // Adreste görünen mahalle adı listeden seçilenle aynı tutulur.
+      if (b.neighborhoodSlug !== undefined || nSlug !== (before?.neighborhoodSlug ?? null)) {
+        await tx.tenant.update({ where: { id: ti.tenantId }, data: { neighborhood: hood?.name ?? null } });
+      }
       const action = turningOn ? "salon.listing_enabled" : before?.enabled && !b.enabled ? "salon.listing_disabled" : "salon.listing_updated";
       await this.audit.log(tx, {
         tenantId: ti.tenantId, actorId: ti.userId, ip, action, entity: "SalonListing", entityId: ti.tenantId,
         metadata: {
           before: before
-            ? { enabled: before.enabled, provinceCode: before.provinceCode, districtCode: before.districtCode, showAddress: before.showAddress, showPhone: before.showPhone, showDirections: before.showDirections }
+            ? { enabled: before.enabled, provinceCode: before.provinceCode, districtCode: before.districtCode, neighborhoodSlug: before.neighborhoodSlug, showAddress: before.showAddress, showPhone: before.showPhone, showDirections: before.showDirections }
             : null,
-          after: { enabled: b.enabled, provinceCode: b.provinceCode, districtCode: b.districtCode, showAddress: b.showAddress, showPhone: b.showPhone, showDirections: b.showDirections },
+          after: { enabled: b.enabled, provinceCode: b.provinceCode, districtCode: b.districtCode, neighborhoodSlug: nSlug, showAddress: b.showAddress, showPhone: b.showPhone, showDirections: b.showDirections },
         },
       });
     });
@@ -175,7 +198,7 @@ export class DirectoryService {
   private visibleRows(extra: Prisma.SalonListingWhereInput) {
     return this.prisma.platform.salonListing.findMany({
       where: { AND: [visibleListing(new Date()), extra] },
-      select: { provinceCode: true, districtCode: true },
+      select: { provinceCode: true, districtCode: true, neighborhoodSlug: true },
     });
   }
 
@@ -204,11 +227,21 @@ export class DirectoryService {
     return { province: { code: p.code, name: p.name, slug: p.slug }, districts: sortTr(list) };
   }
 
-  async publicSalons(provinceSlug: string, districtSlug: string, page: number) {
+  async publicSalons(provinceSlug: string, districtSlug: string, page: number, hoodSlug?: string) {
     const p = provinceBySlug(provinceSlug);
     const d = p ? districtBySlug(p, districtSlug) : undefined;
     if (!p || !d) throw new NotFoundException("İlçe bulunamadı");
-    const where: Prisma.SalonListingWhereInput = { AND: [visibleListing(new Date()), { provinceCode: p.code, districtCode: d.code }] };
+    const hood = hoodSlug ? neighborhoodIn(d.code, hoodSlug) : undefined;
+    if (hoodSlug && !hood) throw new NotFoundException("Mahalle bulunamadı");
+    // Filtre seçenekleri: yalnızca bu ilçede listelenen salonu olan mahalleler (salon sayısıyla).
+    const counts = new Map<string, number>();
+    for (const r of await this.visibleRows({ provinceCode: p.code, districtCode: d.code })) {
+      if (r.neighborhoodSlug) counts.set(r.neighborhoodSlug, (counts.get(r.neighborhoodSlug) ?? 0) + 1);
+    }
+    const neighborhoods = neighborhoodsOf(d.code).filter((n) => counts.has(n.slug)).map((n) => ({ ...n, count: counts.get(n.slug)! }));
+    const where: Prisma.SalonListingWhereInput = {
+      AND: [visibleListing(new Date()), { provinceCode: p.code, districtCode: d.code }, ...(hood ? [{ neighborhoodSlug: hood.slug }] : [])],
+    };
     const [total, rows] = await Promise.all([
       this.prisma.platform.salonListing.count({ where }),
       this.prisma.platform.salonListing.findMany({
@@ -242,6 +275,8 @@ export class DirectoryService {
     return {
       province: { code: p.code, name: p.name, slug: p.slug },
       district: { code: d.code, name: d.name, slug: d.slug },
+      neighborhoods,
+      neighborhood: hood ?? null,
       salons: sortTr(salons),
       total,
       page,

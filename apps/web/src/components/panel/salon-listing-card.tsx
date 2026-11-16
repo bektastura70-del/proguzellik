@@ -10,6 +10,7 @@ type Province = Unit & { districts: Unit[] };
 type Listing = {
   listing: {
     enabled: boolean; provinceCode: number | null; districtCode: number | null; provinceName: string | null; districtName: string | null;
+    neighborhoodSlug: string | null; neighborhoodName: string | null;
     showAddress: boolean; showPhone: boolean; showDirections: boolean; enabledAt: string | null; blocked: boolean; blockedReason: string | null;
   };
   visible: boolean;
@@ -30,7 +31,7 @@ export function SalonListingCard({ canEdit }: { canEdit: boolean }) {
   const toast = useToast();
   const q = useApi<Listing>("/directory/listing");
   const units = useApi<{ provinces: Province[] }>("/directory/units");
-  const [form, setForm] = useState({ enabled: false, provinceCode: "", districtCode: "", showAddress: false, showPhone: false, showDirections: false });
+  const [form, setForm] = useState({ enabled: false, provinceCode: "", districtCode: "", neighborhoodSlug: "", showAddress: false, showPhone: false, showDirections: false });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -41,6 +42,7 @@ export function SalonListingCard({ canEdit }: { canEdit: boolean }) {
       enabled: l.enabled,
       provinceCode: l.provinceCode ? String(l.provinceCode) : "",
       districtCode: l.districtCode ? String(l.districtCode) : "",
+      neighborhoodSlug: l.neighborhoodSlug ?? "",
       showAddress: l.showAddress,
       showPhone: l.showPhone,
       showDirections: l.showDirections,
@@ -49,6 +51,7 @@ export function SalonListingCard({ canEdit }: { canEdit: boolean }) {
 
   const province = useMemo(() => units.data?.provinces.find((p) => String(p.code) === form.provinceCode), [units.data, form.provinceCode]);
   const district = province?.districts.find((d) => String(d.code) === form.districtCode);
+  const hoods = useApi<{ neighborhoods: { slug: string; name: string }[] }>(district ? `/directory/units/${district.code}/neighborhoods` : null, [district?.code]);
 
   if ((q.loading && !q.data) || (units.loading && !units.data)) return <Card><CardBody><Spinner /></CardBody></Card>;
   if (q.error) return <Alert>{q.error.message}</Alert>;
@@ -67,6 +70,7 @@ export function SalonListingCard({ canEdit }: { canEdit: boolean }) {
           enabled: form.enabled,
           provinceCode: form.provinceCode ? Number(form.provinceCode) : null,
           districtCode: form.districtCode ? Number(form.districtCode) : null,
+          neighborhoodSlug: form.districtCode && form.neighborhoodSlug ? form.neighborhoodSlug : null,
           showAddress: form.showAddress,
           showPhone: form.showPhone,
           showDirections: form.showDirections,
@@ -107,15 +111,21 @@ export function SalonListingCard({ canEdit }: { canEdit: boolean }) {
             </label>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="İl">
-                <Select value={form.provinceCode} required={form.enabled} onChange={(e) => setForm({ ...form, provinceCode: e.target.value, districtCode: "" })}>
+                <Select value={form.provinceCode} required={form.enabled} onChange={(e) => setForm({ ...form, provinceCode: e.target.value, districtCode: "", neighborhoodSlug: "" })}>
                   <option value="">Seçin</option>
                   {units.data!.provinces.map((p) => <option key={p.code} value={p.code}>{p.name}</option>)}
                 </Select>
               </Field>
               <Field label="İlçe">
-                <Select value={form.districtCode} required={form.enabled} disabled={!province} onChange={(e) => setForm({ ...form, districtCode: e.target.value })}>
+                <Select value={form.districtCode} required={form.enabled} disabled={!province} onChange={(e) => setForm({ ...form, districtCode: e.target.value, neighborhoodSlug: "" })}>
                   <option value="">Seçin</option>
                   {province?.districts.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
+                </Select>
+              </Field>
+              <Field label="Mahalle" className="sm:col-span-2" hint="İçişleri Bakanlığı mahalle listesinden; adresinizde ve rehberdeki mahalle filtresinde kullanılır.">
+                <Select value={form.neighborhoodSlug} disabled={!district || hoods.loading} onChange={(e) => setForm({ ...form, neighborhoodSlug: e.target.value })}>
+                  <option value="">{hoods.loading ? "Yükleniyor…" : "Seçin"}</option>
+                  {district && hoods.data?.neighborhoods.map((x) => <option key={x.slug} value={x.slug}>{x.name}</option>)}
                 </Select>
               </Field>
             </div>
@@ -131,13 +141,13 @@ export function SalonListingCard({ canEdit }: { canEdit: boolean }) {
               <input type="checkbox" className="size-5" checked={form.showDirections} disabled={!d.salonAddress} onChange={(e) => setForm({ ...form, showDirections: e.target.checked })} />
               Müşteriler &ldquo;Yol tarifi al&rdquo; ile adresime harita uygulamasından gidebilsin (salon sayfasında; rehberde adres de görünüyorsa)
             </label>
-            {(!d.salonStreet || !d.salonNeighborhood) && (
+            {(!d.salonStreet || !d.listing.neighborhoodSlug) && (
               <Alert tone="amber">
-                Adresiniz eksik: {[!d.salonStreet && "açık adres", !d.salonNeighborhood && "mahalle"].filter(Boolean).join(" ve ")} girilmemiş. Ayarlar &gt; İşletme bilgileri bölümünden ekleyin.
+                Adresiniz eksik: {[!d.salonStreet && "açık adres (Ayarlar > İşletme bilgileri)", !d.listing.neighborhoodSlug && "mahalle (yukarıdan seçin)"].filter(Boolean).join(" ve ")} girilmemiş.
               </Alert>
             )}
             <p className="text-xs text-neutral-500">
-              Rehberde salonunuzun adı, logosu ve randevu sayfanız her zaman görünür; adres ve telefon yalnızca işaretlerseniz görünür.
+              Rehberde salonunuzun adı, logosu, randevu sayfanız ile il, ilçe ve (seçtiyseniz) mahalleniz görünür; mahalle, müşterinin mahalleye göre filtrelemesi için kullanılır. Açık adres ve telefon yalnızca işaretlerseniz görünür.
               Şahıs işletmelerinde ad, adres ve telefon kişisel veri sayılabilir. İl ve ilçe salon sayfanızdaki tam adreste de kullanılır. Yol tarifi, adresinizi müşterinin telefonundaki harita uygulamasında açar; müşteriden konum izni istenmez. Askıya alınan, aboneliği biten ya da online
               randevusu kapalı salonlar rehberde görünmez.
             </p>

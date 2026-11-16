@@ -4,8 +4,8 @@ const collator = new Intl.Collator("tr", { sensitivity: "base" });
 
 const byCode = new Map<number, Province>(PROVINCES.map((p) => [p.code, p]));
 const bySlug = new Map<string, Province>(PROVINCES.map((p) => [p.slug, p]));
-const districtByCode = new Map<number, { province: Province; district: District }>();
-for (const p of PROVINCES) for (const d of p.districts) districtByCode.set(d.code, { province: p, district: d });
+const byDistrictCode = new Map<number, { province: Province; district: District }>();
+for (const p of PROVINCES) for (const d of p.districts) byDistrictCode.set(d.code, { province: p, district: d });
 
 export const sortTr = <T extends { name: string }>(list: readonly T[]) => [...list].sort((a, b) => collator.compare(a.name, b.name));
 
@@ -19,8 +19,12 @@ export function provinceBySlug(slug: string) {
 
 /** İlçe kodu verilen ile ait değilse undefined. */
 export function districtIn(provinceCode: number, districtCode: number) {
-  const hit = districtByCode.get(districtCode);
+  const hit = byDistrictCode.get(districtCode);
   return hit && hit.province.code === provinceCode ? hit.district : undefined;
+}
+
+export function districtByCode(code: number) {
+  return byDistrictCode.get(code);
 }
 
 export function districtBySlug(province: Province, slug: string) {

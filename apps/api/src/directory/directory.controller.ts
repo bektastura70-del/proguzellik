@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseIntPipe, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { z } from "zod";
 import { RateLimitService } from "../auth/rate-limit.service";
@@ -10,13 +10,18 @@ const listingSchema = z.object({
   enabled: z.boolean(),
   provinceCode: z.number().int().min(1).max(81).nullable(),
   districtCode: z.number().int().positive().nullable(),
+  // Eski panel göndermez: mahalle değiştirilmez.
+  neighborhoodSlug: z.string().regex(/^[a-z0-9-]{1,120}$/).nullable().optional(),
   showAddress: z.boolean(),
   showPhone: z.boolean(),
   // Eski panel sürümü bu alanı göndermez: kapalı sayılır.
   showDirections: z.boolean().default(false),
 });
 const unitSlug = z.string().regex(/^[a-z0-9-]{1,40}$/);
-const pageSchema = z.object({ sayfa: z.coerce.number().int().min(1).max(1000).optional() });
+const pageSchema = z.object({
+  sayfa: z.coerce.number().int().min(1).max(1000).optional(),
+  mahalle: z.string().regex(/^[a-z0-9-]{1,120}$/).optional(),
+});
 const reasonSchema = z.object({ reason: z.string().trim().min(3, "Neden yazın").max(300) });
 
 /** İşletme paneli: "Pro Güzellik uygulamasında listelensin" ayarı. Değiştirmek yalnız işletme sahibinde. */
@@ -28,6 +33,13 @@ export class DirectoryController {
   @Roles("OWNER", "MANAGER")
   units() {
     return { provinces: this.svc.units() };
+  }
+
+  /** İlçenin resmî mahalle listesi (seçim kutusu için, il/ilçe seçilince yüklenir) */
+  @Get("units/:districtCode/neighborhoods")
+  @Roles("OWNER", "MANAGER")
+  neighborhoods(@Param("districtCode", ParseIntPipe) code: number) {
+    return this.svc.neighborhoods(code);
   }
 
   @Get("listing")
@@ -67,7 +79,7 @@ export class PublicDirectoryController {
   @Get("provinces/:il/:ilce")
   salons(@Param("il", new ZodPipe(unitSlug)) il: string, @Param("ilce", new ZodPipe(unitSlug)) ilce: string, @Query(new ZodPipe(pageSchema)) q: z.infer<typeof pageSchema>, @Req() req: Request) {
     this.rateLimit.hit(`directory:${req.ip}`, 120, 60_000);
-    return this.svc.publicSalons(il, ilce, q.sayfa ?? 1);
+    return this.svc.publicSalons(il, ilce, q.sayfa ?? 1, q.mahalle);
   }
 }
 

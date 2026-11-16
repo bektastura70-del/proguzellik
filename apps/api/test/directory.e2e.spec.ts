@@ -206,16 +206,25 @@ describe("Salon rehberi (mobil uygulama)", () => {
     const list = (await pub("/public/directory/provinces/istanbul/kadikoy").expect(200)).body;
     expect(list.salons[0].logoUrl).toBe(`/r/${A.tenant.slug}/marka/${asset.id}`);
   });
-  it("mahalle: işletme kendi rolüyle kaydeder; salon sayfası ve rehberde tam adres; yol tarifi yalnız açılınca", async () => {
-    await a.patch("/settings").send({ neighborhood: "  Caferağa Mahallesi " }).expect(200);
+  it("mahalle listeden: işletme kendi rolüyle seçer; salon sayfası ve rehberde tam adres; yol tarifi yalnız açılınca", async () => {
+    const hoods = (await a.get(`/directory/units/${kadikoy.code}/neighborhoods`).expect(200)).body.neighborhoods;
+    expect(hoods).toContainEqual({ slug: "caferaga", name: "Caferağa Mahallesi" });
+    expect(hoods.length).toBe(21);
+    await a.get("/directory/units/999999/neighborhoods").expect(404);
+    // Serbest metin artık kabul edilmez (ayarlar alanı yok sayılır), listede olmayan ya da başka ilçenin mahallesi reddedilir
+    await a.patch("/settings").send({ neighborhood: "Uydurma Mahallesi" }).expect(200);
+    expect((await a.get("/settings").expect(200)).body.neighborhood).toBeNull();
+    await a.put("/directory/listing").send({ ...on(34, kadikoy.code), neighborhoodSlug: "uydurma" }).expect(400);
+    await a.put("/directory/listing").send({ ...on(34, kadikoy.code), neighborhoodSlug: "kirisci" }).expect(400);
+    await a.put("/directory/listing").send({ ...on(34, kadikoy.code), neighborhoodSlug: "caferaga" }).expect(200);
     expect((await a.get("/settings").expect(200)).body.neighborhood).toBe("Caferağa Mahallesi");
-    await a.patch("/settings").send({ neighborhood: "x".repeat(81) }).expect(400);
     const full = "Moda Cad. 1, Caferağa Mahallesi, Kadıköy / İstanbul";
 
     let salon = (await pub(`/public/salons/${A.tenant.slug}`).expect(200)).body.salon;
     expect(salon).toMatchObject({ address: full, directionsUrl: null });
     let view = (await a.get("/directory/listing").expect(200)).body;
     expect(view).toMatchObject({ salonAddress: full, salonStreet: "Moda Cad. 1", salonNeighborhood: "Caferağa Mahallesi" });
+    expect(view.listing).toMatchObject({ neighborhoodSlug: "caferaga", neighborhoodName: "Caferağa Mahallesi" });
 
     // Eski panel showDirections göndermese de kayıt çalışır (kapalı sayılır)
     await a.put("/directory/listing").send(on(34, kadikoy.code, { showAddress: true })).expect(200);
@@ -229,18 +238,45 @@ describe("Salon rehberi (mobil uygulama)", () => {
     await a.put("/directory/listing").send({ ...on(34, kadikoy.code), showDirections: true }).expect(200);
     list = (await pub("/public/directory/provinces/istanbul/kadikoy").expect(200)).body;
     expect(list.salons[0]).toMatchObject({ address: null, directionsUrl: null });
-    expect(JSON.stringify(list)).not.toMatch(/Caferağa|Moda Cad/);
+    // Mahalle (il/ilçe gibi) konum bilgisidir ve filtrede görünür; açık adres görünmez
+    expect(JSON.stringify(list)).not.toMatch(/Moda Cad/);
     expect((await pub(`/public/salons/${A.tenant.slug}`).expect(200)).body.salon.directionsUrl).toBe(directionsUrl(full));
     view = (await a.get("/directory/listing").expect(200)).body;
     expect(view.listing.showDirections).toBe(true);
     const audit = await su.auditLog.findFirst({ where: { tenantId: A.tenant.id, action: "salon.listing_updated" }, orderBy: { createdAt: "desc" } });
     expect(audit?.metadata).toMatchObject({ after: { showDirections: true } });
 
-    // Mahalle silinebilir; başka işletmenin mahallesini yazamaz (RLS)
-    await a.patch("/settings").send({ neighborhood: "" }).expect(200);
+    // Mahalle kaldırılabilir; başka işletmenin mahallesini yazamaz (RLS)
+    await a.put("/directory/listing").send({ ...on(34, kadikoy.code), neighborhoodSlug: null }).expect(200);
     expect((await a.get("/settings").expect(200)).body.neighborhood).toBeNull();
     const prisma = app.get(PrismaService);
     const n = await prisma.withTenant({ tenantId: B.tenant.id, userId: B.user.id }, (tx) => tx.tenant.updateMany({ where: { id: A.tenant.id }, data: { neighborhood: "Sızma" } }));
     expect(n.count).toBe(0);
+  });
+  it("rehberde mahalle filtresi: yalnızca salonu olan mahalleler; ilçe değişince mahalle silinir", async () => {
+    await a.put("/directory/listing").send({ ...on(34, kadikoy.code), neighborhoodSlug: "caferaga" }).expect(200);
+    await b.put("/directory/listing").send({ ...on(34, kadikoy.code), neighborhoodSlug: "moda" }).expect(400); // Moda resmî listede mahalle değil
+    await b.put("/directory/listing").send({ ...on(34, kadikoy.code), neighborhoodSlug: "fenerbahce" }).expect(200);
+    let list = (await pub("/public/directory/provinces/istanbul/kadikoy").expect(200)).body;
+    expect(list.total).toBe(2);
+    expect(list.neighborhood).toBeNull();
+    expect(list.neighborhoods).toEqual([
+      { slug: "caferaga", name: "Caferağa Mahallesi", count: 1 },
+      { slug: "fenerbahce", name: "Fenerbahçe Mahallesi", count: 1 },
+    ]);
+    list = (await pub("/public/directory/provinces/istanbul/kadikoy?mahalle=fenerbahce").expect(200)).body;
+    expect(list.salons.map((x: { slug: string }) => x.slug)).toEqual([B.tenant.slug]);
+    expect(list.neighborhood).toEqual({ slug: "fenerbahce", name: "Fenerbahçe Mahallesi" });
+    await pub("/public/directory/provinces/istanbul/kadikoy?mahalle=kirisci").expect(404);
+    await pub("/public/directory/provinces/istanbul/kadikoy?mahalle=BAD").expect(400);
+
+    // Eski panel mahalle göndermezse seçim korunur; ilçe değişirse (geçersiz kalacağından) silinir
+    await b.put("/directory/listing").send(on(34, kadikoy.code)).expect(200);
+    expect((await b.get("/directory/listing").expect(200)).body.listing.neighborhoodSlug).toBe("fenerbahce");
+    await b.put("/directory/listing").send(on(34, besiktas.code)).expect(200);
+    expect((await b.get("/directory/listing").expect(200)).body.listing.neighborhoodSlug).toBeNull();
+    expect((await b.get("/settings").expect(200)).body.neighborhood).toBeNull();
+    // Veritabanı: ilçesiz mahalle olmaz
+    await expect(su.salonListing.update({ where: { tenantId: B.tenant.id }, data: { enabled: false, districtCode: null, neighborhoodSlug: "x" } })).rejects.toThrow(/salon_listing_neighborhood/);
   });
 });
