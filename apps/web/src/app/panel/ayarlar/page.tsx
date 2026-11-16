@@ -8,7 +8,7 @@ import { api, useApi } from "@/lib/api";
 import { ROLE_TR } from "@/lib/format";
 import { SalonListingCard } from "@/components/panel/salon-listing-card";
 
-type Settings = { name: string; slug: string; phone: string | null; email: string | null; address: string | null; timezone: string; onlineBookingEnabled: boolean; requireMfa: boolean; packageReminderDays: number; renewalRemindersEnabled: boolean; lowStockEmailEnabled?: boolean; features?: { renewalReminders: boolean } };
+type Settings = { name: string; slug: string; phone: string | null; email: string | null; address: string | null; neighborhood?: string | null; timezone: string; onlineBookingEnabled: boolean; requireMfa: boolean; packageReminderDays: number; renewalRemindersEnabled: boolean; lowStockEmailEnabled?: boolean; features?: { renewalReminders: boolean } };
 type TeamInvite = { id: string; email: string; fullName: string; role: string; status: "PENDING_DELIVERY" | "SENT"; expiresAt: string | null; sentAt: string | null };
 type InviteResult = { delivered: boolean; reason?: string };
 type Member = { id: string; role: string; isActive: boolean; user: { id: string; fullName: string; email: string } };
@@ -39,7 +39,7 @@ export default function SettingsPage() {
               e.preventDefault();
               const f = new FormData(e.currentTarget);
               try {
-                await api("/settings", { method: "PATCH", body: { name: f.get("name"), phone: (f.get("phone") as string) || undefined, email: (f.get("email") as string) || undefined, address: (f.get("address") as string) || undefined, onlineBookingEnabled: f.get("online") === "on", packageReminderDays: Number(f.get("packageReminderDays")) || undefined } });
+                await api("/settings", { method: "PATCH", body: { name: f.get("name"), phone: (f.get("phone") as string) || undefined, email: (f.get("email") as string) || undefined, address: (f.get("address") as string) || undefined, neighborhood: (f.get("neighborhood") as string | null) ?? undefined, onlineBookingEnabled: f.get("online") === "on", packageReminderDays: Number(f.get("packageReminderDays")) || undefined } });
                 toast("Ayarlar kaydedildi"); settings.reload();
               } catch (err) { toast((err as Error).message, "red"); }
             }}>
@@ -48,7 +48,11 @@ export default function SettingsPage() {
                 <Field label="Telefon"><Input name="phone" defaultValue={s.phone ?? ""} /></Field>
                 <Field label="E-posta"><Input name="email" type="email" defaultValue={s.email ?? ""} /></Field>
               </div>
-              <Field label="Adres"><Input name="address" defaultValue={s.address ?? ""} /></Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Açık adres" hint="Cadde, sokak, bina ve kapı no"><Input name="address" defaultValue={s.address ?? ""} maxLength={300} /></Field>
+                <Field label="Mahalle" hint="Örn. Kirişçi Mahallesi"><Input name="neighborhood" defaultValue={s.neighborhood ?? ""} maxLength={80} /></Field>
+              </div>
+              <p className="text-xs text-neutral-500">İl ve ilçe aşağıdaki salon rehberi kartından seçilir. Salon sayfanızda açık adres, mahalle, ilçe ve il birlikte tam adres olarak görünür.</p>
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="online" defaultChecked={s.onlineBookingEnabled} className="accent-brand-600" /> Online randevu sayfası açık</label>
               <p className="text-xs text-neutral-500">Online randevu adresi: /r/{s.slug}</p>
               <Field label="Paket bitiş hatırlatması (gün önce)" hint="WhatsApp bağlıysa süreli paketi bitmek üzere olan ve seansı kalan müşteriye mesaj planlanır."><Input name="packageReminderDays" type="number" min={1} max={60} defaultValue={s.packageReminderDays} /></Field>

@@ -11,6 +11,8 @@ const settingsSchema = z.object({
   phone: phoneSchema.optional(),
   email: z.string().email().max(200).optional(),
   address: z.string().max(300).optional(),
+  /** Mahalle; boş gönderilirse silinir. */
+  neighborhood: z.string().trim().max(80).transform((v) => v || null).nullable().optional(),
   timezone: z.string().refine((tz) => {
     try {
       new Intl.DateTimeFormat("en", { timeZone: tz });
@@ -27,7 +29,7 @@ const settingsSchema = z.object({
 });
 
 const PUBLIC_FIELDS = {
-  id: true, name: true, slug: true, phone: true, email: true, address: true, timezone: true,
+  id: true, name: true, slug: true, phone: true, email: true, address: true, neighborhood: true, timezone: true,
   onlineBookingEnabled: true, requireMfa: true, packageReminderDays: true, renewalRemindersEnabled: true, lowStockEmailEnabled: true, status: true, planCode: true, trialEndsAt: true,
 } as const;
 

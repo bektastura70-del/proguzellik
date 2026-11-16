@@ -10,6 +10,7 @@ import { toZoned } from "../../common/time";
 import { appUrl, loadEnv } from "../../config/env";
 import { PrismaService, Tx } from "../../prisma/prisma.service";
 import { phoneCandidates } from "../inbox.service";
+import { fullAddress } from "../../directory/address";
 
 const MAX_DAYS_AHEAD = 60;
 const MAX_SLOTS = 12;
@@ -211,14 +212,15 @@ export class ChatTools {
 
   private async salon(c: ChatContext) {
     return this.tx(c, async (tx) => {
-      const t = await tx.tenant.findUniqueOrThrow({ where: { id: c.tenantId }, select: { name: true, address: true, phone: true, timezone: true } });
+      const t = await tx.tenant.findUniqueOrThrow({ where: { id: c.tenantId }, select: { name: true, address: true, neighborhood: true, phone: true, timezone: true } });
+      const loc = await tx.salonListing.findUnique({ where: { tenantId: c.tenantId }, select: { provinceCode: true, districtCode: true } });
       const hours = await tx.workingHour.findMany({ where: { staff: { isActive: true } }, select: { weekday: true, startMin: true, endMin: true } });
       const fmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
       const week = [1, 2, 3, 4, 5, 6, 0].map((d) => {
         const h = hours.filter((x) => x.weekday === d);
         return { gun: DAY[d], saat: h.length ? `${fmt(Math.min(...h.map((x) => x.startMin)))}–${fmt(Math.max(...h.map((x) => x.endMin)))}` : "Kapalı" };
       });
-      return { ad: t.name, adres: t.address, telefon: t.phone, saatDilimi: t.timezone, calismaSaatleri: week };
+      return { ad: t.name, adres: fullAddress(t.address, t.neighborhood, loc), telefon: t.phone, saatDilimi: t.timezone, calismaSaatleri: week };
     });
   }
 

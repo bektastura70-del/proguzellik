@@ -45,7 +45,7 @@ export type AppInfo = {
 };
 
 export type Salon = {
-  salon: { name: string; slug: string; phone: string | null; address: string | null };
+  salon: { name: string; slug: string; phone: string | null; address: string | null; directionsUrl?: string | null };
   services: { id: string; name: string; description: string | null; durationMin: number; price: string; category: { name: string } | null }[];
   staff: { id: string; displayName: string; title: string | null; serviceIds: string[] }[];
 };

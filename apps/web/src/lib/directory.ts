@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { API_URL } from "@/lib/server-api";
 
 export type Unit = { code: number; name: string; slug: string; count?: number };
-export type DirectorySalon = { slug: string; name: string; logoUrl: string | null; address: string | null; phone: string | null };
+export type DirectorySalon = { slug: string; name: string; logoUrl: string | null; address: string | null; phone: string | null; directionsUrl?: string | null };
 export type SalonPage = { province: Unit; district: Unit; salons: DirectorySalon[]; total: number; page: number; pageSize: number };
 
 const UNIT_RE = /^[a-z0-9-]{1,40}$/;

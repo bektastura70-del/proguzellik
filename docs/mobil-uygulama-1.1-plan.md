@@ -351,6 +351,20 @@ kaldırma, rehbere geçiş. **Denenmedi:** gerçek telefonda uygulama içi akı�
 **Paralel çalışma notu:** testler artık `PG_TEST_DB=proguzellik_test_<ad>` ile ayrı veritabanında çalıştırılabilir;
 başka bir klasörde aynı anda test koşan iş (Instagram) ortak `proguzellik_test` veritabanını sıfırlıyordu.
 
+### Salon tam adresi, mahalle ve yol tarifi (16.11.2026 isteği)
+- **Mahalle (tüm salonlar):** `Tenant.neighborhood` (serbest metin, en fazla 80 karakter; resmî mahalle listesi
+  kullanılmadı). Ayarlar > İşletme bilgileri'nde "Açık adres" ve "Mahalle" alanları. Gerçek salonların adresi
+  doldurulmaz; işletme kendisi girer. Rehber kartı eksik açık adres/mahalle için uyarı gösterir.
+- **Tam adres:** açık adres + mahalle + ilçe / il (`src/directory/address.ts`). İl/ilçe rehber kartından gelir; salon
+  sayfası (`/r/<kod>`), rehber (yalnız "adresim görünsün" açıksa) ve yapay zekâ asistanının salon bilgisi bunu kullanır.
+- **Yol tarifi al:** `SalonListing.showDirections`, varsayılan kapalı. Açıksa salon sayfasında, rehberde ise yalnızca
+  adres de gösteriliyorsa adres metniyle Google Haritalar araması açılır. Konum izni, koordinat ve sunucudan harita
+  servisine istek yoktur; mağaza beyanları değişmez. Uygulamada bağlantı Capacitor tarafından uygulama dışında açılır
+  (Android `Bridge.launchIntent`, iOS `WebViewDelegationHandler`: izinli alan dışı gezinme).
+- **Migration:** `20261116130000_salon_address` (yalnızca ekleme; `Tenant` için sütun düzeyinde `UPDATE ("neighborhood")`
+  izni). Demo salon: mahalle "Kirişçi Mahallesi" (açık adres metni değişmedi), yol tarifi kapalı.
+- **Testler:** rehber 15/15 (rol üzerinden mahalle kaydı, başka salona yazamama, yol tarifi kuralları).
+
 ### Canlıya alma (her adım ayrı onayla)
 1. Sunucu yedeği + geri yükleme doğrulaması, ardından web+API yeni sürüm ve `20261116120000_salon_listing`
    migration'ı (yalnızca ekleme). Duman testi: `/salonlar` 200 ve noindex, `/public/directory/provinces` boş liste,

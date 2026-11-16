@@ -5,6 +5,7 @@ import { AvailabilityService } from "../appointments/availability.service";
 import { AuditService } from "../audit/audit.service";
 import { assertUsageLimit, UsageLimitError } from "../billing/plan-pricing";
 import { loadEnv } from "../config/env";
+import { directionsUrl, fullAddress } from "../directory/address";
 import { PrismaService } from "../prisma/prisma.service";
 
 const MAX_DAYS_AHEAD = 60;
@@ -59,6 +60,12 @@ export class PublicBookingService {
 
   async salon(slug: string) {
     const t = await this.resolve(slug);
+    // Tam adres: açık adres + mahalle + salonun konum ayarındaki ilçe/il. Yol tarifi yalnızca salon açtıysa.
+    const loc = await this.prisma.platform.salonListing.findUnique({
+      where: { tenantId: t.id },
+      select: { provinceCode: true, districtCode: true, showDirections: true },
+    });
+    const address = fullAddress(t.address, t.neighborhood, loc);
     return this.prisma.withTenant(this.ctx(t.id), async (tx) => {
       const [services, staff] = await Promise.all([
         tx.service.findMany({
@@ -73,7 +80,7 @@ export class PublicBookingService {
         }),
       ]);
       return {
-        salon: { name: t.name, slug: t.slug, phone: t.phone, address: t.address, timezone: t.timezone },
+        salon: { name: t.name, slug: t.slug, phone: t.phone, address, directionsUrl: loc?.showDirections ? directionsUrl(address) : null, timezone: t.timezone },
         services,
         staff: staff.map((s) => ({ id: s.id, displayName: s.displayName, title: s.title, serviceIds: s.services.map((x) => x.serviceId) })),
       };

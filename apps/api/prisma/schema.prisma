@@ -40,6 +40,8 @@ model Tenant {
   phone                   String?
   email                   String?
   address                 String?
+  /// Mahalle (serbest metin; açık adres + mahalle + ilçe/il salon sayfasında tam adres olarak gösterilir)
+  neighborhood            String?
   timezone                String        @default("Europe/Istanbul")
   /// Süreli paket bitimine kaç gün kala müşteriye hatırlatma planlanır (WhatsApp)
   packageReminderDays     Int           @default(7)
@@ -1653,6 +1655,8 @@ model SalonListing {
   districtCode  Int?
   showAddress   Boolean   @default(false)
   showPhone     Boolean   @default(false)
+  /// "Yol tarifi al" bağlantısı (adres harita uygulamasında açılır; yalnızca adres de gösteriliyorsa)
+  showDirections Boolean  @default(false)
   enabledById   String?   @db.Uuid
   enabledAt     DateTime?
   /// SaaS sahibi listeden çıkardıysa işletme yeniden açamaz (bu iki alanı yalnızca platform rolü yazar)

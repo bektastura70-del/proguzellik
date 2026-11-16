@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import request from "supertest";
 import { PROVINCES } from "../src/directory/tr-admin-units";
 import { allUnits } from "../src/directory/admin-units";
+import { directionsUrl, fullAddress } from "../src/directory/address";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { TEST_PASSWORD, addMember, api, createApp, createTenantWithUser, enableMfa, login, owner, resetDb } from "./helpers";
 
@@ -36,6 +37,24 @@ describe("İl/ilçe verisi (İçişleri Bakanlığı)", () => {
     expect(names).toContain("İstanbul");
     expect(names).toContain("Iğdır");
     expect(istanbul.slug).toBe("istanbul");
+  });
+});
+
+describe("Tam adres ve yol tarifi bağlantısı", () => {
+  it("açık adres + mahalle + ilçe / il; yazılı olan tekrarlanmaz", () => {
+    expect(fullAddress("Atatürk Cad. No: 5", "Kirişçi Mahallesi", { provinceCode: 70, districtCode: 60042 })).toBe("Atatürk Cad. No: 5, Kirişçi Mahallesi, Merkez / Karaman");
+    expect(fullAddress(null, "Kirişçi Mahallesi", { provinceCode: 70, districtCode: 60042 })).toBe("Kirişçi Mahallesi, Merkez / Karaman");
+    expect(fullAddress("KİRİŞÇİ Mah. 3. Sok. No 2 Karaman", "Kirişçi Mah.", { provinceCode: 70, districtCode: 60042 })).toBe("KİRİŞÇİ Mah. 3. Sok. No 2 Karaman, Merkez");
+    expect(fullAddress("Moda Cad. 1", null, null)).toBe("Moda Cad. 1");
+    expect(fullAddress("  ", " ", { provinceCode: null, districtCode: null })).toBeNull();
+    // İle ait olmayan ilçe kodu yok sayılır
+    expect(fullAddress("X", null, { provinceCode: 34, districtCode: 60042 })).toBe("X, İstanbul");
+  });
+  it("yol tarifi yalnız adresle harita araması (koordinat yok)", () => {
+    expect(directionsUrl(null)).toBeNull();
+    expect(directionsUrl("Kirişçi Mahallesi, Merkez / Karaman")).toBe(
+      "https://www.google.com/maps/search/?api=1&query=Kiri%C5%9F%C3%A7i%20Mahallesi%2C%20Merkez%20%2F%20Karaman",
+    );
   });
 });
 
@@ -97,7 +116,7 @@ describe("Salon rehberi (mobil uygulama)", () => {
   it("açılınca il > ilçe > salon listesinde görünür; adres/telefon yalnız izinle", async () => {
     const r = await a.put("/directory/listing").send(on(34, kadikoy.code, { showAddress: true })).expect(200);
     expect(r.body.visible).toBe(true);
-    expect(r.body.preview).toMatchObject({ name: "Rehber A", address: "Moda Cad. 1", phone: null, provinceName: "İstanbul", districtName: "Kadıköy" });
+    expect(r.body.preview).toMatchObject({ name: "Rehber A", address: "Moda Cad. 1, Kadıköy / İstanbul", phone: null, directionsUrl: null, provinceName: "İstanbul", districtName: "Kadıköy" });
     await b.put("/directory/listing").send(on(34, kadikoy.code)).expect(200);
 
     const prov = (await pub("/public/directory/provinces").expect(200)).body;
@@ -108,8 +127,8 @@ describe("Salon rehberi (mobil uygulama)", () => {
     expect(list.total).toBe(2);
     const sa = list.salons.find((s: { slug: string }) => s.slug === A.tenant.slug);
     const sb = list.salons.find((s: { slug: string }) => s.slug === B.tenant.slug);
-    expect(sa).toEqual({ slug: A.tenant.slug, name: "Rehber A", logoUrl: null, address: "Moda Cad. 1", phone: null });
-    expect(sb).toEqual({ slug: B.tenant.slug, name: "Rehber B", logoUrl: null, address: null, phone: null });
+    expect(sa).toEqual({ slug: A.tenant.slug, name: "Rehber A", logoUrl: null, address: "Moda Cad. 1, Kadıköy / İstanbul", phone: null, directionsUrl: null });
+    expect(sb).toEqual({ slug: B.tenant.slug, name: "Rehber B", logoUrl: null, address: null, phone: null, directionsUrl: null });
     // Yanıtta yalnızca açık alanlar: kimlik, e-posta, durum vb. yok
     expect(JSON.stringify(list)).not.toMatch(/tenantId|"id"|email|status|02169999999|Gizli Sok/);
     expect(await su.auditLog.count({ where: { tenantId: A.tenant.id, action: "salon.listing_enabled" } })).toBe(1);
@@ -186,5 +205,42 @@ describe("Salon rehberi (mobil uygulama)", () => {
     await su.tenantPwaSettings.upsert({ where: { tenantId: A.tenant.id }, create: { tenantId: A.tenant.id, logoAssetId: asset.id }, update: { logoAssetId: asset.id } });
     const list = (await pub("/public/directory/provinces/istanbul/kadikoy").expect(200)).body;
     expect(list.salons[0].logoUrl).toBe(`/r/${A.tenant.slug}/marka/${asset.id}`);
+  });
+  it("mahalle: işletme kendi rolüyle kaydeder; salon sayfası ve rehberde tam adres; yol tarifi yalnız açılınca", async () => {
+    await a.patch("/settings").send({ neighborhood: "  Caferağa Mahallesi " }).expect(200);
+    expect((await a.get("/settings").expect(200)).body.neighborhood).toBe("Caferağa Mahallesi");
+    await a.patch("/settings").send({ neighborhood: "x".repeat(81) }).expect(400);
+    const full = "Moda Cad. 1, Caferağa Mahallesi, Kadıköy / İstanbul";
+
+    let salon = (await pub(`/public/salons/${A.tenant.slug}`).expect(200)).body.salon;
+    expect(salon).toMatchObject({ address: full, directionsUrl: null });
+    let view = (await a.get("/directory/listing").expect(200)).body;
+    expect(view).toMatchObject({ salonAddress: full, salonStreet: "Moda Cad. 1", salonNeighborhood: "Caferağa Mahallesi" });
+
+    // Eski panel showDirections göndermese de kayıt çalışır (kapalı sayılır)
+    await a.put("/directory/listing").send(on(34, kadikoy.code, { showAddress: true })).expect(200);
+    await a.put("/directory/listing").send({ ...on(34, kadikoy.code, { showAddress: true }), showDirections: true }).expect(200);
+    salon = (await pub(`/public/salons/${A.tenant.slug}`).expect(200)).body.salon;
+    expect(salon.directionsUrl).toBe(directionsUrl(full));
+    let list = (await pub("/public/directory/provinces/istanbul/kadikoy").expect(200)).body;
+    expect(list.salons[0]).toMatchObject({ address: full, directionsUrl: directionsUrl(full) });
+
+    // Rehberde adres gizliyse yol tarifi de verilmez; salon sayfasında (adres zaten açık) verilir
+    await a.put("/directory/listing").send({ ...on(34, kadikoy.code), showDirections: true }).expect(200);
+    list = (await pub("/public/directory/provinces/istanbul/kadikoy").expect(200)).body;
+    expect(list.salons[0]).toMatchObject({ address: null, directionsUrl: null });
+    expect(JSON.stringify(list)).not.toMatch(/Caferağa|Moda Cad/);
+    expect((await pub(`/public/salons/${A.tenant.slug}`).expect(200)).body.salon.directionsUrl).toBe(directionsUrl(full));
+    view = (await a.get("/directory/listing").expect(200)).body;
+    expect(view.listing.showDirections).toBe(true);
+    const audit = await su.auditLog.findFirst({ where: { tenantId: A.tenant.id, action: "salon.listing_updated" }, orderBy: { createdAt: "desc" } });
+    expect(audit?.metadata).toMatchObject({ after: { showDirections: true } });
+
+    // Mahalle silinebilir; başka işletmenin mahallesini yazamaz (RLS)
+    await a.patch("/settings").send({ neighborhood: "" }).expect(200);
+    expect((await a.get("/settings").expect(200)).body.neighborhood).toBeNull();
+    const prisma = app.get(PrismaService);
+    const n = await prisma.withTenant({ tenantId: B.tenant.id, userId: B.user.id }, (tx) => tx.tenant.updateMany({ where: { id: A.tenant.id }, data: { neighborhood: "Sızma" } }));
+    expect(n.count).toBe(0);
   });
 });

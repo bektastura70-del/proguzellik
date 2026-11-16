@@ -2,6 +2,7 @@
 
 import { NativeDirectoryLink, NativeHomeLink } from "@/components/native-home-link";
 import { CalendarDays, CheckCircle2, Clock, MapPin, Phone } from "lucide-react";
+import { DirectionsLink } from "@/components/directions-link";
 import Link from "next/link";
 import { use, useEffect, useMemo, useState } from "react";
 import { Logo } from "@/components/logo";
@@ -11,7 +12,7 @@ import { addDays, dateTr, isoDay, timeTr, tl } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type Salon = {
-  salon: { name: string; slug: string; phone: string | null; address: string | null };
+  salon: { name: string; slug: string; phone: string | null; address: string | null; directionsUrl?: string | null };
   services: { id: string; name: string; description: string | null; durationMin: number; price: string; category: { name: string } | null }[];
   staff: { id: string; displayName: string; title: string | null; serviceIds: string[] }[];
 };
@@ -118,6 +119,7 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
           <div className="mt-2 flex flex-wrap gap-4 text-sm text-brand-100">
             {data.salon.address && <span className="inline-flex items-center gap-1"><MapPin className="size-4" />{data.salon.address}</span>}
             {data.salon.phone && <span className="inline-flex items-center gap-1"><Phone className="size-4" />{data.salon.phone}</span>}
+            <DirectionsLink url={data.salon.directionsUrl} className="inline-flex items-center gap-1 font-medium text-white underline underline-offset-2" />
           </div>
         </div>
       </header>

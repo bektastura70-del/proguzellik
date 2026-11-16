@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { TenantInfo } from "../common/decorators";
 import { PrismaService } from "../prisma/prisma.service";
+import { directionsUrl, fullAddress } from "./address";
 import { allUnits, districtBySlug, districtIn, provinceByCode, provinceBySlug, sortTr } from "./admin-units";
 
 export interface ListingInput {
@@ -11,6 +12,7 @@ export interface ListingInput {
   districtCode: number | null;
   showAddress: boolean;
   showPhone: boolean;
+  showDirections: boolean;
 }
 
 export const PAGE_SIZE = 50;
@@ -21,6 +23,7 @@ type ListingRow = {
   districtCode: number | null;
   showAddress: boolean;
   showPhone: boolean;
+  showDirections: boolean;
   enabledAt: Date | null;
   blockedAt: Date | null;
   blockedReason: string | null;
@@ -59,7 +62,7 @@ function eligibilityIssues(
 
 function shape(row: ListingRow | null) {
   const r: ListingRow = row ?? {
-    enabled: false, provinceCode: null, districtCode: null, showAddress: false, showPhone: false,
+    enabled: false, provinceCode: null, districtCode: null, showAddress: false, showPhone: false, showDirections: false,
     enabledAt: null, blockedAt: null, blockedReason: null,
   };
   const province = provinceByCode(r.provinceCode);
@@ -72,6 +75,7 @@ function shape(row: ListingRow | null) {
     districtName: district?.name ?? null,
     showAddress: r.showAddress,
     showPhone: r.showPhone,
+    showDirections: r.showDirections,
     enabledAt: r.enabledAt,
     blocked: !!r.blockedAt,
     blockedReason: r.blockedAt ? r.blockedReason : null,
@@ -96,12 +100,13 @@ export class DirectoryService {
     const t = await this.prisma.platform.tenant.findUniqueOrThrow({
       where: { id: ti.tenantId },
       select: {
-        name: true, slug: true, address: true, phone: true, onlineBookingEnabled: true, status: true, trialEndsAt: true,
+        name: true, slug: true, address: true, neighborhood: true, phone: true, onlineBookingEnabled: true, status: true, trialEndsAt: true,
         plan: { select: { features: true } }, pwaSettings: { select: { logoAssetId: true } },
       },
     });
     const listing = shape(row);
     const issues = eligibilityIssues(t, new Date());
+    const address = fullAddress(t.address, t.neighborhood, listing);
     return {
       listing,
       visible: listing.enabled && !listing.blocked && listing.districtName !== null && issues.length === 0,
@@ -110,13 +115,17 @@ export class DirectoryService {
         name: t.name,
         slug: t.slug,
         logoUrl: t.pwaSettings?.logoAssetId ? `/r/${t.slug}/marka/${t.pwaSettings.logoAssetId}` : null,
-        address: listing.showAddress ? t.address : null,
+        address: listing.showAddress ? address : null,
         phone: listing.showPhone ? t.phone : null,
+        /** Salon sayfasında her zaman (adres orada zaten açık), rehberde yalnızca adres de gösteriliyorsa */
+        directionsUrl: listing.showDirections ? directionsUrl(address) : null,
         provinceName: listing.provinceName,
         districtName: listing.districtName,
       },
       /** İşletmenin kendi kayıtlı adres/telefonu (önizleme için; rehberde yalnızca izinle görünür) */
-      salonAddress: t.address,
+      salonAddress: address,
+      salonStreet: t.address,
+      salonNeighborhood: t.neighborhood,
       salonPhone: t.phone,
     };
   }
@@ -142,6 +151,7 @@ export class DirectoryService {
         districtCode: b.districtCode,
         showAddress: b.showAddress,
         showPhone: b.showPhone,
+        showDirections: b.showDirections,
         ...(turningOn ? { enabledById: ti.userId, enabledAt: new Date() } : {}),
       };
       if (before) await tx.salonListing.update({ where: { tenantId: ti.tenantId }, data });
@@ -151,9 +161,9 @@ export class DirectoryService {
         tenantId: ti.tenantId, actorId: ti.userId, ip, action, entity: "SalonListing", entityId: ti.tenantId,
         metadata: {
           before: before
-            ? { enabled: before.enabled, provinceCode: before.provinceCode, districtCode: before.districtCode, showAddress: before.showAddress, showPhone: before.showPhone }
+            ? { enabled: before.enabled, provinceCode: before.provinceCode, districtCode: before.districtCode, showAddress: before.showAddress, showPhone: before.showPhone, showDirections: before.showDirections }
             : null,
-          after: { enabled: b.enabled, provinceCode: b.provinceCode, districtCode: b.districtCode, showAddress: b.showAddress, showPhone: b.showPhone },
+          after: { enabled: b.enabled, provinceCode: b.provinceCode, districtCode: b.districtCode, showAddress: b.showAddress, showPhone: b.showPhone, showDirections: b.showDirections },
         },
       });
     });
@@ -207,20 +217,28 @@ export class DirectoryService {
         select: {
           showAddress: true,
           showPhone: true,
-          tenant: { select: { name: true, slug: true, address: true, phone: true, pwaSettings: { select: { logoAssetId: true } } } },
+          showDirections: true,
+          provinceCode: true,
+          districtCode: true,
+          tenant: { select: { name: true, slug: true, address: true, neighborhood: true, phone: true, pwaSettings: { select: { logoAssetId: true } } } },
         },
         orderBy: { tenant: { name: "asc" } },
         skip: (page - 1) * PAGE_SIZE,
         take: PAGE_SIZE,
       }),
     ]);
-    const salons = rows.map((r) => ({
-      slug: r.tenant.slug,
-      name: r.tenant.name,
-      logoUrl: r.tenant.pwaSettings?.logoAssetId ? `/r/${r.tenant.slug}/marka/${r.tenant.pwaSettings.logoAssetId}` : null,
-      address: r.showAddress ? r.tenant.address : null,
-      phone: r.showPhone ? r.tenant.phone : null,
-    }));
+    const salons = rows.map((r) => {
+      const address = r.showAddress ? fullAddress(r.tenant.address, r.tenant.neighborhood, r) : null;
+      return {
+        slug: r.tenant.slug,
+        name: r.tenant.name,
+        logoUrl: r.tenant.pwaSettings?.logoAssetId ? `/r/${r.tenant.slug}/marka/${r.tenant.pwaSettings.logoAssetId}` : null,
+        address,
+        phone: r.showPhone ? r.tenant.phone : null,
+        // Adres gösterilmiyorsa yol tarifi de verilmez (adres null).
+        directionsUrl: r.showDirections ? directionsUrl(address) : null,
+      };
+    });
     return {
       province: { code: p.code, name: p.name, slug: p.slug },
       district: { code: d.code, name: d.name, slug: d.slug },

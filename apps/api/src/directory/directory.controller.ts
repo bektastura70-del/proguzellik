@@ -12,6 +12,8 @@ const listingSchema = z.object({
   districtCode: z.number().int().positive().nullable(),
   showAddress: z.boolean(),
   showPhone: z.boolean(),
+  // Eski panel sürümü bu alanı göndermez: kapalı sayılır.
+  showDirections: z.boolean().default(false),
 });
 const unitSlug = z.string().regex(/^[a-z0-9-]{1,40}$/);
 const pageSchema = z.object({ sayfa: z.coerce.number().int().min(1).max(1000).optional() });

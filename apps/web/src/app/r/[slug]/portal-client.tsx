@@ -1,6 +1,7 @@
 "use client";
 
 import { CalendarDays, CalendarPlus, CheckCircle2, Clock, LogOut, MapPin, Package, Phone, User } from "lucide-react";
+import { DirectionsLink } from "@/components/directions-link";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Badge, Button, Card, Field, Input, Spinner, Textarea } from "@/components/ui";
@@ -83,8 +84,9 @@ export function PortalClient({ slug, app }: { slug: string; app: AppInfo }) {
         </div>
         {salon && (
           <div className="mx-auto mt-3 flex max-w-2xl flex-wrap gap-x-4 gap-y-1 text-sm text-white/85">
-            {salon.salon.address && <span className="inline-flex min-w-0 items-center gap-1"><MapPin className="size-4 shrink-0" /><span className="truncate">{salon.salon.address}</span></span>}
+            {salon.salon.address && <span className="inline-flex min-w-0 items-start gap-1"><MapPin className="mt-0.5 size-4 shrink-0" /><span className="break-words">{salon.salon.address}</span></span>}
             {salon.salon.phone && <a href={`tel:${salon.salon.phone}`} className="inline-flex items-center gap-1 underline-offset-2 hover:underline"><Phone className="size-4" />{salon.salon.phone}</a>}
+            <DirectionsLink url={salon.salon.directionsUrl} className="inline-flex items-center gap-1 font-medium text-white underline underline-offset-2" />
           </div>
         )}
       </header>

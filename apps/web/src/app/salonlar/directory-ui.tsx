@@ -1,5 +1,6 @@
 import { ChevronRight, MapPin, Phone } from "lucide-react";
 import Link from "next/link";
+import { DirectionsLink } from "@/components/directions-link";
 import { SalonOpenLink } from "@/components/native-home-link";
 import type { DirectorySalon, Unit } from "@/lib/directory";
 
@@ -50,6 +51,7 @@ export function SalonCard({ s }: { s: DirectorySalon }) {
           {s.phone && (
             <p><a href={`tel:${s.phone}`} className="inline-flex min-h-11 items-center gap-1 text-neutral-600 underline-offset-2 hover:underline"><Phone className="size-4" aria-hidden />{s.phone}</a></p>
           )}
+          {s.directionsUrl && <p><DirectionsLink url={s.directionsUrl} className="inline-flex min-h-11 items-center gap-1 font-medium text-brand-700 underline-offset-2 hover:underline" /></p>}
         </div>
       </div>
       <SalonOpenLink salon={{ slug: s.slug, name: s.name, logoUrl: s.logoUrl }} className="mt-3 flex min-h-11 items-center justify-center rounded-xl bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800">

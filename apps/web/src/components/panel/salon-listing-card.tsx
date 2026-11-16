@@ -1,6 +1,6 @@
 "use client";
 
-import { MapPin, Phone } from "lucide-react";
+import { MapPin, Navigation, Phone } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Field, Select, Spinner, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -10,12 +10,15 @@ type Province = Unit & { districts: Unit[] };
 type Listing = {
   listing: {
     enabled: boolean; provinceCode: number | null; districtCode: number | null; provinceName: string | null; districtName: string | null;
-    showAddress: boolean; showPhone: boolean; enabledAt: string | null; blocked: boolean; blockedReason: string | null;
+    showAddress: boolean; showPhone: boolean; showDirections: boolean; enabledAt: string | null; blocked: boolean; blockedReason: string | null;
   };
   visible: boolean;
   issues: string[];
-  preview: { name: string; slug: string; logoUrl: string | null; address: string | null; phone: string | null; provinceName: string | null; districtName: string | null };
+  preview: { name: string; slug: string; logoUrl: string | null; address: string | null; phone: string | null; directionsUrl: string | null; provinceName: string | null; districtName: string | null };
+  /** Tam adres (açık adres + mahalle + ilçe / il) */
   salonAddress: string | null;
+  salonStreet: string | null;
+  salonNeighborhood: string | null;
   salonPhone: string | null;
 };
 
@@ -27,7 +30,7 @@ export function SalonListingCard({ canEdit }: { canEdit: boolean }) {
   const toast = useToast();
   const q = useApi<Listing>("/directory/listing");
   const units = useApi<{ provinces: Province[] }>("/directory/units");
-  const [form, setForm] = useState({ enabled: false, provinceCode: "", districtCode: "", showAddress: false, showPhone: false });
+  const [form, setForm] = useState({ enabled: false, provinceCode: "", districtCode: "", showAddress: false, showPhone: false, showDirections: false });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -40,6 +43,7 @@ export function SalonListingCard({ canEdit }: { canEdit: boolean }) {
       districtCode: l.districtCode ? String(l.districtCode) : "",
       showAddress: l.showAddress,
       showPhone: l.showPhone,
+      showDirections: l.showDirections,
     });
   }, [q.data]);
 
@@ -65,6 +69,7 @@ export function SalonListingCard({ canEdit }: { canEdit: boolean }) {
           districtCode: form.districtCode ? Number(form.districtCode) : null,
           showAddress: form.showAddress,
           showPhone: form.showPhone,
+          showDirections: form.showDirections,
         },
       }));
       toast(form.enabled ? "Rehber ayarı kaydedildi" : "Salonunuz rehberde listelenmiyor");
@@ -122,9 +127,18 @@ export function SalonListingCard({ canEdit }: { canEdit: boolean }) {
               <input type="checkbox" className="size-5" checked={form.showPhone} disabled={!d.salonPhone} onChange={(e) => setForm({ ...form, showPhone: e.target.checked })} />
               Telefonum rehberde görünsün{!d.salonPhone && " (Ayarlar'da telefon girilmemiş)"}
             </label>
+            <label className="flex min-h-11 items-center gap-3 text-sm">
+              <input type="checkbox" className="size-5" checked={form.showDirections} disabled={!d.salonAddress} onChange={(e) => setForm({ ...form, showDirections: e.target.checked })} />
+              Müşteriler &ldquo;Yol tarifi al&rdquo; ile adresime harita uygulamasından gidebilsin (salon sayfasında; rehberde adres de görünüyorsa)
+            </label>
+            {(!d.salonStreet || !d.salonNeighborhood) && (
+              <Alert tone="amber">
+                Adresiniz eksik: {[!d.salonStreet && "açık adres", !d.salonNeighborhood && "mahalle"].filter(Boolean).join(" ve ")} girilmemiş. Ayarlar &gt; İşletme bilgileri bölümünden ekleyin.
+              </Alert>
+            )}
             <p className="text-xs text-neutral-500">
               Rehberde salonunuzun adı, logosu ve randevu sayfanız her zaman görünür; adres ve telefon yalnızca işaretlerseniz görünür.
-              Şahıs işletmelerinde ad, adres ve telefon kişisel veri sayılabilir. Konum bilgisi alınmaz. Askıya alınan, aboneliği biten ya da online
+              Şahıs işletmelerinde ad, adres ve telefon kişisel veri sayılabilir. İl ve ilçe salon sayfanızdaki tam adreste de kullanılır. Yol tarifi, adresinizi müşterinin telefonundaki harita uygulamasında açar; müşteriden konum izni istenmez. Askıya alınan, aboneliği biten ya da online
               randevusu kapalı salonlar rehberde görünmez.
             </p>
             {canEdit && (
@@ -149,6 +163,7 @@ export function SalonListingCard({ canEdit }: { canEdit: boolean }) {
                   <p className="font-semibold">{d.preview.name}</p>
                   {form.showAddress && <ListingLine icon={<MapPin className="size-4 shrink-0" aria-hidden />} text={d.salonAddress ?? ""} />}
                   {form.showPhone && <ListingLine icon={<Phone className="size-4 shrink-0" aria-hidden />} text={d.salonPhone ?? ""} />}
+                  {form.showAddress && form.showDirections && <p className="inline-flex items-center gap-1 text-xs font-medium text-brand-700"><Navigation className="size-3.5" aria-hidden />Yol tarifi al</p>}
                   <p className="text-xs text-brand-700">Randevu al → proguzellik.com/r/{d.preview.slug}</p>
                 </div>
               </div>
