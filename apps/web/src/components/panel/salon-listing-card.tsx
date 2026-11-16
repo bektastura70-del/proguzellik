@@ -81,7 +81,7 @@ export function SalonListingCard({ canEdit }: { canEdit: boolean }) {
     <Card>
       <CardHeader
         title="Pro Güzellik uygulamasında listelensin"
-        description="Salon kodunuzu bilmeyen müşteriler Pro Güzellik uygulamasında şehir ve ilçe seçerek salonunuzu bulabilir. Varsayılan olarak kapalıdır; istediğiniz zaman kapatabilirsiniz."
+        description="Salon kodunuzu bilmeyen müşteriler Pro Güzellik uygulamasında ve proguzellik.com/salonlar sayfasında şehir ve ilçe seçerek salonunuzu bulabilir (arama motorlarında listelenmez). Varsayılan olarak kapalıdır; istediğiniz zaman kapatabilirsiniz."
         action={status}
       />
       <CardBody>
@@ -98,7 +98,7 @@ export function SalonListingCard({ canEdit }: { canEdit: boolean }) {
             {d.issues.length > 0 && form.enabled && d.issues.map((i) => <Alert key={i} tone="amber">{i}</Alert>)}
             <label className="flex min-h-11 items-center gap-3 text-sm font-medium">
               <input type="checkbox" className="size-5" checked={form.enabled} disabled={blocked && !form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-              Salonum uygulamadaki salon rehberinde listelensin
+              Salonum uygulamadaki ve proguzellik.com/salonlar sayfasındaki salon rehberinde listelensin
             </label>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="İl">

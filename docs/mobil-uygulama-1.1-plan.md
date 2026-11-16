@@ -197,7 +197,7 @@ model SalonListing {
 
 | Konu | Etki | Yapılacak |
 |---|---|---|
-| Salon rehberi | Salonun ticari bilgisinin daha geniş yayımı. Şahıs işletmesinde ad/telefon/adres kişisel veri. | Açık, geri alınabilir, alan bazlı izin; önizleme; denetim kaydı; "Kullanım koşulları"na listeleme maddesi (hukukçu yazmalı). Salon sahibinin onay metni (kutucuk metni) hukuki incelemeden geçmeli. |
+| Salon rehberi | Salonun ticari bilgisinin daha geniş yayımı: uygulamada ve herkese açık `proguzellik.com/salonlar` sayfasında (arama motorlarına kapalı, ama bağlantıyı bilen herkes açabilir); onay kutusu metni bunu açıkça söyler. Şahıs işletmesinde ad/telefon/adres kişisel veri. | Açık, geri alınabilir, alan bazlı izin; önizleme; denetim kaydı; "Kullanım koşulları"na listeleme maddesi (hukukçu yazmalı). Salon sahibinin onay metni (kutucuk metni) hukuki incelemeden geçmeli. |
 | Müşteri tarafı | Rehber girişsizdir, müşteri verisi toplamaz; konum yok. | Gizlilik politikasında yeni veri yok. Yalnızca "salon rehberi işletmelerin kendi izniyle yayımladığı bilgilerden oluşur" cümlesi. |
 | Çoklu salon (salon başına kimlik) | Bugünkü model aynen sürer; Pro Güzellik veri işleyen. | Hesap silme ekranında "yalnızca bu salon" açıklaması; `/hesap-silme` sayfasında çoklu salon talimatı. |
 | Tek hesap (K1'de seçilirse) | Pro Güzellik salonlar arası profil için veri sorumlusu olur. | Aydınlatma metni, VERBİS değerlendirmesi, açık rıza gerekip gerekmediği hukukçuya sorulmalı. 1.1 kapsamı dışında önerilir. |
@@ -316,6 +316,7 @@ taslak, hukukçu okumalı.
 (81 il, 973 ilçe; sayfanın kendi sayımı 922 ilçe + 51 merkez ilçe). Bakanlık kodları saklanır (il kodu = plaka).
 `apps/api/src/directory/tr-admin-units.ts` üretilmiş dosyadır; yeniden üretmek için `apps/api/scripts/admin-units/`
 (`fetch.py` il başına bir istek atar, `generate.py` TS dosyasını yazar). Elle eklenen ya da düzeltilen kayıt yok.
+Kaynak sitenin kullanım şartları ayrıca incelenmedi (kamu idari birim adları ve kodları); yayından önce bakılması önerilir.
 
 **Veritabanı:** `20261116120000_salon_listing` (yalnızca yeni tablo `SalonListing`; mevcut tablolara dokunmaz).
 RLS + sütun yetkileri: işletme kendi satırını yazar ama `blockedAt/blockedReason` yazamaz, silemez; platform rolü
