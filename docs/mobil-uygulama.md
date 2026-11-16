@@ -324,7 +324,11 @@ Apple ve Google inceleyicileri e-posta kodu alamaz, bu yüzden çalışan bir gi
    - Doğrulama adresleri: `https://proguzellik.com/.well-known/assetlinks.json` ve `/.well-known/apple-app-site-association`.
 3. **Demo salon ve inceleme hesabı** (bölüm 6.3). **Yapıldı**, aynı betikle.
 
-## 8. Sonraki sürüm (2. aşama)
+## 8. Sürüm 1.1 (salon rehberi, Salonlarım, QR)
+
+Ayrıntı ve durum: `docs/mobil-uygulama-1.1-plan.md` (bölüm 9). Kod `feat/salon-rehberi` dalında, canlıda değil.
+
+## 8.1 Sonraki sürüm (2. aşama)
 
 - **Sunucudan anlık bildirim** (FCM/APNs): randevu onayı ve iptali uygulamaya bildirim olarak gelir. Gerekenler:
   - Firebase projesi ve APNs anahtarı (sizin hesaplarınız).

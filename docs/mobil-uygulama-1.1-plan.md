@@ -1,6 +1,8 @@
 # Pro Güzellik mobil uygulaması 1.1 planı (salon seçimi, salon bulma, QR)
 
-Durum (16.11.2026): **yalnızca plan.** Kod yazılmadı, sunucuda ve mağazada hiçbir şey değişmedi.
+Durum (16.11.2026): **kod yerelde yazıldı ve test edildi** (`feat/salon-rehberi` dalı, canlıdaki 7 gün deneme sürümünün
+üstünde). Canlıya alınmadı, migration hiçbir paylaşılan veritabanında çalıştırılmadı, mağazaya bir şey gönderilmedi.
+Uygulama özeti bölüm 9'da.
 Temel: `feat/mobil-uygulama` dalı (605e80d), 1.0.0 Google Play incelemesinde, iOS henüz gönderilmedi.
 
 İstenen üç konu:
@@ -300,3 +302,60 @@ Toplam: yaklaşık **8-9 iş günü** (yerel QR eklentisiyle 9-10). Bunun yakla�
 - Mevcut portal testlerinin (`portal`, `rls`, `demo-salon`) bu dalda yeşil olduğu.
 - İl/ilçe resmî kaynağının erişimi ve kullanım şartları.
 - Capacitor `Preferences` eklentisinin yerel ve site kökeni arasında çalıştığı (küçük bir deneme).
+
+---
+
+## 9. Uygulama durumu (16.11.2026, yerel)
+
+Kararlar (kullanıcı ayrıca yanıt vermediği için plandaki öneriler uygulandı): K1 salon başına hesap, K2 salon kendisi
+açar / SaaS sahibi çıkarır, K3 mevcut WebView QR (gerçek cihaz testi bekliyor), K4 ad+logo her zaman, adres/telefon ayrı
+izinle, `/salonlar` noindex, K5 demo salon panelden listelenecek (aşağıda), K6 iOS ilk gönderim 1.1.0, K7 onay metni
+taslak, hukukçu okumalı.
+
+**İl/ilçe verisi:** T.C. İçişleri Bakanlığı e-İçişleri "Mülki İdare Bölümleri" sayfasından 16.11.2026'da okundu
+(81 il, 973 ilçe; sayfanın kendi sayımı 922 ilçe + 51 merkez ilçe). Bakanlık kodları saklanır (il kodu = plaka).
+`apps/api/src/directory/tr-admin-units.ts` üretilmiş dosyadır; yeniden üretmek için `apps/api/scripts/admin-units/`
+(`fetch.py` il başına bir istek atar, `generate.py` TS dosyasını yazar). Elle eklenen ya da düzeltilen kayıt yok.
+
+**Veritabanı:** `20261116120000_salon_listing` (yalnızca yeni tablo `SalonListing`; mevcut tablolara dokunmaz).
+RLS + sütun yetkileri: işletme kendi satırını yazar ama `blockedAt/blockedReason` yazamaz, silemez; platform rolü
+yalnızca bu iki alanı günceller. CHECK: açık kayıt il ve ilçe ister. Geri dönüşte eski sürüm tabloyu okumaz.
+
+**API** (`apps/api/src/directory/`):
+- `GET /directory/units`, `GET /directory/listing` (sahip, yönetici), `PUT /directory/listing` (yalnız sahip; denetim
+  kaydı `salon.listing_enabled|disabled|updated`).
+- `GET /public/directory/provinces`, `/provinces/:il`, `/provinces/:il/:ilce?sayfa=` (girişsiz, IP başına dakikada
+  120, sayfa 50, yalnızca ad/kod/logo ve izin verilen adres/telefon).
+- Görünürlük: açık + engelli değil + online randevu açık + plan ONLINE_BOOKING + ACTIVE ya da süresi bitmemiş TRIAL
+  (salon sayfası `/r/<kod>` ile aynı kural).
+- `GET /platform/directory`, `POST /platform/directory/:id/block|unblock` (neden zorunlu, denetim kaydı).
+
+**Web:** Ayarlar > "Pro Güzellik uygulamasında listelensin" kartı (önizleme, il/ilçe seçimi, adres/telefon kutucukları;
+yönetici görür, yalnız sahip değiştirir). `/salonlar` > il > ilçe > salon kartları (Randevu al), boş durum, sayfalama,
+`noindex`. Platform paneli > "Salon rehberi". Salon sayfasında (yalnız uygulamada) "Salon bul" bağlantısı. Hesap silme
+kartında "yalnızca bu salon" açıklaması.
+
+**Uygulama (`mobile/`, mağaza sürümü gerektirir):** başlangıç ekranında "Şehir ve ilçeye göre salon bul"; "Salonlarım"
+(ad + logo, ilk satır "Son salonum", × ile cihazdan kaldırma); rehberden açılan salon yerel ekran üzerinden açılır, böylece
+listeye eklenir ve sonraki açılışta o salon gelir; "Salon değiştir" salon adını/logosunu yerel ekrana taşır (yalnızca
+o salonun `/r/<kod>/marka/<id>` adresi kabul edilir). QR: her 4 karede bir ters renkli QR denemesi, Pro Güzellik'e ait
+olmayan QR için uyarı, uygulama arka plana geçince kamera kapanır, izin reddi için Ayarlar yönlendirmesi.
+Sayfa güvenlik politikası logolar için yalnızca site kökenine izin verir (derlemede yazılır).
+
+**Testler (yerel):** API rehber testleri 12/12; ilgili takımlar (portal, rls, pwa-branding, demo-salon,
+public-booking, platform-tenants) 89/89. Mobil 9/9. Web tip denetimi ve üretim derlemesi temiz. Tarayıcıda (telefon
+boyutu) denendi: panel kartı kaydetme ve önizleme, `/salonlar` il/ilçe/salon sayfaları, başlangıç ekranı Salonlarım,
+kaldırma, rehbere geçiş. **Denenmedi:** gerçek telefonda uygulama içi akışlar ve QR (Capacitor köprüsü tarayıcıda yok).
+
+**Paralel çalışma notu:** testler artık `PG_TEST_DB=proguzellik_test_<ad>` ile ayrı veritabanında çalıştırılabilir;
+başka bir klasörde aynı anda test koşan iş (Instagram) ortak `proguzellik_test` veritabanını sıfırlıyordu.
+
+### Canlıya alma (her adım ayrı onayla)
+1. Sunucu yedeği + geri yükleme doğrulaması, ardından web+API yeni sürüm ve `20261116120000_salon_listing`
+   migration'ı (yalnızca ekleme). Duman testi: `/salonlar` 200 ve noindex, `/public/directory/provinces` boş liste,
+   mevcut `/r/demo-salon` çalışıyor.
+2. Demo salonun panelinden il/ilçe seçip listelemeyi açmak (inceleme ekibi rehberde bir salon görsün). Hangi il/ilçe
+   seçileceği sizin kararınız; demo salonun gerçek adresi yok.
+3. Mobil 1.1.0: `node scripts/set-version.mjs 1.1.0 && npm run sync`, Android imzalı `.aab` → Play dahili test →
+   gerçek telefonda QR ve rehber denemesi → üretim; iOS için Apple hesabı hazır olunca doğrudan 1.1.0. 1.0.0 Play onayı
+   gelmeden 1.1 gönderilmez.
