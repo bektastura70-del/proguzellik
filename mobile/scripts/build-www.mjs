@@ -19,6 +19,9 @@ rmSync(www, { recursive: true, force: true });
 mkdirSync(www, { recursive: true });
 cpSync(join(root, "src"), www, { recursive: true });
 cpSync(join(root, "node_modules/jsqr/dist/jsQR.js"), join(www, "jsQR.js"));
+// Son salonlar listesindeki logolar yalnızca Pro Güzellik alan adından yüklenebilir (sayfa güvenlik politikası).
+const indexPath = join(www, "index.html");
+writeFileSync(indexPath, readFileSync(indexPath, "utf8").replace("__PG_BASE__", url.origin));
 writeFileSync(join(www, "config.js"), `window.PG_CONFIG = ${JSON.stringify({ base, version: pkg.version })};\n`);
 
 // Gezinme izni ana bilgisayar adıyla eşleşir; köprü (yerel eklentiler) ise köken listesine göre eklenir:

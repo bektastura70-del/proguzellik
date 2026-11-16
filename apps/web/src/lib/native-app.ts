@@ -31,11 +31,39 @@ export function isNativeApp() {
   return isNativeUa(navigator.userAgent);
 }
 
-/** Uygulamanın yerel giriş ekranı (salon değiştir / işletme girişi). */
-export function nativeHomeUrl(): string | null {
+function nativeIndex(c: CapBridge) {
+  return c.getPlatform?.() === "ios" ? "capacitor://localhost/index.html" : "https://localhost/index.html";
+}
+
+export type SalonMeta = { slug: string; name?: string | null; logoUrl?: string | null };
+
+function metaParams(q: URLSearchParams, meta?: SalonMeta) {
+  if (!meta) return;
+  q.set("salon", meta.slug);
+  if (meta.name) q.set("ad", meta.name.slice(0, 80));
+  if (meta.logoUrl) q.set("logo", meta.logoUrl);
+}
+
+/**
+ * Uygulamanın yerel giriş ekranı (salon değiştir / işletme girişi). Salon bilgisi verilirse giriş ekranındaki
+ * "Salonlarım" listesinde kod yerine salonun adı ve logosu görünür (bilgi yalnızca cihazda tutulur).
+ */
+export function nativeHomeUrl(meta?: SalonMeta): string | null {
   const c = cap();
   if (!c) return null;
-  return c.getPlatform?.() === "ios" ? "capacitor://localhost/index.html?home=1" : "https://localhost/index.html?home=1";
+  const q = new URLSearchParams({ home: "1" });
+  metaParams(q, meta);
+  return `${nativeIndex(c)}?${q}`;
+}
+
+/** Salonu yerel ekran üzerinden açar: "Salonlarım"a eklenir ve uygulama bir sonraki açılışta bu salona gider. */
+export function nativeOpenSalonUrl(meta: SalonMeta): string | null {
+  const c = cap();
+  if (!c) return null;
+  const q = new URLSearchParams({ open: `/r/${meta.slug}` });
+  if (meta.name) q.set("ad", meta.name.slice(0, 80));
+  if (meta.logoUrl) q.set("logo", meta.logoUrl);
+  return `${nativeIndex(c)}?${q}`;
 }
 
 export type ReminderPermission = "granted" | "denied" | "prompt" | "unavailable";

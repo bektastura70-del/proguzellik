@@ -1,5 +1,6 @@
 import { ChevronRight, MapPin, Phone } from "lucide-react";
 import Link from "next/link";
+import { SalonOpenLink } from "@/components/native-home-link";
 import type { DirectorySalon, Unit } from "@/lib/directory";
 
 export function Crumbs({ items }: { items: { href?: string; label: string }[] }) {
@@ -51,9 +52,9 @@ export function SalonCard({ s }: { s: DirectorySalon }) {
           )}
         </div>
       </div>
-      <Link href={`/r/${s.slug}`} className="mt-3 flex min-h-11 items-center justify-center rounded-xl bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800">
+      <SalonOpenLink salon={{ slug: s.slug, name: s.name, logoUrl: s.logoUrl }} className="mt-3 flex min-h-11 items-center justify-center rounded-xl bg-brand-700 px-4 text-sm font-medium text-white hover:bg-brand-800">
         Randevu al
-      </Link>
+      </SalonOpenLink>
     </li>
   );
 }

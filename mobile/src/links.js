@@ -13,6 +13,7 @@ const ALLOWED_PATHS = [
   /^\/panel(?:\/[A-Za-z0-9._~%-]*)*$/,
   /^\/platform(?:\/[A-Za-z0-9._~%-]*)*$/,
   /^\/(davet|sifremi-unuttum|parola-sifirla|parola-degistir|eposta-dogrula|guvenlik)$/,
+  /^\/salonlar(?:\/[a-z0-9-]+){0,2}$/, // salon rehberi: il > ilçe > salon
 ];
 
 export function isAllowedPath(path) {
@@ -81,9 +82,33 @@ export function deepLinkToPath(link, base) {
   return isAllowedPath(full) ? full : null;
 }
 
-/** Son açılan salonlar listesi: en yeni başta, en çok 6, tekrar yok. */
-export function rememberSalon(list, slug, name, now = Date.now()) {
-  const clean = (Array.isArray(list) ? list : []).filter((s) => s && typeof s.slug === "string" && s.slug !== slug);
-  const prev = (Array.isArray(list) ? list : []).find((s) => s && s.slug === slug);
-  return [{ slug, name: name || prev?.name || null, at: now }, ...clean].slice(0, 6);
+const LOGO_RE = /^\/r\/([a-z0-9-]+)\/marka\/[0-9a-f-]{36}$/;
+
+/**
+ * Siteden gelen salon adı/logosu (yalnızca görüntü için; HTML olarak yazılmaz). Logo yalnızca o salonun
+ * Pro Güzellik'teki marka adresi olabilir; başka her şey yok sayılır.
+ */
+export function cleanSalonMeta(slug, name, logo) {
+  const n = typeof name === "string" ? name.replace(/\s+/g, " ").trim().slice(0, 80) : "";
+  const m = typeof logo === "string" ? LOGO_RE.exec(logo) : null;
+  return { name: n || null, logo: m && m[1] === slug ? logo : null };
+}
+
+/** Son açılan salonlar listesi: en yeni başta, en çok 6, tekrar yok. Ad/logo verilmezse önceki değer korunur. */
+export function rememberSalon(list, slug, name, now = Date.now(), logo = null) {
+  const arr = Array.isArray(list) ? list : [];
+  const clean = arr.filter((s) => s && typeof s.slug === "string" && s.slug !== slug);
+  const prev = arr.find((s) => s && s.slug === slug);
+  return [{ slug, name: name || prev?.name || null, logo: logo || prev?.logo || null, at: now }, ...clean].slice(0, 6);
+}
+
+/** Salonun adını/logosunu günceller ama sırasını değiştirmez (listede yoksa eklemez). */
+export function updateSalonMeta(list, slug, name, logo) {
+  const arr = Array.isArray(list) ? list : [];
+  return arr.map((s) => (s && s.slug === slug ? { ...s, name: name || s.name || null, logo: logo || s.logo || null } : s));
+}
+
+/** Salonu cihazdaki son salonlar listesinden kaldırır (hesap veya oturum silinmez). */
+export function forgetSalon(list, slug) {
+  return (Array.isArray(list) ? list : []).filter((s) => s && s.slug !== slug);
 }

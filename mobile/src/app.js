@@ -1,8 +1,9 @@
-import { deepLinkToPath, isAllowedPath, parseSalonInput, rememberSalon } from "./links.js";
+import { cleanSalonMeta, deepLinkToPath, forgetSalon, isAllowedPath, parseSalonInput, rememberSalon, updateSalonMeta } from "./links.js";
 
 /**
  * Uygulamanın yerel giriş ekranı. Ağ gerektirmez; salon ya da panel seçildikten sonra
  * Pro Güzellik sitesindeki ilgili sayfa uygulamanın içinde açılır (oturum çerezleri cihazda kalır).
+ * Son salonlar ve son açılan yer yalnızca bu cihazda tutulur, sunucuya gönderilmez.
  */
 const BASE = (window.PG_CONFIG && window.PG_CONFIG.base) || "https://proguzellik.com";
 const Cap = window.Capacitor;
@@ -36,27 +37,72 @@ function go(path) {
   location.href = BASE + path;
 }
 
-function openSalon(slug) {
-  write(KEY_RECENT, rememberSalon(read(KEY_RECENT, []), slug, null));
+function openSalon(slug, meta = {}) {
+  write(KEY_RECENT, rememberSalon(read(KEY_RECENT, []), slug, meta.name || null, Date.now(), meta.logo || null));
   write(KEY_LAST, "/r/" + slug);
   go("/r/" + slug);
 }
 
 function renderRecent() {
-  const list = read(KEY_RECENT, []);
+  const list = read(KEY_RECENT, []).filter((s) => s && typeof s.slug === "string");
   const ul = $("recent");
   ul.textContent = "";
   ul.hidden = list.length === 0;
-  for (const s of list) {
+  $("recent-title").hidden = list.length === 0;
+  list.forEach((s, i) => {
     const li = document.createElement("li");
+    li.className = "recent-row";
+
     const b = document.createElement("button");
     b.type = "button";
     b.className = "btn recent-item";
-    b.textContent = s.name || s.slug;
+    const icon = document.createElement("span");
+    icon.className = "recent-logo";
+    icon.setAttribute("aria-hidden", "true");
+    const label = s.name || s.slug;
+    if (s.logo) {
+      const img = document.createElement("img");
+      img.src = BASE + s.logo;
+      img.alt = "";
+      img.addEventListener("error", () => {
+        img.remove();
+        icon.textContent = label.slice(0, 1).toUpperCase();
+      });
+      icon.appendChild(img);
+    } else {
+      icon.textContent = label.slice(0, 1).toUpperCase();
+    }
+    const text = document.createElement("span");
+    text.className = "recent-text";
+    const name = document.createElement("span");
+    name.className = "recent-name";
+    name.textContent = label;
+    text.appendChild(name);
+    if (i === 0) {
+      const tag = document.createElement("span");
+      tag.className = "recent-tag";
+      tag.textContent = "Son salonum";
+      text.appendChild(tag);
+    }
+    b.append(icon, text);
     b.addEventListener("click", () => openSalon(s.slug));
-    li.appendChild(b);
+
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "recent-remove";
+    x.setAttribute("aria-label", `${label} salonunu listeden kaldır`);
+    x.textContent = "×";
+    x.addEventListener("click", () => {
+      const next = forgetSalon(read(KEY_RECENT, []), s.slug);
+      write(KEY_RECENT, next);
+      if (read(KEY_LAST, null) === "/r/" + s.slug) write(KEY_LAST, null);
+      renderRecent();
+      (next.length ? $("recent").querySelector(".recent-item") : $("scan"))?.focus();
+    });
+
+    li.append(b, x);
     ul.appendChild(li);
-  }
+  });
 }
 
 function showError(msg) {
@@ -68,6 +114,10 @@ function showError(msg) {
 /* ---- QR tarama (kamera görüntüsü cihazda işlenir, hiçbir yere gönderilmez) ---- */
 let stream = null;
 let raf = 0;
+let lastRejected = "";
+function scanHint(msg) {
+  $("scan-hint").textContent = msg || "Salonun QR kodunu çerçeveye getirin";
+}
 async function startScan() {
   showError("");
   if (!navigator.mediaDevices?.getUserMedia || typeof window.jsQR !== "function") {
@@ -76,10 +126,17 @@ async function startScan() {
   }
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
-  } catch {
-    showError("Kamera izni verilmedi. Ayarlardan kamera iznini açabilir ya da salon bağlantısını yazabilirsiniz.");
+  } catch (e) {
+    const denied = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
+    showError(
+      denied
+        ? "Kamera izni verilmedi. Telefonunuzun Ayarlar > Pro Güzellik bölümünden kamera iznini açabilir ya da salon bağlantısını yazabilirsiniz."
+        : "Kamera açılamadı. Salon bağlantısını ya da kodunu yazarak açabilirsiniz.",
+    );
     return;
   }
+  lastRejected = "";
+  scanHint("");
   const video = $("video");
   video.srcObject = stream;
   $("scanner").hidden = false;
@@ -88,21 +145,28 @@ async function startScan() {
   await video.play().catch(() => undefined);
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  let frame = 0;
   const tick = () => {
     if (!stream) return;
+    frame++;
     if (video.readyState >= 2 && video.videoWidth) {
       const w = Math.min(640, video.videoWidth);
       const h = Math.round((video.videoHeight / video.videoWidth) * w);
       canvas.width = w;
       canvas.height = h;
       ctx.drawImage(video, 0, 0, w, h);
-      const code = window.jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: "dontInvert" });
+      // Koyu zemin üzerine açık renkli (ters) QR afişleri için her 4 karede bir ters deneme yapılır.
+      const code = window.jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: frame % 4 === 0 ? "attemptBoth" : "dontInvert" });
       if (code && code.data) {
         const slug = parseSalonInput(code.data, BASE);
         if (slug) {
           stopScan();
           openSalon(slug);
           return;
+        }
+        if (code.data !== lastRejected) {
+          lastRejected = code.data;
+          scanHint("Bu QR kodu bir Pro Güzellik salonuna ait değil. Salonun randevu QR kodunu okutun.");
         }
       }
     }
@@ -114,6 +178,7 @@ function stopScan() {
   cancelAnimationFrame(raf);
   if (stream) stream.getTracks().forEach((t) => t.stop());
   stream = null;
+  $("video").srcObject = null;
   $("scanner").hidden = true;
   $("app").removeAttribute("aria-hidden");
   $("scan").focus();
@@ -141,17 +206,28 @@ function init() {
   const open = params.get("open");
   const home = params.has("home") || params.get("open") === "proguzellik://home";
 
-  // Derin bağlantı (yerel kod tarafından ?open= ile verilir) önce gelir.
+  // Salon sayfasından "Salon değiştir" ile dönülürken site salonun adını/logosunu verir (yalnızca listede gösterim için).
+  const metaSlug = params.get("salon");
+  if (metaSlug && /^[a-z0-9-]{1,60}$/.test(metaSlug)) {
+    const meta = cleanSalonMeta(metaSlug, params.get("ad"), params.get("logo"));
+    write(KEY_RECENT, updateSalonMeta(read(KEY_RECENT, []), metaSlug, meta.name, meta.logo));
+  }
+
+  // Derin bağlantı (yerel kod ?open= ile verir; salon rehberi de bu yolla salon açar) önce gelir.
   if (open && !home) {
     const path = isAllowedPath(open) ? open : deepLinkToPath(open, BASE);
     if (path) {
       const m = /^\/r\/([a-z0-9-]+)/.exec(path);
-      if (m) write(KEY_RECENT, rememberSalon(read(KEY_RECENT, []), m[1], null));
+      if (m) {
+        const meta = cleanSalonMeta(m[1], params.get("ad"), params.get("logo"));
+        write(KEY_RECENT, rememberSalon(read(KEY_RECENT, []), m[1], meta.name, Date.now(), meta.logo));
+        write(KEY_LAST, "/r/" + m[1]);
+      }
       go(path);
       return;
     }
   }
-  // Uygulama açılışında son kullanılan yere doğrudan gidilir; "Ana ekran" ile dönüldüyse seçim ekranı gösterilir.
+  // Uygulama açılışında son salona doğrudan gidilir; "Ana ekran" ile dönüldüyse seçim ekranı gösterilir.
   const last = read(KEY_LAST, null);
   if (!home && typeof last === "string" && isAllowedPath(last) && navigator.onLine) {
     go(last);
@@ -164,6 +240,11 @@ function init() {
 
   $("scan").addEventListener("click", startScan);
   $("scan-close").addEventListener("click", stopScan);
+  // Uygulama arka plana geçince kamera hemen kapatılır.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && stream) stopScan();
+  });
+  $("directory").addEventListener("click", () => go("/salonlar"));
   $("slug-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const slug = parseSalonInput($("slug-input").value, BASE);

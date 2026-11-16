@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self'; object-src 'none'; base-uri 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: __PG_BASE__; media-src 'self' blob: mediastream:; connect-src 'self'; object-src 'none'; base-uri 'none'" />
   <title>Pro Güzellik</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -17,8 +17,10 @@
 
     <section class="card" aria-labelledby="musteri-baslik">
       <h2 id="musteri-baslik">Randevu al</h2>
-      <ul id="recent" class="recent" hidden></ul>
+      <h3 id="recent-title" class="sub" hidden>Salonlarım</h3>
+      <ul id="recent" class="recent" aria-labelledby="recent-title" hidden></ul>
       <button id="scan" class="btn primary" type="button">Salonun QR kodunu tara</button>
+      <button id="directory" class="btn mt" type="button">Şehir ve ilçeye göre salon bul</button>
       <form id="slug-form" class="row" novalidate>
         <label for="slug-input" class="sr">Salon bağlantısı veya kodu</label>
         <input id="slug-input" type="text" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false"
@@ -26,7 +28,7 @@
         <button class="btn" type="submit">Aç</button>
       </form>
       <p id="slug-error" class="error" role="alert" hidden></p>
-      <p class="hint">Salon kodunu salonunuzdan, randevu mesajınızdaki bağlantıdan ya da salondaki QR afişinden öğrenebilirsiniz.</p>
+      <p class="hint">Salon kodunu salonunuzdan, randevu mesajınızdaki bağlantıdan ya da salondaki QR afişinden öğrenebilirsiniz. Rehberde yalnızca listelenmeyi açan salonlar görünür; konumunuz kullanılmaz.</p>
     </section>
 
     <section class="card" aria-labelledby="isletme-baslik">
@@ -51,7 +53,7 @@
   <div id="scanner" class="scanner" role="dialog" aria-modal="true" aria-label="QR kod tarama" hidden>
     <video id="video" playsinline muted></video>
     <div class="frame" aria-hidden="true"></div>
-    <p class="scan-hint">Salonun QR kodunu çerçeveye getirin</p>
+    <p id="scan-hint" class="scan-hint" aria-live="polite">Salonun QR kodunu çerçeveye getirin</p>
     <button id="scan-close" class="btn" type="button">Vazgeç</button>
   </div>
 
