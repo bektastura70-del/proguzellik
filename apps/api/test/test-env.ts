@@ -26,4 +26,6 @@ export function applyTestEnv() {
   process.env.WHATSAPP_APP_SECRET = "test-app-secret";
   process.env.WHATSAPP_VERIFY_TOKEN = "test-verify-token";
   process.env.AI_MODE = "mock";
+  // Yerel .env'de PAYMENT_MODE=iyzico (sandbox) olabilir; iyzico testleri sağlayıcıyı kendileri değiştirir.
+  process.env.PAYMENT_MODE = "mock";
 }

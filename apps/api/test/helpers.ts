@@ -19,6 +19,8 @@ export async function resetDb(db: PrismaClient) {
   }
   // Testlerde oluşturulan paketler silinir; seed paketleri (migration ile gelen) kalır.
   await db.plan.deleteMany({ where: { code: { notIn: ["STARTER", "PROFESSIONAL", "SMART"] } } });
+  // Plan tablosu boşaltılmadığı için, yarıda kalan bir test seed paketini gizli/pasif bırakırsa sonraki tüm testler bozulur.
+  await db.plan.updateMany({ where: { code: { in: ["STARTER", "PROFESSIONAL", "SMART"] } }, data: { isActive: true, isPublic: true } });
 }
 
 export const TEST_PASSWORD = "TestParola123";
