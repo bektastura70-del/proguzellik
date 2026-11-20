@@ -27,6 +27,9 @@ export interface IyzicoBillingInput {
   billing: { fullName: string; identityNumber: string; gsmNumber: string; city: string; address: string };
   /** Mesafeli Satış Sözleşmesi ve Teslimat/İade Şartları onayı (sunucuda denetim kaydına yazılır) */
   acceptedTerms: true;
+  /** Otomatik yenileme ve anında ifa (cayma hakkı yok) onayları; denetim kaydına yazılır */
+  acceptedRenewal: true;
+  acceptedInstantPerformance: true;
   termsVersion: string;
 }
 
@@ -42,6 +45,10 @@ export interface WebhookBody {
   iyziReferenceCode?: string;
   iyziEventType?: string;
 }
+
+/** Ödeme sayfasında onaylanan belgeler ve ayrı onaylar (sürüm: web IYZICO_DOCS_DATES). */
+const TERMS_DOCS = ["on-bilgilendirme-formu", "mesafeli-satis-sozlesmesi", "teslimat-ve-iade-sartlari"];
+const TERMS_CONSENTS = ["otomatik_yenileme", "aninda_ifa_cayma_yok"];
 
 /**
  * iyzico Abonelik akışı:
@@ -159,7 +166,7 @@ export class IyzicoBillingService {
     const quote = await this.saleQuote(req.planCode, req.billingCycle);
     if (quote.plan.maxStaff < 1) throw new ConflictException("Bu paket satışta değil");
     const { conversationId, env, result } = await this.openForm({ owner: { purchaseRequestId: req.id }, email: req.email, businessName: req.businessName, quote, cycle: req.billingCycle, billing, callback: "purchase" });
-    await this.audit.logPlatform({ action: "purchase.checkout_started", ip, entity: "PurchaseRequest", entityId: req.id, metadata: { env, plan: quote.plan.code, cycle: req.billingCycle, gross: quote.gross.toFixed(2), conversationId, termsAccepted: { version: termsVersion, at: new Date().toISOString(), docs: ["mesafeli-satis-sozlesmesi", "teslimat-ve-iade-sartlari"] } } });
+    await this.audit.logPlatform({ action: "purchase.checkout_started", ip, entity: "PurchaseRequest", entityId: req.id, metadata: { env, plan: quote.plan.code, cycle: req.billingCycle, gross: quote.gross.toFixed(2), conversationId, termsAccepted: { version: termsVersion, at: new Date().toISOString(), docs: TERMS_DOCS, consents: TERMS_CONSENTS } } });
     return result;
   }
 
@@ -240,7 +247,7 @@ export class IyzicoBillingService {
     }
     const tenant = await db.tenant.findUniqueOrThrow({ where: { id: t.tenantId } });
     const { conversationId, env, result } = await this.openForm({ owner: { tenantId: t.tenantId, userId: t.userId }, email: user.email, businessName: tenant.name, quote, cycle: b.billingCycle, billing: b.billing, callback: "panel" });
-    await this.audit.logPlatform({ tenantId: t.tenantId, actorId: t.userId, action: "iyzico.checkout_started", metadata: { env, plan: plan.code, cycle: b.billingCycle, gross: quote.gross.toFixed(2), conversationId, termsAccepted: { version: b.termsVersion, at: new Date().toISOString(), docs: ["mesafeli-satis-sozlesmesi", "teslimat-ve-iade-sartlari"] } } });
+    await this.audit.logPlatform({ tenantId: t.tenantId, actorId: t.userId, action: "iyzico.checkout_started", metadata: { env, plan: plan.code, cycle: b.billingCycle, gross: quote.gross.toFixed(2), conversationId, termsAccepted: { version: b.termsVersion, at: new Date().toISOString(), docs: TERMS_DOCS, consents: TERMS_CONSENTS } } });
     return result;
   }
 

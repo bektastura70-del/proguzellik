@@ -8,6 +8,7 @@ import { Alert, Button, Field, Input, Spinner } from "@/components/ui";
 import { IYZICO_DOCS_DATES } from "@/content/legal/meta";
 import { mountIyzicoForm } from "@/lib/iyzico-form";
 import { tl } from "@/lib/format";
+import { CONSENT_FIELDS, consentError, PreInfoSummary, PurchaseConsents } from "@/components/purchase-consents";
 
 type Summary = {
   businessName: string; fullName: string; email: string; phone: string;
@@ -82,13 +83,14 @@ function Payment() {
             e.preventDefault();
             const f = new FormData(e.currentTarget);
             setErr(null);
-            if (!f.get("onay")) return setErr("Devam etmek için sözleşmeyi onaylayın");
+            const ce = consentError(f);
+            if (ce) return setErr(ce);
             setBusy(true);
             try {
               const r = await post<{ checkoutFormContent: string }>("purchase/checkout", {
                 token,
                 billing: { fullName: f.get("fullName"), identityNumber: f.get("identityNumber"), gsmNumber: f.get("gsmNumber"), city: f.get("city"), address: f.get("address") },
-                acceptedTerms: true,
+                ...CONSENT_FIELDS,
                 termsVersion: `${IYZICO_DOCS_DATES.version} (${IYZICO_DOCS_DATES.updated})`,
               });
               setForm(r.checkoutFormContent);
@@ -107,13 +109,8 @@ function Payment() {
           <Field label="Cep telefonu"><Input name="gsmNumber" required inputMode="tel" autoComplete="tel" defaultValue={sum.phone.replace(/^\+90/, "0")} /></Field>
           <Field label="Şehir"><Input name="city" required minLength={2} maxLength={50} autoComplete="address-level1" /></Field>
           <Field label="Fatura adresi"><Input name="address" required minLength={5} maxLength={300} autoComplete="street-address" /></Field>
-          <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" name="onay" className="mt-1" />
-            <span>
-              <a className="underline" href="/mesafeli-satis-sozlesmesi" target="_blank">Mesafeli Satış Sözleşmesi</a>&apos;ni ve{" "}
-              <a className="underline" href="/teslimat-ve-iade-sartlari" target="_blank">Teslimat ve İade Şartları</a>&apos;nı okudum, onaylıyorum.
-            </span>
-          </label>
+          <PreInfoSummary planName={sum.plan.name} maxStaff={sum.plan.maxStaff} cycle={sum.billingCycle} net={sum.netAmount} vatRate={sum.vatRate} gross={sum.grossAmount} />
+          <PurchaseConsents cycle={sum.billingCycle} gross={sum.grossAmount} />
           <Button className="w-full" size="lg" disabled={busy}>{busy ? "Hazırlanıyor…" : `Kart ile öde (${tl(sum.grossAmount)})`}</Button>
           <p className="text-xs text-neutral-500">Kart bilgileriniz yalnız iyzico&apos;nun güvenli ödeme formunda girilir; ProGüzellik kart bilgisi görmez ve saklamaz.</p>
         </form>

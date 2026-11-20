@@ -52,6 +52,10 @@ export function PricingCards({ plans, purchase = false }: { plans: SitePlan[]; v
           </article>
         ))}
       </div>
+      <p className="mt-6 text-center text-sm text-neutral-600" data-testid="yearly-refund-note">
+        Yıllık paketlerde, dönem başladıktan sonraki 14 gün içinde iptal ederseniz ödediğiniz bedelin tamamı iade edilir. Ayrıntılar:{" "}
+        <Link className="underline" href="/teslimat-ve-iade-sartlari">Teslimat ve İade Şartları</Link>.
+      </p>
     </>
   );
 }

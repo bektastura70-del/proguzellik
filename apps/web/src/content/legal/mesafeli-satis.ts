@@ -1,9 +1,5 @@
-// Claude taslağı, 07.11.2026. Bektaş Tura aynı gün hukukçu incelemesi beklemeden uyarısız yayına onay verdi;
-// hukukçu incelemesi hâlâ önerilir.
-// Diğer hukuki metinlerden farklı olarak bu metin Bektaş Tura'nın belgesinden gelmez; yalnızca onaylı
-// Kullanım Koşulları (md. 1-5), Faturalandırma ve Hesap Kapatma politikalarındaki hükümlere dayanır.
-// Hukukçuya açık sorular: tacir alıcılar için cayma hakkı, yetkili mahkeme ve icra daireleri,
-// ayrı bir Ön Bilgilendirme Formu gerekip gerekmediği. Bunlar metne bilerek yazılmamıştır.
+// Metin: Claude taslağı (07.11.2026), 20.11.2026 sürümü Bektaş Tura'nın avukatı tarafından görülüp onaylandı
+// (Bektaş Tura, 20.11.2026). Yıllık iade: seçenek C (dönem başından itibaren 14 gün tam iade). Cayma: anında ifa onayı.
 export const DISTANCE_SALES_TITLE = "Mesafeli Satış Sözleşmesi";
 
 export const DISTANCE_SALES_BODY = `## 1. Taraflar
@@ -52,11 +48,13 @@ Aylık abonelikte hizmetin sunulduğu ve kullanıldığı dönemlere ilişkin ü
 
 Hizmetin Pro Güzellik'ten kaynaklanan bir nedenle hiç sunulamaması, esaslı biçimde eksik ifa edilmesi veya mevzuatın iade gerektirdiği diğer hâllerde iade talebi değerlendirilir.
 
-Yıllık aboneliklerin erken iptali ve kullanılmayan dönemlere ilişkin iade koşulları, satın alma öncesinde açıklanan yıllık paket şartlarına göre belirlenir.
+Yıllık abonelik, yıllık dönemin başladığı tarihten (ilk satın alma veya yenileme tarihi) itibaren 14 gün içinde iptal edilirse o dönem için ödenen bedelin tamamı iade edilir. Bu süreden sonra yapılan iptallerde hizmet, ödenmiş dönemin sonuna kadar kullanılmaya devam eder ve kullanılmayan aylar için iade yapılmaz. Aylık aboneliklerde kullanılmayan günler için iade yapılmaz.
 
 ## 8. Cayma Hakkı
 
-Tüketici sıfatına sahip kullanıcılara kanunen tanınan cayma hakları ve diğer zorunlu haklar saklıdır.
+Hizmet, ödeme onaylandığı anda elektronik ortamda kullanıma açılır ve anında ifa edilir. Alıcı, ödeme sayfasında hizmetin cayma süresi dolmadan hemen başlamasına açıkça onay verir; bu nedenle Mesafeli Sözleşmeler Yönetmeliği uyarınca cayma hakkı kullanılamaz. Bu hüküm, yukarıdaki iptal ve yıllık abonelik iade koşullarını kısıtlamaz.
+
+Tüketici sıfatına sahip kullanıcılara kanunen tanınan diğer zorunlu haklar saklıdır.
 
 ## 9. Fiyat Değişiklikleri
 
@@ -70,5 +68,5 @@ Sözleşme sona erdiğinde verilerin teslimi ve silinmesi, [Hesap Kapatma, Veri 
 
 Bu sözleşmede düzenlenmeyen konularda [Kullanım Koşulları ve Abonelik Sözleşmesi](/kullanim-kosullari) uygulanır. Hükümler arasında farklılık olması hâlinde Kullanım Koşulları ve Abonelik Sözleşmesi esas alınır.
 
-Alıcı, satın alma işlemini tamamlamadan önce bu sözleşmeyi okuduğunu ve elektronik ortamda onayladığını kabul eder.
+Alıcı, satın alma işlemini tamamlamadan önce [Ön Bilgilendirme Formu](/on-bilgilendirme-formu)'nu ve bu sözleşmeyi okuduğunu, otomatik yenilemeye ve hizmetin hemen başlamasına onay verdiğini ve bunları elektronik ortamda onayladığını kabul eder.
 `;

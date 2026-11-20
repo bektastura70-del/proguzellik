@@ -21,6 +21,7 @@ const PAGES = [
   ["/sorumluluk-sinirlari", /Sorumluluk Sınırları ve Hizmet Güvenceleri/],
   ["/mesafeli-satis-sozlesmesi", /Mesafeli Satış Sözleşmesi/],
   ["/teslimat-ve-iade-sartlari", /Teslimat ve İade Şartları/],
+  ["/on-bilgilendirme-formu", /Ön Bilgilendirme Formu/],
 ] as const;
 
 test.describe("Tanıtım sitesi", () => {
@@ -112,14 +113,14 @@ test.describe("Tanıtım sitesi", () => {
   });
 
   test("iyzico kriterleri: mesafeli satış ve teslimat/iade sayfaları, footer'da ödeme logoları", async ({ page }) => {
-    for (const path of ["/mesafeli-satis-sozlesmesi", "/teslimat-ve-iade-sartlari"]) {
+    for (const path of ["/mesafeli-satis-sozlesmesi", "/teslimat-ve-iade-sartlari", "/on-bilgilendirme-formu"]) {
       await page.goto(path);
       const main = page.locator("main");
       await expect(main, path).not.toContainText(/\[[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜa-zçğıöşü ]{3,}\]/);
       await expect(main, path).not.toContainText(/Yayın öncesi not|sözleşme taslağıdır|Bu metin bir şablondur/);
       const imprint = page.getByTestId("legal-imprint");
       await expect(imprint).toContainText("BEKTAŞ TURA REKLAM MEDYA VE BİLGİ TEKNOLOJİLERİ LİMİTED ŞİRKETİ");
-      await expect(imprint).toContainText(/Yürürlük Tarihi\s*07\.11\.2026/);
+      await expect(imprint).toContainText(/Yürürlük Tarihi\s*20\.11\.2026/);
       await expect(imprint).toContainText("MERSİS Numarası");
       const logos = page.getByTestId("payment-logos");
       await expect(logos).toBeVisible();
@@ -147,12 +148,14 @@ test.describe("Tanıtım sitesi", () => {
       await expect(imprint).toContainText("BEKTAŞ TURA REKLAM MEDYA VE BİLGİ TEKNOLOJİLERİ LİMİTED ŞİRKETİ");
       await expect(imprint).toContainText("info@proguzellik.com");
       await expect(imprint).toContainText(/Yürürlük Tarihi\s*04\.11\.2026/);
-      await expect(imprint).toContainText(/Son Güncelleme Tarihi\s*04\.11\.2026/);
-      await expect(imprint).toContainText(/Belge Sürümü\s*1\.0/);
+      await expect(imprint).toContainText(/Son Güncelleme Tarihi\s*20\.11\.2026/);
+      await expect(imprint).toContainText(/Belge Sürümü\s*1\.1/);
       if (site.company.address) await expect(imprint).toContainText("Şirket Adresi");
     }
     await page.goto("/kvkk");
-    await expect(page.getByRole("table").first()).toContainText("Anthropic");
+    await expect(page.getByRole("table").first()).toContainText("OpenAI");
+    await expect(page.getByRole("table").first()).toContainText("iyzico");
+    await expect(page.locator("main")).not.toContainText("Anthropic");
     // Deneme başvurusu notu: kodda uygulanan saklama süreleriyle aynı (48 saat / 30 gün)
     await expect(page.getByTestId("legal-note")).toContainText("Ücretsiz deneme başvuruları");
     await expect(page.getByTestId("legal-note")).toContainText("48 saat");
@@ -163,7 +166,8 @@ test.describe("Tanıtım sitesi", () => {
     await page.goto("/gizlilik");
     await expect(page).toHaveURL(/\/gizlilik-politikasi$/);
     await expect(page.getByRole("heading", { name: "5. Üçüncü Taraf Hizmet Sağlayıcıları" })).toBeVisible();
-    await expect(page.getByTestId("legal-note")).toContainText("Anthropic");
+    await expect(page.getByTestId("legal-note")).toContainText("OpenAI");
+    await expect(page.locator("main")).not.toContainText("Anthropic");
     await page.goto("/cerez-politikasi");
     await expect(page.getByRole("heading", { name: "3.1. Kesinlikle Gerekli Çerezler" })).toBeVisible();
     await expect(page.getByRole("link", { name: "info@proguzellik.com" }).first()).toHaveAttribute("href", "mailto:info@proguzellik.com");

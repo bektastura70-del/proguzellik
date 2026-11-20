@@ -23,7 +23,9 @@ export const iyzicoCheckoutSchema = z.object({
     city: z.string().trim().min(2).max(50),
     address: z.string().trim().min(5).max(300),
   }),
-  acceptedTerms: z.literal(true, { error: "Mesafeli Satış Sözleşmesi ve Teslimat ve İade Şartları onaylanmalı" }),
+  acceptedTerms: z.literal(true, { error: "Ön Bilgilendirme Formu, Mesafeli Satış Sözleşmesi ve Teslimat ve İade Şartları onaylanmalı" }),
+  acceptedRenewal: z.literal(true, { error: "Otomatik yenilemeye onay verilmeli" }),
+  acceptedInstantPerformance: z.literal(true, { error: "Hizmetin hemen başlamasına (cayma hakkı bulunmadığına) onay verilmeli" }),
   termsVersion: z.string().trim().min(1).max(40),
 });
 

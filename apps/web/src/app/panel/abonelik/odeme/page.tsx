@@ -8,6 +8,7 @@ import { api, useApi } from "@/lib/api";
 import { tl } from "@/lib/format";
 import { IYZICO_DOCS_DATES } from "@/content/legal/meta";
 import { mountIyzicoForm } from "@/lib/iyzico-form";
+import { CONSENT_FIELDS, consentError, PreInfoSummary, PurchaseConsents } from "@/components/purchase-consents";
 
 type Plan = { code: string; name: string; maxStaff: number; monthlyPrice: string | null; yearlyPrice: string | null; vatRate: string | null };
 type Sub = { onlinePayment: boolean; checkoutKind?: "iyzico" | "token" };
@@ -71,7 +72,8 @@ function PaymentInner() {
                   e.preventDefault();
                   const f = new FormData(e.currentTarget);
                   setErr(null);
-                  if (!f.get("onay")) return setErr("Devam etmek için sözleşmeyi onaylayın");
+                  const ce = consentError(f);
+                  if (ce) return setErr(ce);
                   setBusy(true);
                   try {
                     const r = await api<Started>("/subscription/iyzico/checkout", {
@@ -80,7 +82,7 @@ function PaymentInner() {
                         planCode: plan.code,
                         billingCycle: cycle,
                         billing: { fullName: f.get("fullName"), identityNumber: f.get("identityNumber"), gsmNumber: f.get("gsmNumber"), city: f.get("city"), address: f.get("address") },
-                        acceptedTerms: true,
+                        ...CONSENT_FIELDS,
                         termsVersion: `${IYZICO_DOCS_DATES.version} (${IYZICO_DOCS_DATES.updated})`,
                       },
                     });
@@ -98,13 +100,8 @@ function PaymentInner() {
                 <Field label="Cep telefonu"><Input name="gsmNumber" required inputMode="tel" placeholder="05xx xxx xx xx" autoComplete="tel" /></Field>
                 <Field label="Şehir"><Input name="city" required minLength={2} maxLength={50} autoComplete="address-level1" /></Field>
                 <Field label="Fatura adresi"><Input name="address" required minLength={5} maxLength={300} autoComplete="street-address" /></Field>
-                <label className="flex items-start gap-2 text-sm">
-                  <input type="checkbox" name="onay" className="mt-1" />
-                  <span>
-                    <a className="underline" href="/mesafeli-satis-sozlesmesi" target="_blank">Mesafeli Satış Sözleşmesi</a>&apos;ni ve{" "}
-                    <a className="underline" href="/teslimat-ve-iade-sartlari" target="_blank">Teslimat ve İade Şartları</a>&apos;nı okudum, onaylıyorum.
-                  </span>
-                </label>
+                <PreInfoSummary planName={plan.name} maxStaff={plan.maxStaff} cycle={cycle} net={net} vatRate={vat} gross={gross} />
+                <PurchaseConsents cycle={cycle} gross={gross} />
                 <Button className="w-full" disabled={busy}>{busy ? "Hazırlanıyor…" : `Kart ile öde (${tl(gross)})`}</Button>
               </form>
             ) : (

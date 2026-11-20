@@ -24,7 +24,7 @@ const requestSchema = z.object({
   elapsedMs: z.number().int().min(0).max(86_400_000).optional(),
 });
 const tokenSchema = z.object({ token: z.string().min(20).max(200) });
-const checkoutSchema = iyzicoCheckoutSchema.pick({ billing: true, acceptedTerms: true, termsVersion: true }).extend({ token: z.string().min(20).max(200) });
+const checkoutSchema = iyzicoCheckoutSchema.pick({ billing: true, acceptedTerms: true, acceptedRenewal: true, acceptedInstantPerformance: true, termsVersion: true }).extend({ token: z.string().min(20).max(200) });
 
 const meta = (req: Request) => ({ ip: req.ip, userAgent: req.headers["user-agent"] });
 

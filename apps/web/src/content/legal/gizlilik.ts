@@ -78,11 +78,13 @@ Hostinger: Uygulama barındırma, sunucu altyapısı, veritabanı ve e-posta hiz
 
 Google Drive: Şifreli sunucu dışı yedekleme altyapısı. Gerçek müşteri verilerinin Google Drive'a aktarılması, gerekli hukuki değerlendirme ve aktarım şartlarının tamamlanmasına bağlıdır.
 
-Meta Platforms: WhatsApp ve Instagram iletişim entegrasyonları etkinleştirildiğinde kullanılabilecek üçüncü taraf hizmet sağlayıcısıdır.
+iyzico: Abonelik ödemelerinin alınması ve yenileme tahsilatları için kullanılan lisanslı ödeme kuruluşudur. Kart bilgileri doğrudan iyzico'ya girilir; Pro Güzellik kart bilgisini saklamaz.
 
-Anthropic: Yapay zekâ destekli müşteri iletişimi ve otomasyon özellikleri etkinleştirildiğinde kullanılabilecek yapay zekâ hizmet sağlayıcısıdır.
+Meta Platforms: İşletme kendi WhatsApp Business veya Instagram hesabını bağladığında, müşterileriyle yazışmaların iletilmesi için kullanılan hizmet sağlayıcısıdır.
 
-Meta ve Anthropic entegrasyonları, tüm kullanıcılar için mevcut ve etkin hizmetler olarak değerlendirilmemelidir.
+OpenAI: İşletme yapay zekâ yanıtı özelliğini açtığında, gelen mesajlara yanıt ve randevu önerisi üretmek için kullanılan yapay zekâ hizmet sağlayıcısıdır.
+
+Meta ve OpenAI yalnız ilgili özelliği açan işletmeler için kullanılır. Bu özellikleri açmayan işletmelerin verileri bu sağlayıcılara iletilmez.
 
 Her sağlayıcıyla veri paylaşımı, ilgili özelliğin etkinleştirilmesi, işleme amacı, hukuki şartlar ve gerekli güvenlik tedbirleri çerçevesinde gerçekleştirilir.
 
@@ -90,7 +92,7 @@ Her sağlayıcıyla veri paylaşımı, ilgili özelliğin etkinleştirilmesi, i�
 
 Pro Güzellik'in mevcut sunucu altyapısı Almanya'daki Frankfurt lokasyonunda barındırılmaktadır.
 
-Kullanılan veya ileride kullanılabilecek bazı hizmet sağlayıcılarının yurt dışında faaliyet göstermesi nedeniyle kişisel verilerin yurt dışında işlenmesi söz konusu olabilir.
+Meta ve OpenAI'nin altyapısı ABD başta olmak üzere yurt dışındadır; bu özellikler açıldığında kişisel veriler yurt dışında işlenir.
 
 Yurt dışına kişisel veri aktarımı, 6698 sayılı Kişisel Verilerin Korunması Kanunu'nun 9. maddesinde öngörülen koşullar ve uygulanabilir güvenceler çerçevesinde gerçekleştirilir.
 

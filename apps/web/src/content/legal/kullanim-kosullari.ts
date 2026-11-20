@@ -54,7 +54,7 @@ Aylık abonelikte hizmetin sunulduğu ve kullanıldığı dönemlere ilişkin ü
 
 Hizmetin Pro Güzellik'ten kaynaklanan bir nedenle hiç sunulamaması, esaslı biçimde eksik ifa edilmesi veya mevzuatın iade gerektirdiği diğer hâllerde iade talebi değerlendirilir.
 
-Yıllık aboneliklerin erken iptali ve kullanılmayan dönemlere ilişkin iade koşulları, satın alma öncesinde açıklanan yıllık paket şartlarına göre belirlenir.
+Yıllık abonelik, yıllık dönemin başladığı tarihten (ilk satın alma veya yenileme tarihi) itibaren 14 gün içinde iptal edilirse o dönem için ödenen bedelin tamamı iade edilir. Bu süreden sonra yapılan iptallerde hizmet, ödenmiş dönemin sonuna kadar kullanılmaya devam eder ve kullanılmayan aylar için iade yapılmaz. Aylık aboneliklerde kullanılmayan günler için iade yapılmaz.
 
 Tüketici sıfatına sahip kullanıcılara kanunen tanınan cayma hakları ve diğer zorunlu haklar saklıdır.
 

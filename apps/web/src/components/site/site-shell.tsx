@@ -88,6 +88,7 @@ export function SiteFooter() {
             <li><Link href="/hesap-kapatma-ve-veri-silme">Hesap Kapatma ve Veri Silme</Link></li>
             <li><Link href="/sorumluluk-sinirlari">Sorumluluk Sınırları</Link></li>
             <li><Link href="/mesafeli-satis-sozlesmesi">Mesafeli Satış Sözleşmesi</Link></li>
+            <li><Link href="/on-bilgilendirme-formu">Ön Bilgilendirme Formu</Link></li>
             <li><Link href="/teslimat-ve-iade-sartlari">Teslimat ve İade Şartları</Link></li>
           </ul>
         </nav>

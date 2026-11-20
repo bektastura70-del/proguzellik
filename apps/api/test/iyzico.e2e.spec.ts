@@ -87,7 +87,7 @@ describe("iyzico Abonelik akışı (sahte iyzico ile)", () => {
   const http = () => request(app.getHttpServer());
   const env = loadEnv() as { IYZICO_SECRET_KEY?: string; IYZICO_MERCHANT_ID?: string };
   const billingInfo = { fullName: "Ayşe Yılmaz", identityNumber: "11111111111", gsmNumber: "0505 000 00 00", city: "Karaman", address: "Merkez Mah. 1. Sok. No:1" };
-  const terms = { acceptedTerms: true, termsVersion: "1.0 (07.11.2026)" };
+  const terms = { acceptedTerms: true, acceptedRenewal: true, acceptedInstantPerformance: true, termsVersion: "1.1 (20.11.2026)" };
 
   beforeAll(async () => {
     await resetDb(su);
@@ -225,9 +225,15 @@ describe("iyzico Abonelik akışı (sahte iyzico ile)", () => {
     const d = api(app, await login(app, "onay@test.local"), D.tenant.id);
     await d.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo }).expect(400);
     await d.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo, acceptedTerms: false, termsVersion: "1.0" }).expect(400);
+    // Otomatik yenileme ve anında ifa (cayma hakkı yok) onayları ayrı ayrı zorunludur
+    await d.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo, ...terms, acceptedRenewal: false }).expect(400);
+    await d.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo, ...terms, acceptedInstantPerformance: undefined }).expect(400);
     await d.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: billingInfo, ...terms }).expect(201);
     const log = await su.auditLog.findFirstOrThrow({ where: { tenantId: D.tenant.id, action: "iyzico.checkout_started" } });
-    expect((log.metadata as { termsAccepted: { version: string } }).termsAccepted.version).toBe("1.0 (07.11.2026)");
+    const accepted = (log.metadata as { termsAccepted: { version: string; docs: string[]; consents: string[] } }).termsAccepted;
+    expect(accepted.version).toBe("1.1 (20.11.2026)");
+    expect(accepted.docs).toContain("on-bilgilendirme-formu");
+    expect(accepted.consents).toEqual(["otomatik_yenileme", "aninda_ifa_cayma_yok"]);
   });
 
   it("dönüş hiç gelmezse: ödenmiş oturum günlük görevde açılır, ödenmemiş eski oturum kapanır", async () => {
@@ -288,7 +294,7 @@ describe("iyzico kapalıyken", () => {
     const app = await createApp((b) => b.overrideProvider(PaymentProvider).useValue(new MockPaymentProvider()));
     try {
       const t = api(app, await login(app, "kapali@test.local"), T.tenant.id);
-      const r = await t.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: { fullName: "Ad Soyad", identityNumber: "11111111111", gsmNumber: "05050000000", city: "Karaman", address: "Adres 12345" }, acceptedTerms: true, termsVersion: "1.0" });
+      const r = await t.post("/subscription/iyzico/checkout").send({ planCode: "PROFESSIONAL", billingCycle: "MONTHLY", billing: { fullName: "Ad Soyad", identityNumber: "11111111111", gsmNumber: "05050000000", city: "Karaman", address: "Adres 12345" }, acceptedTerms: true, acceptedRenewal: true, acceptedInstantPerformance: true, termsVersion: "1.1" });
       expect(r.status).toBe(503);
     } finally {
       await app.close();

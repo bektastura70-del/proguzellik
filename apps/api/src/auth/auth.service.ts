@@ -25,8 +25,8 @@ const VERIFY_HOURS = 48;
 /** Ücretsiz deneme doğrulama bağlantısının geçerlilik süresi (saat) */
 export const SIGNUP_HOURS = 24;
 /** Kayıtta gösterilen metinlerin sürümü: metin değişince güncellenir, onay kaydında saklanır. */
-export const KVKK_NOTICE_VERSION = "/kvkk@2026-11-04";
-export const TERMS_VERSION = "/kullanim-kosullari@2026-11-04";
+export const KVKK_NOTICE_VERSION = "/kvkk@2026-11-20";
+export const TERMS_VERSION = "/kullanim-kosullari@2026-11-20";
 export const MARKETING_VERSION = "kayit-formu-ticari-ileti@2026-10-30";
 
 export interface TrialSignupInput { businessName: string; fullName: string; email: string; password: string; phone: string; planCode?: string; marketingConsent?: boolean }

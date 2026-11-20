@@ -1,7 +1,5 @@
-// Claude taslağı, 07.11.2026. Bektaş Tura aynı gün hukukçu incelemesi beklemeden uyarısız yayına onay verdi;
-// hukukçu incelemesi hâlâ önerilir.
-// Diğer hukuki metinlerden farklı olarak bu metin Bektaş Tura'nın belgesinden gelmez; yalnızca onaylı
-// Kullanım Koşulları (md. 1, 3, 5), Faturalandırma ve Hesap Kapatma politikalarındaki hükümlere dayanır.
+// Metin: Claude taslağı (07.11.2026), 20.11.2026 sürümü Bektaş Tura'nın avukatı tarafından görülüp onaylandı
+// (Bektaş Tura, 20.11.2026). Yıllık iade: seçenek C (dönem başından itibaren 14 gün tam iade). Cayma: anında ifa onayı.
 export const DELIVERY_TITLE = "Teslimat ve İade Şartları";
 
 export const DELIVERY_BODY = `## 1. Hizmetin Niteliği
@@ -36,9 +34,9 @@ Aylık abonelikte hizmetin sunulduğu ve kullanıldığı dönemlere ilişkin ü
 
 Hizmetin Pro Güzellik'ten kaynaklanan bir nedenle hiç sunulamaması, esaslı biçimde eksik ifa edilmesi veya mevzuatın iade gerektirdiği diğer hâllerde iade talebi değerlendirilir.
 
-Yıllık aboneliklerin erken iptali ve kullanılmayan dönemlere ilişkin iade koşulları, satın alma öncesinde açıklanan yıllık paket şartlarına göre belirlenir.
+Yıllık abonelik, yıllık dönemin başladığı tarihten (ilk satın alma veya yenileme tarihi) itibaren 14 gün içinde iptal edilirse o dönem için ödenen bedelin tamamı iade edilir. Bu süreden sonra yapılan iptallerde hizmet, ödenmiş dönemin sonuna kadar kullanılmaya devam eder ve kullanılmayan aylar için iade yapılmaz. Aylık aboneliklerde kullanılmayan günler için iade yapılmaz.
 
-Tüketici sıfatına sahip kullanıcılara kanunen tanınan cayma hakları ve diğer zorunlu haklar saklıdır.
+Hizmet ödeme onaylandığı anda anında ifa edildiğinden ve Alıcı hizmetin hemen başlamasına ödeme sayfasında açıkça onay verdiğinden cayma hakkı kullanılamaz; yukarıdaki iptal ve iade koşulları saklıdır. Tüketici sıfatına sahip kullanıcılara kanunen tanınan diğer zorunlu haklar saklıdır.
 
 İade talepleri [info@proguzellik.com](mailto:info@proguzellik.com) adresine iletilebilir. Kabul edilen iadeler, ödemenin yapıldığı yönteme uygun şekilde gerçekleştirilir ve ilgili muhasebe ve e-belge düzenlemeleri uygulanır.
 

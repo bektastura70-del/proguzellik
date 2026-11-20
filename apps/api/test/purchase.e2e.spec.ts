@@ -10,7 +10,7 @@ import { approvePrice, createApp, createTenantWithUser, login, owner, resetDb, T
 import { DAY, FakeIyzico } from "./iyzico-fake";
 
 const billing = { fullName: "Ayşe Yılmaz", identityNumber: "11111111111", gsmNumber: "0505 000 00 00", city: "Karaman", address: "Merkez Mah. 1. Sok. No:1" };
-const terms = { acceptedTerms: true, termsVersion: "1.0 (07.11.2026)" };
+const terms = { acceptedTerms: true, acceptedRenewal: true, acceptedInstantPerformance: true, termsVersion: "1.1 (20.11.2026)" };
 
 describe("Siteden doğrudan paket satın alma (sahte iyzico ile)", () => {
   const su = owner();
@@ -97,6 +97,21 @@ describe("Siteden doğrudan paket satın alma (sahte iyzico ile)", () => {
     expect(await su.user.count({ where: { email: "isil@test.local" } })).toBe(0);
     const row = await su.purchaseRequest.findFirstOrThrow({ where: { email: "isil@test.local" } });
     expect(row.passwordHash).not.toContain(TEST_PASSWORD);
+  });
+
+  it("otomatik yenileme ve anında ifa onayı olmadan ödeme formu açılmaz", async () => {
+    const body = form({ email: "onaysiz@test.local" });
+    const before = fake.checkouts.size;
+    await http().post("/purchase").send(body).expect(202);
+    const token = mailToken("onaysiz@test.local")!;
+    await http().post("/purchase/verify").send({ token }).expect(200);
+    await http().post("/purchase/checkout").send({ token, billing, ...terms, acceptedRenewal: undefined }).expect(400);
+    await http().post("/purchase/checkout").send({ token, billing, ...terms, acceptedInstantPerformance: false }).expect(400);
+    expect(fake.checkouts.size).toBe(before);
+    await http().post("/purchase/checkout").send({ token, billing, ...terms }).expect(200);
+    expect(fake.checkouts.size).toBe(before + 1);
+    const log = await su.auditLog.findFirstOrThrow({ where: { action: "purchase.checkout_started" }, orderBy: { createdAt: "desc" } });
+    expect((log.metadata as { termsAccepted: { consents: string[] } }).termsAccepted.consents).toEqual(["otomatik_yenileme", "aninda_ifa_cayma_yok"]);
   });
 
   it("ödeme başarısız olursa hesap açılmaz; aynı bağlantıyla yeniden denenebilir", async () => {
