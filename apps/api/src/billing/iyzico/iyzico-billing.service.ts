@@ -117,7 +117,13 @@ export class IyzicoBillingService {
   }) {
     const env = this.client.environment!;
     const { plan, price, net, gross } = p.quote;
-    const link = await this.planLink(env, plan, price, p.cycle);
+    // iyzico ürün/plan oluşturamazsa (ör. 100001: Abonelik ürünü hesapta açık değil) kullanıcı 500 yerine anlaşılır mesaj görür.
+    const link = await this.planLink(env, plan, price, p.cycle).catch(async (e: unknown) => {
+      if (!(e instanceof IyzicoError)) throw e;
+      this.logger.error(`iyzico abonelik planı hazırlanamadı (${env}): ${e.message}`);
+      await this.audit.logPlatform({ action: "iyzico.plan_failed", metadata: { env, plan: plan.code, cycle: p.cycle, error: e.message } });
+      throw new BadGatewayException("Ödeme sistemi şu an abonelik başlatamıyor. Kartınızdan ücret alınmadı; lütfen daha sonra tekrar deneyin veya bizimle iletişime geçin.");
+    });
     const conversationId = `pg-${randomUUID()}`;
     const parts = p.billing.fullName.trim().split(/\s+/);
     const surname = parts.length > 1 ? parts.pop()! : parts[0];

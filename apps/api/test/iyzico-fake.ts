@@ -20,7 +20,10 @@ export class FakeIyzico extends IyzicoClient {
     const p = this.products.find((x) => x.name === name);
     return p ? { referenceCode: p.ref } : null;
   }
+  /** Abonelik ürünü hesapta açık değilken iyzico'nun verdiği hata (canlıda 21.11.2026'da görüldü). */
+  failProducts = false;
   async createProduct(name: string) {
+    if (this.failProducts) throw new IyzicoError("Sistem hatası", "100001");
     if (this.products.some((p) => p.name === name)) throw new IyzicoError("Ürün zaten var.", "201001");
     const ref = `prod-${++this.n}`;
     this.products.push({ ref, name });

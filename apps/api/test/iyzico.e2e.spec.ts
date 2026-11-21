@@ -285,6 +285,21 @@ describe("iyzico Abonelik akışı (sahte iyzico ile)", () => {
     expect((await su.iyzicoCheckout.findUniqueOrThrow({ where: { token: tk } })).subscriptionReferenceCode).toBe(ref);
   });
 
+  it("iyzico abonelik ürünü açamazsa (100001) 502 ve anlaşılır mesaj döner, oturum açılmaz", async () => {
+    const D = await createTenantWithUser(su, { name: "Kapali Abonelik", email: "kapaliab@test.local", status: "TRIAL" });
+    await approvePrice(su, "STARTER", { monthly: 500, yearly: 5500, vatRate: 20 });
+    const d = api(app, await login(app, "kapaliab@test.local"), D.tenant.id);
+    fake.failProducts = true;
+    try {
+      const r = await d.post("/subscription/iyzico/checkout").send({ planCode: "STARTER", billingCycle: "MONTHLY", billing: billingInfo, ...terms }).expect(502);
+      expect(r.body.message).toContain("ücret alınmadı");
+      expect(await su.iyzicoCheckout.count({ where: { tenantId: D.tenant.id } })).toBe(0);
+      expect(await su.auditLog.count({ where: { action: "iyzico.plan_failed" } })).toBe(1);
+    } finally {
+      fake.failProducts = false;
+    }
+  });
+
   it("yıllık paket ayrı iyzico planıyla satılır", async () => {
     const C = await createTenantWithUser(su, { name: "Yillik Salon", email: "yil@test.local", status: "TRIAL" });
     const c = api(app, await login(app, "yil@test.local"), C.tenant.id);
