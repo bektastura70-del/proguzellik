@@ -4,12 +4,13 @@ import { useState } from "react";
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Field, Input, Spinner, Stat, Table, Td, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 
-type Settings = { usdTry: string; fxBuffer: string; markup: string; creditRatio: string; trialCreditKurus: number; tenantDailyMaxUsd: string; conversationMaxTokens: number; updatedAt: string };
+type Settings = { usdTry: string; fxAuto: boolean; fxRateDate: string | null; fxBuffer: string; markup: string; creditRatio: string; trialCreditKurus: number; tenantDailyMaxUsd: string; conversationMaxTokens: number; updatedAt: string };
 type Row = {
   tenantId: string; name: string; slug: string; plan: string; replies: number; calls: number; tokens: number; costUsd: string; costTl: string | null;
   avgCostUsdPerReply: string | null; debitTl: string; handoffRate: number; topupCount: number; topupNetTl: string; percentLeft: number | null; monthlyLeftTl: string | null; extraLeftTl: string | null;
 };
-type Overview = { mode: "off" | "shadow" | "enforce"; settings: Settings | null; settingsStale: boolean; last30Days: { costUsd: string; costTl: string | null; replies: number; topupNetTl: string }; today: { costUsd: string; replies: number }; tenants: Row[] };
+type Fx = { auto: boolean; stale: boolean; tcmb: { rate: string; date: string; fetchedAt: string; bulletinNo: string | null } | null };
+type Overview = { mode: "off" | "shadow" | "enforce"; settings: Settings | null; settingsStale: boolean; fx: Fx; last30Days: { costUsd: string; costTl: string | null; replies: number; topupNetTl: string }; today: { costUsd: string; replies: number }; tenants: Row[] };
 
 const MODE_TR = { off: "Kapalı (yalnız kayıt)", shadow: "Gölge (düşer, kesmez)", enforce: "Uygulanıyor" } as const;
 
@@ -25,7 +26,8 @@ export function AiAdminCard() {
         <span className="text-xs text-neutral-500">(sunucu ortamındaki AI_QUOTA_MODE)</span>
       </div>
       {!d.settings && <Alert tone="amber">Fiyatlandırma ayarları girilmedi. Kur ve çarpan girilmeden hak düşümü yapılamaz.</Alert>}
-      {d.settings && d.settingsStale && <Alert tone="amber">Dolar kuru 7 günden uzun süredir güncellenmedi. Düşüm hesabı güncel kurla yapılmalı.</Alert>}
+      {d.settings && d.settingsStale && <Alert tone="amber">Elle girilen dolar kuru 7 günden uzun süredir güncellenmedi. Düşüm hesabı güncel kurla yapılmalı.</Alert>}
+      {d.fx.auto && d.fx.stale && <Alert tone="amber">TCMB kuru 3 günden uzun süredir okunamadı; son geçerli kur kullanılıyor. Şimdi güncelle ile deneyin ya da kuru elle girin.</Alert>}
       <div className="grid gap-4 sm:grid-cols-4">
         <Stat label="Son 30 gün gerçek maliyet" value={`$${d.last30Days.costUsd}`} hint={d.last30Days.costTl ? `≈ ${d.last30Days.costTl} TL` : undefined} />
         <Stat label="Son 30 gün yanıt" value={d.last30Days.replies.toLocaleString("tr-TR")} />
@@ -51,15 +53,63 @@ export function AiAdminCard() {
         </Table>
       </Card>
       <PurchasesCard onChanged={o.reload} />
-      <SettingsForm s={d.settings} onSaved={o.reload} />
+      <FxCard fx={d.fx} s={d.settings} onChanged={o.reload} />
+      <SettingsForm s={d.settings} fx={d.fx} onSaved={o.reload} />
     </div>
   );
 }
 
-function SettingsForm({ s, onSaved }: { s: Settings | null; onSaved: () => void }) {
+const fmtDate = (iso: string) => new Date(iso.length === 10 ? `${iso}T12:00:00Z` : iso).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul" });
+const fmtTime = (iso: string) => new Date(iso).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul", dateStyle: "short", timeStyle: "short" });
+
+/** TCMB döviz satış kuru: son bülten, son okuma, elle yenileme. */
+function FxCard({ fx, s, onChanged }: { fx: Fx; s: Settings | null; onChanged: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  return (
+    <Card>
+      <CardHeader title="Dolar kuru (TCMB döviz satış)" description="Saatte bir TCMB'nin günlük bülteninden okunur. Hafta sonu, tatil ya da hata durumunda son geçerli kur kullanılır." />
+      <CardBody className="space-y-2 text-sm">
+        {fx.tcmb ? (
+          <p>
+            TCMB USD döviz satış: <b>{fx.tcmb.rate.replace(".", ",")} TL</b> ({fmtDate(fx.tcmb.date)} bülteni{fx.tcmb.bulletinNo ? `, ${fx.tcmb.bulletinNo}` : ""}) · son okuma {fmtTime(fx.tcmb.fetchedAt)}
+          </p>
+        ) : (
+          <p className="text-neutral-500">Henüz TCMB kuru okunmadı.</p>
+        )}
+        {s && (
+          <p className="text-neutral-600">
+            Hesapta kullanılan kur: <b>{s.usdTry.replace(".", ",")} TL</b> · {s.fxAuto ? `otomatik${s.fxRateDate ? ` (${fmtDate(s.fxRateDate)} bülteni)` : ""}` : "elle girildi"}
+          </p>
+        )}
+        <Button
+          variant="secondary"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const r = await api<{ ok: boolean; error?: string; rate?: string; applied?: boolean }>("/platform/ai/fx/refresh", { method: "POST" });
+              toast(r.ok ? `TCMB kuru okundu: ${r.rate}${r.applied ? " (uygulandı)" : ""}` : `Kur okunamadı: ${r.error}`);
+              onChanged();
+            } catch (e) {
+              toast((e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Şimdi güncelle
+        </Button>
+      </CardBody>
+    </Card>
+  );
+}
+
+function SettingsForm({ s, fx, onSaved }: { s: Settings | null; fx: Fx; onSaved: () => void }) {
   const toast = useToast();
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [auto, setAuto] = useState(s?.fxAuto ?? true);
   return (
     <Card>
       <CardHeader title="Fiyatlandırma ayarları" description="Düşüm = gerçek maliyet × kur × kur tamponu × çarpan. Çarpan 1'den küçük olamaz (zarar etmeme sınırı)." />
@@ -76,7 +126,7 @@ function SettingsForm({ s, onSaved }: { s: Settings | null; onSaved: () => void 
               await api("/platform/ai/settings", {
                 method: "PUT",
                 body: {
-                  usdTry: num("usdTry"), fxBuffer: num("fxBuffer"), markup: num("markup"), creditRatio: num("creditRatio"),
+                  usdTry: num("usdTry"), fxAuto: auto, fxBuffer: num("fxBuffer"), markup: num("markup"), creditRatio: num("creditRatio"),
                   trialCreditKurus: Math.round(num("trialTl") * 100), tenantDailyMaxUsd: num("tenantDailyMaxUsd"), conversationMaxTokens: Math.round(num("conversationMaxTokens")),
                 },
               });
@@ -90,7 +140,14 @@ function SettingsForm({ s, onSaved }: { s: Settings | null; onSaved: () => void 
           }}
         >
           {err && <div className="sm:col-span-2 lg:col-span-4"><Alert>{err}</Alert></div>}
-          <Field label="Dolar kuru (TL)"><Input name="usdTry" inputMode="decimal" defaultValue={s?.usdTry ?? ""} required /></Field>
+          <div className="sm:col-span-2 lg:col-span-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> Dolar kurunu TCMB döviz satış kurundan otomatik güncelle
+            </label>
+          </div>
+          <Field label="Dolar kuru (TL)" hint={auto ? "Otomatikte TCMB kuru kullanılır; bu değer yalnız henüz kur okunmadıysa geçerli" : "Elle girilen kur"}>
+            <Input name="usdTry" inputMode="decimal" defaultValue={s?.usdTry ?? fx.tcmb?.rate ?? ""} readOnly={auto && !!fx.tcmb} required />
+          </Field>
           <Field label="Kur tamponu" hint="1,10 = %10 pay"><Input name="fxBuffer" inputMode="decimal" defaultValue={s?.fxBuffer ?? "1.10"} required /></Field>
           <Field label="Çarpan" hint="3 = gerçek maliyetin 3 katı düşülür"><Input name="markup" inputMode="decimal" defaultValue={s?.markup ?? "3"} required /></Field>
           <Field label="Ek paket oranı" hint="0,5 = ödenen KDV hariç tutarın yarısı"><Input name="creditRatio" inputMode="decimal" defaultValue={s?.creditRatio ?? "0.5"} required /></Field>

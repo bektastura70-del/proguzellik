@@ -1701,8 +1701,25 @@ model AiBillingSettings {
   tenantDailyMaxUsd Decimal @default(2) @db.Decimal(10, 4)
   /// Aynı konuşmada 24 saatte en fazla token (giriş + çıkış)
   conversationMaxTokens Int @default(150000)
+  /// true: usdTry TCMB döviz satış kurundan otomatik güncellenir; false: elle girilen kur
+  fxAuto       Boolean  @default(true)
+  /// usdTry'nin alındığı TCMB bülteninin tarihi (otomatikte)
+  fxRateDate   DateTime? @db.Date
   updatedAt    DateTime @updatedAt
   updatedById  String?  @db.Uuid
+}
+
+/// TCMB gösterge kurları (günlük bülten). Yalnız SaaS sahibi tarafı okur/yazar.
+model FxRate {
+  currency     String
+  /// Bülten tarihi
+  date         DateTime @db.Date
+  forexSelling Decimal  @db.Decimal(12, 4)
+  bulletinNo   String?
+  /// Bu bültenin son başarıyla okunduğu an
+  fetchedAt    DateTime @default(now())
+
+  @@id([currency, date])
 }
 
 /// Salon cüzdanı (defterden türetilen önbellek; defter ile aynı işlemde güncellenir).

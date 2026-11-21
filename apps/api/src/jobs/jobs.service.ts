@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { AiQuotaService } from "../ai-quota/ai-quota.service";
 import { AiTopupService } from "../ai-quota/ai-topup.service";
+import { FxRateService } from "../ai-quota/fx-rate.service";
 import { Prisma } from "@prisma/client";
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
@@ -15,6 +16,8 @@ import { purgeTrialApplications } from "../platform/trial-application.service";
 import { purgePurchaseRequests } from "../billing/purchase.service";
 
 export const DAILY_JOB = "subscription-lifecycle";
+/** TCMB kuru: saatte bir (bülten iş günleri 15.30 civarı yayımlanır; hata/tatilde son geçerli kur kalır). */
+export const FX_JOB = "fx-rate";
 const STALE_RUNNING_MS = 60 * 60_000;
 
 /** İstanbul saatine göre gün anahtarı (YYYY-MM-DD) */
@@ -43,6 +46,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     private readonly lowStock: LowStockService,
     private readonly aiQuota: AiQuotaService,
     private readonly aiTopup: AiTopupService,
+    private readonly fx: FxRateService,
   ) {}
 
   async onModuleInit() {
@@ -56,7 +60,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     this.queue = new Queue("jobs", { connection: conn(), prefix: env.QUEUE_PREFIX });
     // Birden fazla API örneği çalışsa da zamanlayıcı tektir (aynı kimlikle upsert).
     await this.queue.upsertJobScheduler(DAILY_JOB, { pattern: env.JOBS_CRON, tz: "Europe/Istanbul" }, { name: DAILY_JOB, opts: { removeOnComplete: 100, removeOnFail: 500 } });
-    this.worker = new Worker("jobs", async (job) => (job.name === DAILY_JOB ? this.runDaily() : undefined), { connection: conn(), prefix: env.QUEUE_PREFIX, concurrency: 1 });
+    await this.queue.upsertJobScheduler(FX_JOB, { pattern: "7 * * * *", tz: "Europe/Istanbul" }, { name: FX_JOB, opts: { removeOnComplete: 50, removeOnFail: 100 } });
+    this.worker = new Worker("jobs", async (job) => (job.name === DAILY_JOB ? this.runDaily() : job.name === FX_JOB ? this.fx.refresh() : undefined), { connection: conn(), prefix: env.QUEUE_PREFIX, concurrency: 1 });
     this.worker.on("failed", (job, err) => this.logger.error(`Görev başarısız (${job?.name}): ${err.message}`));
   }
 

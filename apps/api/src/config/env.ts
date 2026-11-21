@@ -54,6 +54,8 @@ const schema = z.object({
   AI_QUOTA_MODE: z.enum(["off", "shadow", "enforce"]).default("off"),
   // Canlıda (NODE_ENV=production) gerçek yapay zekâ yalnız bu işletme kısa adlarında (slug, virgülle) çalışır; "*" = hepsi. Boşsa canlıda kapalı.
   AI_PILOT_TENANTS: blankToUndef(z.string().optional()),
+  /** TCMB kur adresi (yalnız test/özel durum; varsayılan resmî today.xml) */
+  TCMB_FX_URL: blankToUndef(z.string().url().optional()),
   // Acil durdurma: 1 ise tüm salonlarda yapay zekâ yanıtı durur, konuşmalar personele düşer.
   AI_GLOBAL_PAUSE: z.enum(["0", "1"]).default("0"),
   // Bilinmeyen model için fiyat (USD / milyon token): "giriş,çıkış,önbellek_okuma,önbellek_yazma". Tabloda olan modelde kullanılmaz.

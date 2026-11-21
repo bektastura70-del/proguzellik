@@ -398,19 +398,24 @@ export class AiQuotaService {
     const totalTopup = purchases.reduce((a, r) => a.add(r._sum.netAmount ?? 0), new Prisma.Decimal(0));
     return {
       mode: this.mode,
-      settings: settings && { usdTry: settings.usdTry.toFixed(4), fxBuffer: settings.fxBuffer.toFixed(3), markup: settings.markup.toFixed(3), creditRatio: settings.creditRatio.toFixed(3), trialCreditKurus: settings.trialCreditKurus, tenantDailyMaxUsd: settings.tenantDailyMaxUsd.toFixed(4), conversationMaxTokens: settings.conversationMaxTokens, updatedAt: settings.updatedAt },
-      settingsStale: settings ? now.getTime() - settings.updatedAt.getTime() > 7 * 86_400_000 : true,
+      settings: settings && { usdTry: settings.usdTry.toFixed(4), fxAuto: settings.fxAuto, fxRateDate: settings.fxRateDate?.toISOString().slice(0, 10) ?? null, fxBuffer: settings.fxBuffer.toFixed(3), markup: settings.markup.toFixed(3), creditRatio: settings.creditRatio.toFixed(3), trialCreditKurus: settings.trialCreditKurus, tenantDailyMaxUsd: settings.tenantDailyMaxUsd.toFixed(4), conversationMaxTokens: settings.conversationMaxTokens, updatedAt: settings.updatedAt },
+      // Elle girilen kur 7 günden eskiyse uyarı; otomatikte kur durumu ayrı (fx.stale).
+      settingsStale: settings ? !settings.fxAuto && now.getTime() - settings.updatedAt.getTime() > 7 * 86_400_000 : true,
       last30Days: { costUsd: usd(totalMicro), costTl: tl(totalMicro), replies: byTenant.reduce((a, r) => a + r._count._all, 0), topupNetTl: totalTopup.toFixed(2) },
       today: { costUsd: usd(today._sum.costMicroUsd ?? 0), replies: today._count._all },
       tenants: rows.sort((a, b) => Number(b.costUsd) - Number(a.costUsd)),
     };
   }
 
-  async updateSettings(b: { usdTry: number; fxBuffer: number; markup: number; creditRatio: number; trialCreditKurus: number; tenantDailyMaxUsd: number; conversationMaxTokens: number }, actorId: string) {
-    const data = { ...b, usdTry: new Prisma.Decimal(b.usdTry), fxBuffer: new Prisma.Decimal(b.fxBuffer), markup: new Prisma.Decimal(b.markup), creditRatio: new Prisma.Decimal(b.creditRatio), tenantDailyMaxUsd: new Prisma.Decimal(b.tenantDailyMaxUsd), updatedById: actorId };
+  async updateSettings(b: { usdTry: number; fxAuto?: boolean; fxBuffer: number; markup: number; creditRatio: number; trialCreditKurus: number; tenantDailyMaxUsd: number; conversationMaxTokens: number }, actorId: string) {
+    const fxAuto = b.fxAuto ?? true;
+    // Otomatikte kur TCMB'nin son bülteninden alınır (varsa); elle girilen değer yalnız henüz kur okunmadıysa kullanılır.
+    const tcmb = fxAuto ? await this.prisma.platform.fxRate.findFirst({ where: { currency: "USD" }, orderBy: { date: "desc" } }) : null;
+    const usdTry = tcmb ? tcmb.forexSelling : new Prisma.Decimal(b.usdTry);
+    const data = { ...b, fxAuto, fxRateDate: tcmb?.date ?? null, usdTry, fxBuffer: new Prisma.Decimal(b.fxBuffer), markup: new Prisma.Decimal(b.markup), creditRatio: new Prisma.Decimal(b.creditRatio), tenantDailyMaxUsd: new Prisma.Decimal(b.tenantDailyMaxUsd), updatedById: actorId };
     const db = this.prisma.platform;
     const s = await db.aiBillingSettings.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
-    await db.auditLog.create({ data: { actorId, action: "ai.settings_updated", metadata: { ...b } } });
+    await db.auditLog.create({ data: { actorId, action: "ai.settings_updated", metadata: { ...b, fxAuto, usdTry: usdTry.toFixed(4), fxSource: tcmb ? "TCMB" : "manual" } } });
     return s;
   }
 }

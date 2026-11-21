@@ -1,3 +1,4 @@
+import { FxRateService } from "./fx-rate.service";
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req } from "@nestjs/common";
 import { Request } from "express";
 import { z } from "zod";
@@ -73,6 +74,7 @@ export class AiTopupCallbackController {
 
 const settingsSchema = z.object({
   usdTry: z.number().min(1).max(10_000),
+  fxAuto: z.boolean().optional(),
   fxBuffer: z.number().min(1).max(2),
   // Çarpan 1'in altına inemez: aksi hâlde salonun gördüğü değerden fazla harcama yapılır.
   markup: z.number().min(1).max(20),
@@ -91,6 +93,7 @@ export class PlatformAiController {
   constructor(
     private readonly quota: AiQuotaService,
     private readonly topup: AiTopupService,
+    private readonly fx: FxRateService,
   ) {}
 
   @Get("purchases")
@@ -106,8 +109,16 @@ export class PlatformAiController {
   }
 
   @Get()
-  overview() {
-    return this.quota.overview();
+  async overview() {
+    const [o, fx] = await Promise.all([this.quota.overview(), this.fx.status()]);
+    return { ...o, fx };
+  }
+
+  /** TCMB kurunu şimdi oku (ve otomatik açıksa uygula). */
+  @Post("fx/refresh")
+  @HttpCode(200)
+  refreshFx(@CurrentUser() u: AuthUser) {
+    return this.fx.refresh(new Date(), u.id);
   }
 
   @Put("settings")
