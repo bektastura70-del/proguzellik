@@ -101,9 +101,33 @@ if [[ -f "$ENV_FILE" ]]; then
       [[ "$(env_get OPENAI_API_KEY)" =~ ^[A-Za-z0-9_-]{20,}$ ]] && ok "OpenAI anahtarı tanımlı" || bad "AI_MODE=openai ama OPENAI_API_KEY boş ya da geçersiz"
       [[ -n "$(env_get OPENAI_MODEL)" ]] && ok "OpenAI modeli: $(env_get OPENAI_MODEL)" || bad "AI_MODE=openai ama OPENAI_MODEL boş"
       [[ "$(env_get COMPOSE_FILE)" == *docker-compose.egress.yml* ]] && ok "OpenAI için çıkış ağı etkin" || bad "AI_MODE=openai ama COMPOSE_FILE'da docker-compose.egress.yml yok (api OpenAI'a ulaşamaz)" ;;
+    anthropic)
+      warn "AI_MODE=anthropic: müşteri mesajları Anthropic'e (ABD) gönderilir; yalnızca Anthropic'e onay veren işletmelerde ve Akıllı pakette çalışır (eski OpenAI onayları geçersiz)"
+      [[ "$(env_get ANTHROPIC_API_KEY)" =~ ^sk-ant-[A-Za-z0-9_-]{20,}$ ]] && ok "Anthropic anahtarı tanımlı" || bad "AI_MODE=anthropic ama ANTHROPIC_API_KEY boş ya da geçersiz"
+      [[ -n "$(env_get AI_MODEL)" ]] && ok "Yapay zekâ modeli: $(env_get AI_MODEL)" || bad "AI_MODE=anthropic ama AI_MODEL boş (varsayılan yok)"
+      [[ "$(env_get COMPOSE_FILE)" == *docker-compose.egress.yml* ]] && ok "Anthropic için çıkış ağı etkin" || bad "AI_MODE=anthropic ama COMPOSE_FILE'da docker-compose.egress.yml yok (api Anthropic'e ulaşamaz)" ;;
     ""|mock) ok "Yapay zekâ yanıtı kapalı (mock)" ;;
-    *) bad "AI_MODE=$(env_get AI_MODE) desteklenmiyor (mock | openai)" ;;
+    *) bad "AI_MODE=$(env_get AI_MODE) desteklenmiyor (mock | openai | anthropic)" ;;
   esac
+  case "$(env_get AI_MODE)" in
+    openai|anthropic)
+      [[ -n "$(env_get AI_PILOT_TENANTS)" ]] && ok "Yapay zekâ pilot listesi: $(env_get AI_PILOT_TENANTS)" || warn "AI_PILOT_TENANTS boş: gerçek yapay zekâ HİÇBİR salonda yanıt vermez (mesajlar personele düşer)"
+      [[ "$(env_get AI_MODE)" == openai && -z "$(env_get AI_PRICE_USD_PER_MTOK)" ]] && warn "AI_PRICE_USD_PER_MTOK boş: OpenAI maliyeti 0 kaydedilir, günlük maliyet sınırı çalışmaz" ;;
+  esac
+  case "$(env_get ASSISTANT_AI_MODE)" in
+    anthropic)
+      [[ -n "$(env_get AI_MODEL)" && "$(env_get ANTHROPIC_API_KEY)" =~ ^sk-ant- ]] && ok "Sorular asistanı: Anthropic ($(env_get AI_MODEL))" || bad "ASSISTANT_AI_MODE=anthropic ama ANTHROPIC_API_KEY veya AI_MODEL eksik" ;;
+    ""|mock) ok "Sorular asistanı: yerel (mock)" ;;
+    *) bad "ASSISTANT_AI_MODE=$(env_get ASSISTANT_AI_MODE) desteklenmiyor (mock | anthropic)" ;;
+  esac
+  case "$(env_get AI_QUOTA_MODE)" in
+    ""|off) warn "AI_QUOTA_MODE=off: kullanım kaydedilir, hak düşülmez (maliyet tavanları yine çalışır)" ;;
+    shadow) ok "AI_QUOTA_MODE=shadow: hak düşülür, yanıt kesilmez" ;;
+    enforce) ok "AI_QUOTA_MODE=enforce: hak bitince yapay zekâ personele devreder" ;;
+    *) bad "AI_QUOTA_MODE=$(env_get AI_QUOTA_MODE) desteklenmiyor (off | shadow | enforce)" ;;
+  esac
+  [[ "$(env_get AI_GLOBAL_PAUSE)" == 1 ]] && warn "AI_GLOBAL_PAUSE=1: tüm yapay zekâ yanıtları durduruldu"
+  [[ "$(env_get AI_TOPUP_ENABLED)" == 1 ]] && warn "AI_TOPUP_ENABLED=1: yapay zekâ ek paketi satışta (gerçek ödeme; satış metinleri hukuki onaylı olmalı)"
   [[ -n "$(env_get APP_VERSION)" ]] && ok "APP_VERSION tanımlı" || bad "APP_VERSION boş"
 else
   bad ".env yok: $ENV_FILE"

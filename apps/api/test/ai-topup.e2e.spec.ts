@@ -18,6 +18,7 @@ describe("Yapay zekâ ek paketi (sahte iyzico; gerçek ödeme yok)", () => {
   let A: Awaited<ReturnType<typeof createTenantWithUser>>;
   let P: Awaited<ReturnType<typeof createTenantWithUser>>;
   let a: ReturnType<typeof api>;
+  let mfaToken = "";
   const tokenOf = (html: string) => /iyzico (pf-[\w-]+)/.exec(html)![1];
   const ledgerSum = async (tenantId: string) => (await su.aiCreditLedger.aggregate({ where: { tenantId }, _sum: { amountKurus: true } }))._sum.amountKurus ?? 0;
 
@@ -110,7 +111,7 @@ describe("Yapay zekâ ek paketi (sahte iyzico; gerçek ödeme yok)", () => {
 
   it("iade (SaaS sahibi): iyzico'da para iadesi + iade oranında değer geri alınır; fazla iade reddedilir; salon iade yapamaz", async () => {
     await su.user.update({ where: { id: A.user.id }, data: { isPlatformAdmin: true } });
-    const mfaToken = (await enableMfa(app, "ep@test.local")).token;
+    mfaToken = (await enableMfa(app, "ep@test.local")).token;
     const pa = api(app, mfaToken);
     const a2 = api(app, mfaToken, A.tenant.id);
     const list = (await pa.get("/platform/ai/purchases").expect(200)).body as { id: string; status: string; grossAmount: string; suggestedRefund: string }[];
@@ -144,5 +145,18 @@ describe("Yapay zekâ ek paketi (sahte iyzico; gerçek ödeme yok)", () => {
     expect(cancelledRow.every((x) => !x.needsRefund)).toBe(true);
     const salon = api(app, await login(app, "epp@test.local"), P.tenant.id);
     await salon.post(`/platform/ai/purchases/${p.id}/refund`).send({ amount: 1 }).expect(403);
+  });
+
+  it("Finans gelir raporu: ek paket ayrı sütunda, KDV dahil ve iadeler düşülmüş; test (sandbox) ödemeleri sayılmaz", async () => {
+    const pa = api(app, mfaToken);
+    const year = new Date().getFullYear();
+    const total = async () => (await pa.get(`/platform/finance/report?year=${year}&granularity=year`).expect(200)).body.totals.aiTopupCollected;
+    expect(await total()).toBe("0.00");
+    // Canlı ödeme benzetimi: tamamlanmış ve 600 TL iade edilmiş 1.200 TL'lik alım → 600; tamamen iade edilen → 0
+    await su.aiCreditPurchase.updateMany({ where: { tenantId: A.tenant.id, status: { in: ["COMPLETED", "REFUNDED"] } }, data: { environment: "live" } });
+    const rows = await su.aiCreditPurchase.findMany({ where: { tenantId: A.tenant.id, status: { in: ["COMPLETED", "REFUNDED"] } } });
+    const expected = rows.reduce((a, r) => a + Number(r.grossAmount) - Number(r.refundedAmount), 0);
+    expect(Number(await total())).toBeCloseTo(expected, 2);
+    expect(expected).toBeGreaterThan(0);
   });
 });

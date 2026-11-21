@@ -146,9 +146,9 @@ export class PlatformFinanceController {
     const r = await this.finance.report(q.year, q.granularity);
     req.res!.setHeader("Content-Disposition", `attachment; filename="gelir-raporu-${q.year}.csv"`);
     return toCsv(
-      ["Dönem", "Tahakkuk", "Tahsilat", "İade", "Net tahsilat", "Online tahsilat", "Dönem sonu bekleyen", "Ücretsiz tanımlama (adet)"],
-      [...r.rows.map((x) => [x.period, num(x.accrued), num(x.collected), num(x.refunded), num(x.netCollected), num(x.onlineCollected), num(x.pendingAtEnd), x.complimentaryGrants]),
-        ["Toplam", num(r.totals.accrued), num(r.totals.collected), num(r.totals.refunded), num(r.totals.netCollected), num(r.totals.onlineCollected), num(r.totals.pending), r.totals.complimentaryGrants]],
+      ["Dönem", "Tahakkuk", "Tahsilat", "İade", "Net tahsilat", "Online tahsilat", "Yapay zekâ ek paket", "Dönem sonu bekleyen", "Ücretsiz tanımlama (adet)"],
+      [...r.rows.map((x) => [x.period, num(x.accrued), num(x.collected), num(x.refunded), num(x.netCollected), num(x.onlineCollected), num(x.aiTopupCollected), num(x.pendingAtEnd), x.complimentaryGrants]),
+        ["Toplam", num(r.totals.accrued), num(r.totals.collected), num(r.totals.refunded), num(r.totals.netCollected), num(r.totals.onlineCollected), num(r.totals.aiTopupCollected), num(r.totals.pending), r.totals.complimentaryGrants]],
     );
   }
 

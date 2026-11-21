@@ -31,7 +31,8 @@ export type EmailTemplate =
   | { name: "renewal_reminder"; vars: { salon: string; firstName: string; service: string; dueDate: string; link: string; phone?: string; optOutLink: string } }
   | { name: "ai_quota_low"; vars: { salon: string; link: string } }
   | { name: "ai_quota_empty"; vars: { salon: string; link: string } }
-  | { name: "ai_credit_purchased"; vars: { salon: string; link: string; amount: string } };
+  | { name: "ai_credit_purchased"; vars: { salon: string; link: string; amount: string } }
+  | { name: "ai_daily_cap"; vars: { salon: string; slug: string; limitUsd: string; link: string } };
 
 export type TemplateName = EmailTemplate["name"];
 
@@ -73,6 +74,7 @@ export const TEMPLATE_META: Record<TemplateName, { label: string; vars: string[]
   ai_quota_low: { label: "Yapay zekâ kullanım hakkı azaldı", vars: ["salon"], secret: false, editable: false },
   ai_quota_empty: { label: "Yapay zekâ kullanım hakkı doldu", vars: ["salon"], secret: false, editable: false },
   ai_credit_purchased: { label: "Yapay zekâ ek paketi alındı", vars: ["salon", "amount"], secret: false, editable: false },
+  ai_daily_cap: { label: "Yapay zekâ günlük maliyet sınırı aşıldı (SaaS sahibine)", vars: ["salon", "slug", "limitUsd"], secret: false, editable: false },
 };
 
 export interface TemplateOverride {
@@ -261,6 +263,14 @@ export function render(t: EmailTemplate, override?: TemplateOverride | null): { 
         `${esc(t.vars.amount)} tutarındaki yapay zekâ ek paketiniz hesabınıza yüklendi. Kullanım barınızı panelden görebilirsiniz.`,
       ];
       cta = { label: "Kullanım durumunu gör", link: t.vars.link };
+      break;
+    case "ai_daily_cap":
+      subject = `Yapay zekâ günlük sınırı: ${t.vars.salon}`;
+      paras = [
+        `${esc(t.vars.salon)} (${esc(t.vars.slug)}) bugün yapay zekâ için günlük gerçek maliyet sınırına (${esc(t.vars.limitUsd)} USD) ulaştı.`,
+        `Gün sonuna kadar bu işletmede gelen mesajlar yapay zekâ yerine ekibe yönlendiriliyor. Sınır olağan dışı bir kullanımı gösteriyor olabilir; konuşmaları kontrol edin. Sınırı SaaS sahibi panelindeki Yapay zekâ sayfasından değiştirebilirsiniz.`,
+      ];
+      cta = { label: "Yapay zekâ sayfasını aç", link: t.vars.link };
       break;
     case "owner_notice":
       subject = t.vars.subject;

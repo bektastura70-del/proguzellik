@@ -166,7 +166,7 @@ describe("SaaS sahibi muhasebesi", () => {
       expect(y.rows[0].pendingAtEnd).toBe(r.totals.pending);
       const csv = await admin.get(`/platform/finance/report.csv?year=${year}`).expect(200);
       expect(csv.headers["content-type"]).toMatch(/text\/csv/);
-      expect(csv.text.split("\r\n")[0]).toBe("﻿Dönem;Tahakkuk;Tahsilat;İade;Net tahsilat;Online tahsilat;Dönem sonu bekleyen;Ücretsiz tanımlama (adet)");
+      expect(csv.text.split("\r\n")[0]).toBe("﻿Dönem;Tahakkuk;Tahsilat;İade;Net tahsilat;Online tahsilat;Yapay zekâ ek paket;Dönem sonu bekleyen;Ücretsiz tanımlama (adet)");
       const lcsv = await admin.get(`/platform/finance/tenants/${A.tenant.id}/ledger.csv`).expect(200);
       expect(lcsv.text).toContain("Tahsilat");
     });

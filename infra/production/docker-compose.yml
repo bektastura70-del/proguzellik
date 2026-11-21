@@ -118,11 +118,26 @@ services:
       IYZICO_SECRET_KEY: ${IYZICO_SECRET_KEY:-}
       IYZICO_MERCHANT_ID: ${IYZICO_MERCHANT_ID:-}
       IYZICO_PILOT_TENANTS: ${IYZICO_PILOT_TENANTS:-}
-      # Gelen mesajlara yapay zekâ yanıtı. mock: yanıt yok (varsayılan, mesajlar personele düşer). openai: OpenAI (egress + anahtar gerekir).
+      # Gelen mesajlara yapay zekâ yanıtı. mock: yanıt yok (varsayılan, mesajlar personele düşer). openai: OpenAI, anthropic: Claude (egress + anahtar gerekir).
       AI_MODE: ${AI_MODE:-mock}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-}
       OPENAI_REASONING_EFFORT: ${OPENAI_REASONING_EFFORT:-}
+      # anthropic: tek ortak Claude modeli (AI_MODEL zorunlu, varsayılan yok). Anahtar Anthropic konsolundan, harcama limiti orada da ayarlanır.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+      # Sahip asistanı (Sorular): mock | anthropic (sohbetten bağımsız)
+      ASSISTANT_AI_MODE: ${ASSISTANT_AI_MODE:-mock}
+      # Kullanım hakkı: off (yalnız kayıt) | shadow (düşer, kesmez) | enforce (hak bitince personele devreder)
+      AI_QUOTA_MODE: ${AI_QUOTA_MODE:-off}
+      # Gerçek yapay zekâ yalnız bu işletme adreslerinde (slug, virgülle); * = hepsi. BOŞSA HİÇBİR SALONDA ÇALIŞMAZ.
+      AI_PILOT_TENANTS: ${AI_PILOT_TENANTS:-}
+      # 1 = tüm yapay zekâ yanıtlarını hemen durdur
+      AI_GLOBAL_PAUSE: ${AI_GLOBAL_PAUSE:-0}
+      # Fiyat tablosunda olmayan model (ör. OpenAI) için USD/milyon token: girdi,çıktı,önbellek okuma,önbellek yazma
+      AI_PRICE_USD_PER_MTOK: ${AI_PRICE_USD_PER_MTOK:-}
+      # Yapay zekâ ek paket satışı (tek seferlik iyzico). Satış metinleri hukuki onaylanmadan 1 yapılmaz.
+      AI_TOPUP_ENABLED: ${AI_TOPUP_ENABLED:-0}
       # PWA V1.0 (salon uygulaması, müşteri portalı, mobil panel). 0: tüm işletmelerde kapalı, eski akış aynen.
       # 1 yapılınca da hiçbir işletmede kendiliğinden açılmaz; SaaS sahibi işletme başına bayrak açar.
       PWA_ENABLED: ${PWA_ENABLED:-0}

@@ -235,17 +235,17 @@ export function LedgerDialog({ tenantId, onClose }: { tenantId: string; onClose:
   );
 }
 
-type Report = { year: number; rows: { period: string; accrued: string; collected: string; refunded: string; netCollected: string; onlineCollected: string; pendingAtEnd: string; complimentaryGrants: number }[]; totals: { accrued: string; collected: string; refunded: string; netCollected: string; onlineCollected: string; pending: string; complimentaryGrants: number } };
+type Report = { year: number; rows: { period: string; accrued: string; collected: string; refunded: string; netCollected: string; onlineCollected: string; aiTopupCollected?: string; pendingAtEnd: string; complimentaryGrants: number }[]; totals: { accrued: string; collected: string; refunded: string; netCollected: string; onlineCollected: string; aiTopupCollected?: string; pending: string; complimentaryGrants: number } };
 const MONTHS = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
 export const periodLabel = (p: string) => (/^\d{4}-\d{2}$/.test(p) ? `${MONTHS[Number(p.slice(5)) - 1]} ${p.slice(0, 4)}` : p);
 
 export function ReportTable({ r }: { r: Report }) {
   return (
-    <Table head={["Dönem", "Tahakkuk", "Tahsil edilen", "İade", "Net tahsilat", "Online", "Dönem sonu bekleyen", "Ücretsiz tanımlama"]}>
+    <Table head={["Dönem", "Tahakkuk", "Tahsil edilen", "İade", "Net tahsilat", "Online", "Yapay zekâ ek paket", "Dönem sonu bekleyen", "Ücretsiz tanımlama"]}>
       {r.rows.map((x) => (
-        <tr key={x.period}><Td>{periodLabel(x.period)}</Td><Td>{tl(x.accrued)}</Td><Td>{tl(x.collected)}</Td><Td>{tl(x.refunded)}</Td><Td className="font-medium">{tl(x.netCollected)}</Td><Td>{tl(x.onlineCollected)}</Td><Td>{tl(x.pendingAtEnd)}</Td><Td>{x.complimentaryGrants || "—"}</Td></tr>
+        <tr key={x.period}><Td>{periodLabel(x.period)}</Td><Td>{tl(x.accrued)}</Td><Td>{tl(x.collected)}</Td><Td>{tl(x.refunded)}</Td><Td className="font-medium">{tl(x.netCollected)}</Td><Td>{tl(x.onlineCollected)}</Td><Td>{tl(x.aiTopupCollected ?? "0")}</Td><Td>{tl(x.pendingAtEnd)}</Td><Td>{x.complimentaryGrants || "—"}</Td></tr>
       ))}
-      <tr className="bg-sand-50 font-semibold"><Td>Toplam</Td><Td>{tl(r.totals.accrued)}</Td><Td>{tl(r.totals.collected)}</Td><Td>{tl(r.totals.refunded)}</Td><Td>{tl(r.totals.netCollected)}</Td><Td>{tl(r.totals.onlineCollected)}</Td><Td>{tl(r.totals.pending)}</Td><Td>{r.totals.complimentaryGrants || "—"}</Td></tr>
+      <tr className="bg-sand-50 font-semibold"><Td>Toplam</Td><Td>{tl(r.totals.accrued)}</Td><Td>{tl(r.totals.collected)}</Td><Td>{tl(r.totals.refunded)}</Td><Td>{tl(r.totals.netCollected)}</Td><Td>{tl(r.totals.onlineCollected)}</Td><Td>{tl(r.totals.aiTopupCollected ?? "0")}</Td><Td>{tl(r.totals.pending)}</Td><Td>{r.totals.complimentaryGrants || "—"}</Td></tr>
     </Table>
   );
 }

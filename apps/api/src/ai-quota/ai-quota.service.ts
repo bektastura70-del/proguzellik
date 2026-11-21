@@ -159,6 +159,7 @@ export class AiQuotaService {
     const db = this.prisma.platform;
     const day = await db.aiUsageEvent.aggregate({ where: { tenantId, createdAt: { gte: istanbulDayStart(now) } }, _sum: { costMicroUsd: true } });
     if ((day._sum.costMicroUsd ?? 0) >= settings.tenantDailyMaxUsd.mul(1_000_000).toNumber()) {
+      await this.notifyDailyCap(tenantId, settings.tenantDailyMaxUsd.toFixed(2), now).catch((e) => this.logger.error(`Günlük sınır e-postası: ${(e as Error).message}`));
       return { ok: false, reason: "daily_cap", message: "Yapay zekâ günlük kullanım sınırına ulaşıldı" };
     }
     const conv = await db.aiUsageEvent.aggregate({ where: { conversationId, createdAt: { gte: new Date(now.getTime() - 86_400_000) } }, _sum: { inputTokens: true, outputTokens: true, cacheReadTokens: true, cacheWriteTokens: true } });
@@ -244,6 +245,21 @@ export class AiQuotaService {
       dedupeKey: `${empty ? "ai-empty" : "ai-low"}:${w.tenantId}:${w.periodStart.toISOString()}`,
       tenantId: w.tenantId,
     });
+  }
+
+  /** Günlük maliyet sınırı aşıldı: SaaS sahiplerine (platform yöneticileri) günde işletme başına bir e-posta. */
+  private async notifyDailyCap(tenantId: string, limitUsd: string, now: Date) {
+    const db = this.prisma.platform;
+    const dayKey = istanbulDayStart(now).toISOString().slice(0, 10);
+    const [tenant, admins] = await Promise.all([
+      db.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true } }),
+      db.user.findMany({ where: { isPlatformAdmin: true }, select: { email: true } }),
+    ]);
+    if (!tenant) return;
+    const link = `${appUrl(loadEnv())}/platform?sekme=yapay-zeka`;
+    for (const u of admins) {
+      await this.email.send(u.email, { name: "ai_daily_cap", vars: { salon: tenant.name, slug: tenant.slug, limitUsd, link } }, { dedupeKey: `ai-daily-cap:${tenantId}:${dayKey}:${u.email}` });
+    }
   }
 
   private async ownerEmail(tenantId: string) {

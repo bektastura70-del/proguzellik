@@ -204,6 +204,7 @@ export class PlatformFinanceService {
   /**
    * Gelir raporu (İstanbul saatine göre ay/yıl). Tahakkuk, tahsilat ve iade ayrı; bekleyen tutar dönem sonu bakiyesi.
    * Manuel ücretsiz tanımlamalar gelir sayılmaz, ayrı listelenir. Online sağlayıcı tahsilatları ayrı sütundur (iade edilenler ve sandbox test ödemeleri hariç).
+   * Yapay zekâ ek paketi tahsilatları da ayrı sütundur (KDV dahil, iadeler düşülmüş, yalnız canlı ödemeler).
    */
   async report(year: number, granularity: "month" | "year") {
     const unit = granularity === "month" ? "month" : "year";
@@ -215,6 +216,10 @@ export class PlatformFinanceService {
     const online = await this.db.$queryRaw<{ period: string; total: Prisma.Decimal }[]>`
       SELECT to_char(date_trunc(${unit}, "createdAt" AT TIME ZONE 'Europe/Istanbul'), 'YYYY-MM') AS period, sum(amount) AS total
       FROM "SubscriptionPayment" WHERE status = 'PAID' AND provider NOT LIKE '%sandbox%' AND "createdAt" >= ${from} AND "createdAt" < ${to} GROUP BY 1`;
+    // Yapay zekâ ek paketi (tek seferlik iyzico): KDV dahil, yapılan iadeler düşülür; test (sandbox) ve yüklenmeyen alımlar hariç.
+    const aiTopup = await this.db.$queryRaw<{ period: string; total: Prisma.Decimal }[]>`
+      SELECT to_char(date_trunc(${unit}, "completedAt" AT TIME ZONE 'Europe/Istanbul'), 'YYYY-MM') AS period, sum("grossAmount" - "refundedAmount") AS total
+      FROM "AiCreditPurchase" WHERE status IN ('COMPLETED', 'REFUNDED') AND environment = 'live' AND "completedAt" >= ${from} AND "completedAt" < ${to} GROUP BY 1`;
     const grants = await this.db.$queryRaw<{ period: string; n: bigint; agreed: Prisma.Decimal }[]>`
       SELECT to_char(date_trunc(${unit}, "createdAt" AT TIME ZONE 'Europe/Istanbul'), 'YYYY-MM') AS period, count(*) AS n, sum("agreedAmount") AS agreed
       FROM "SubscriptionGrant" WHERE "isComplimentary" AND action IN ('CREATED', 'RENEWED', 'EXTENDED') AND "createdAt" >= ${from} AND "createdAt" < ${to} GROUP BY 1`;
@@ -235,16 +240,17 @@ export class PlatformFinanceService {
         refunded: fmt(refunded),
         netCollected: fmt(collected.minus(refunded)),
         onlineCollected: fmt(dec(online.find((o) => o.period === p)?.total ?? 0)),
+        aiTopupCollected: fmt(dec(aiTopup.find((o) => o.period === p)?.total ?? 0)),
         pendingAtEnd: fmt(balance),
         complimentaryGrants: Number(g?.n ?? 0),
       };
     });
-    const total = (k: "accrued" | "collected" | "refunded" | "netCollected" | "onlineCollected") => fmt(rows.reduce((s, r) => s.plus(r[k]), ZERO));
+    const total = (k: "accrued" | "collected" | "refunded" | "netCollected" | "onlineCollected" | "aiTopupCollected") => fmt(rows.reduce((s, r) => s.plus(r[k]), ZERO));
     return {
       year,
       granularity,
       rows,
-      totals: { accrued: total("accrued"), collected: total("collected"), refunded: total("refunded"), netCollected: total("netCollected"), onlineCollected: total("onlineCollected"), pending: fmt(balance), complimentaryGrants: rows.reduce((s, r) => s + r.complimentaryGrants, 0) },
+      totals: { accrued: total("accrued"), collected: total("collected"), refunded: total("refunded"), netCollected: total("netCollected"), onlineCollected: total("onlineCollected"), aiTopupCollected: total("aiTopupCollected"), pending: fmt(balance), complimentaryGrants: rows.reduce((s, r) => s + r.complimentaryGrants, 0) },
     };
   }
 }

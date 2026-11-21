@@ -143,6 +143,11 @@ describe("Yapay zekâ kullanım hakkı: cüzdan, defter, dönem, motor", () => {
     // Günlük $2 sınırı (başka konuşma)
     await su.aiUsageEvent.create({ data: { tenantId: P.tenant.id, provider: "anthropic", model: "claude-haiku-5-5", calls: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costMicroUsd: 2_000_000, debitKurus: 0, outcome: "replied" } });
     expect(await quota.gate(P.tenant.id, "00000000-0000-4000-8000-000000000002")).toMatchObject({ ok: false, reason: "daily_cap" });
+    // SaaS sahibine günde bir e-posta (ikinci aşımda tekrar gitmez)
+    const admin = await su.user.create({ data: { email: "saas-ai@test.local", fullName: "SaaS Sahibi", passwordHash: "x", isPlatformAdmin: true } });
+    await quota.gate(P.tenant.id, "00000000-0000-4000-8000-000000000003");
+    await quota.gate(P.tenant.id, "00000000-0000-4000-8000-000000000004");
+    expect(await su.outboundEmail.count({ where: { to: admin.email, template: "ai_daily_cap" } })).toBe(1);
     await su.aiUsageEvent.deleteMany({ where: { tenantId: P.tenant.id } });
   });
 
