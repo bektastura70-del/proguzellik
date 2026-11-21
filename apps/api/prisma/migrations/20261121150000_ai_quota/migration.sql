@@ -166,7 +166,7 @@ UPDATE "Plan" SET "aiMonthlyCreditKurus" = 50000 WHERE "code" = 'SMART';
 -- Tek satırlık ayar tablosu
 ALTER TABLE "AiBillingSettings" ADD CONSTRAINT "AiBillingSettings_singleton" CHECK ("id" = 1);
 ALTER TABLE "AiBillingSettings" ADD CONSTRAINT "AiBillingSettings_values" CHECK ("usdTry" > 0 AND "fxBuffer" >= 1 AND "markup" >= 1 AND "creditRatio" > 0 AND "creditRatio" <= 1 AND "trialCreditKurus" >= 0 AND "tenantDailyMaxUsd" > 0 AND "conversationMaxTokens" > 0);
-ALTER TABLE "AiCreditPurchase" ADD CONSTRAINT "AiCreditPurchase_amounts" CHECK ("netAmount" > 0 AND "grossAmount" >= "netAmount" AND "creditKurus" > 0 AND "refundedAmount" >= 0 AND "refundedAmount" <= "grossAmount" AND "refundedCreditKurus" >= 0);
+ALTER TABLE "AiCreditPurchase" ADD CONSTRAINT "AiCreditPurchase_amounts" CHECK ("netAmount" > 0 AND "grossAmount" >= "netAmount" AND "creditKurus" > 0 AND "refundedAmount" >= 0 AND "refundedCreditKurus" >= 0);
 
 -- Defter yalnızca eklenir: güncelleme ve silme veritabanında engellenir.
 CREATE OR REPLACE FUNCTION ai_credit_ledger_append_only() RETURNS trigger AS $$

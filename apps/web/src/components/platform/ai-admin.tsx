@@ -106,7 +106,7 @@ function SettingsForm({ s, onSaved }: { s: Settings | null; onSaved: () => void 
 
 type Purchase = {
   id: string; tenant: { name: string; slug: string }; createdAt: string; status: string; sandbox: boolean;
-  netAmount: string; grossAmount: string; refundedAmount: string; creditTl: string; unusedCreditTl: string; suggestedRefund: string; error: string | null;
+  netAmount: string; grossAmount: string; refundedAmount: string; creditTl: string; unusedCreditTl: string; suggestedRefund: string; needsRefund: boolean; error: string | null;
 };
 const P_STATUS: Record<string, string> = { COMPLETED: "Yüklendi", REFUNDED: "İade edildi", PENDING: "Bekliyor", FAILED: "Başarısız" };
 
@@ -125,15 +125,15 @@ function PurchasesCard({ onChanged }: { onChanged: () => void }) {
             <Td>{p.tenant.name}<div className="text-xs text-neutral-500">{p.tenant.slug}</div></Td>
             <Td>{p.grossAmount} TL{Number(p.refundedAmount) > 0 && <div className="text-xs text-neutral-500">İade: {p.refundedAmount} TL</div>}</Td>
             <Td>{p.creditTl} / {p.unusedCreditTl} TL</Td>
-            <Td>{P_STATUS[p.status] ?? p.status}{p.sandbox && <Badge tone="amber">test</Badge>}{p.error && <div className="text-xs text-red-600">{p.error}</div>}</Td>
+            <Td>{P_STATUS[p.status] ?? p.status}{p.sandbox && <Badge tone="amber">test</Badge>}{p.needsRefund && <div><Badge tone="red">Ücret alındı, iade gerekli</Badge></div>}{p.error && <div className="text-xs text-red-600">{p.error}</div>}</Td>
             <Td>
-              {p.status === "COMPLETED" && (
+              {(p.status === "COMPLETED" || p.needsRefund) && (
                 <Button size="sm" variant="outline" onClick={async () => {
                   const v = prompt(`İade tutarı (TL, KDV dahil). Önerilen: ${p.suggestedRefund}`, p.suggestedRefund);
                   if (!v) return;
                   const amount = Number(v.replace(",", "."));
                   if (!(amount > 0)) return toast("Geçerli bir tutar girin", "red");
-                  if (!confirm(`${p.tenant.name} için ${amount.toFixed(2)} TL iyzico'da iade edilecek ve iade oranında kullanım hakkı geri alınacak. Onaylıyor musunuz?`)) return;
+                  if (!confirm(`${p.tenant.name} için ${amount.toFixed(2)} TL iyzico'da iade edilecek${p.needsRefund ? "" : " ve iade oranında kullanım hakkı geri alınacak"}. Onaylıyor musunuz?`)) return;
                   try {
                     await api(`/platform/ai/purchases/${p.id}/refund`, { method: "POST", body: { amount } });
                     toast("İade yapıldı");

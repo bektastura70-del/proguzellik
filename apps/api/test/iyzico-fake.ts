@@ -106,7 +106,9 @@ export class FakeIyzico extends IyzicoClient {
     if (!f) throw new IyzicoError("Ödeme bulunamadı", "NOT_FOUND");
     return structuredClone(f.result ?? { paymentStatus: "INIT", conversationId: f.input.conversationId, basketId: f.input.basketId });
   }
+  failCancel = false;
   async cancelPayment(p: { paymentId: string }) {
+    if (this.failCancel) throw new IyzicoError("Ödeme iptal edilemez (gün sonu geçti)", "5093");
     this.cancelledPayments.push(p.paymentId);
   }
   async refundPayment(p: { paymentTransactionId: string; price: string }) {

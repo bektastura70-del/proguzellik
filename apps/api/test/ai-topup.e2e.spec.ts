@@ -110,7 +110,9 @@ describe("Yapay zekâ ek paketi (sahte iyzico; gerçek ödeme yok)", () => {
 
   it("iade (SaaS sahibi): iyzico'da para iadesi + iade oranında değer geri alınır; fazla iade reddedilir; salon iade yapamaz", async () => {
     await su.user.update({ where: { id: A.user.id }, data: { isPlatformAdmin: true } });
-    const pa = api(app, (await enableMfa(app, "ep@test.local")).token);
+    const mfaToken = (await enableMfa(app, "ep@test.local")).token;
+    const pa = api(app, mfaToken);
+    const a2 = api(app, mfaToken, A.tenant.id);
     const list = (await pa.get("/platform/ai/purchases").expect(200)).body as { id: string; status: string; grossAmount: string; suggestedRefund: string }[];
     const p = list.find((x) => x.status === "COMPLETED" && x.grossAmount === "1200.00")!;
     expect(Number(p.suggestedRefund)).toBeGreaterThan(0);
@@ -123,6 +125,23 @@ describe("Yapay zekâ ek paketi (sahte iyzico; gerçek ödeme yok)", () => {
     expect((await pa.post(`/platform/ai/purchases/${p.id}/refund`).send({ amount: 600 }).expect(200)).body.status).toBe("REFUNDED");
     const w = await quota.wallet(A.tenant.id);
     expect(await ledgerSum(A.tenant.id)).toBe(w.monthlyRemainingKurus + w.purchasedRemainingKurus);
+    // Ücret alınıp reddedilen (tutar uyuşmazlığı) ve iptali tutmayan alım: listede "iade gerekli", iade cüzdana dokunmaz
+    fake.failCancel = true;
+    const r4 = (await a2.post("/ai-quota/topup/checkout").send(body(500)).expect(201)).body;
+    const t4 = tokenOf(r4.checkoutFormContent);
+    fake.payForm(t4, { paidPrice: 650, price: 650, itemTransactions: [{ itemId: "x", paymentTransactionId: `ptx-${t4}`, paidPrice: 650 }] });
+    expect(await topup.completeCallback(t4)).toMatchObject({ ok: false });
+    fake.failCancel = false;
+    const failed = ((await pa.get("/platform/ai/purchases").expect(200)).body as { id: string; needsRefund: boolean; suggestedRefund: string }[]).find((x) => x.needsRefund)!;
+    expect(failed.suggestedRefund).toBe("650.00");
+    const walletBefore = await quota.wallet(A.tenant.id);
+    expect((await pa.post(`/platform/ai/purchases/${failed.id}/refund`).send({ amount: 650 }).expect(200)).body).toMatchObject({ status: "FAILED", refundedAmount: "650.00", creditTakenTl: "0.00" });
+    expect((await quota.wallet(A.tenant.id)).purchasedRemainingKurus).toBe(walletBefore.purchasedRemainingKurus);
+    await pa.post(`/platform/ai/purchases/${failed.id}/refund`).send({ amount: 1 }).expect(400);
+    // Aynı gün iptal edilen alımda iade kalmaz
+    const cancelledRow = ((await pa.get("/platform/ai/purchases").expect(200)).body as { status: string; needsRefund: boolean; error: string | null }[]).filter((x) => x.status === "FAILED" && x.error?.includes("iptal edildi"));
+    expect(cancelledRow.length).toBeGreaterThan(0);
+    expect(cancelledRow.every((x) => !x.needsRefund)).toBe(true);
     const salon = api(app, await login(app, "epp@test.local"), P.tenant.id);
     await salon.post(`/platform/ai/purchases/${p.id}/refund`).send({ amount: 1 }).expect(403);
   });
