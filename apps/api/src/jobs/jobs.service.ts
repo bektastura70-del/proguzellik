@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { AiQuotaService } from "../ai-quota/ai-quota.service";
+import { AiTopupService } from "../ai-quota/ai-topup.service";
 import { Prisma } from "@prisma/client";
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
@@ -41,6 +42,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     private readonly renewal: RenewalService,
     private readonly lowStock: LowStockService,
     private readonly aiQuota: AiQuotaService,
+    private readonly aiTopup: AiTopupService,
   ) {}
 
   async onModuleInit() {
@@ -102,6 +104,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       const low = await this.lowStock.run(now);
       // Yapay zekâ kullanım hakkı: dönemi biten cüzdanlarda aylık hak yenilenir, süresi dolan ek bakiye sona erer
       const ai = await this.aiQuota.runDaily(now);
+      // Ek paket: dönüşü kaybolan ödemeler iyzico'dan doğrulanıp tamamlanır
+      const topup = await this.aiTopup.reconcilePending(now);
       const result = {
         ...lifecycle,
         paymentReminders: pay.paymentReminders,
@@ -113,7 +117,9 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         renewalReminders: ren.renewalReminders,
         lowStockEmails: low.lowStockEmails,
         aiWalletsRenewed: ai.aiWalletsRenewed,
-        errors: [...lifecycle.errors, ...pay.paymentReminderErrors, ...ret.errors, ...ren.errors, ...low.errors, ...ai.errors],
+        aiTopupsCompleted: topup.aiTopupsCompleted,
+        aiTopupsExpired: topup.aiTopupsExpired,
+        errors: [...lifecycle.errors, ...pay.paymentReminderErrors, ...ret.errors, ...ren.errors, ...low.errors, ...ai.errors, ...topup.errors],
       };
       await db.jobRun.update({
         where: { id: run.id },

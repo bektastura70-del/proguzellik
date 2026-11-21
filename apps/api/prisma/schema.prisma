@@ -1823,6 +1823,10 @@ model AiCreditPurchase {
   createdAt              DateTime               @default(now())
   completedAt            DateTime?
   refundedAt             DateTime?
+  /// iyzico'da iade edilen toplam (KDV dahil). Kısmi iadede durum COMPLETED kalır.
+  refundedAmount         Decimal                @default(0) @db.Decimal(12, 2)
+  /// İadeyle cüzdandan geri alınan değer (kuruş)
+  refundedCreditKurus    Int                    @default(0)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
 

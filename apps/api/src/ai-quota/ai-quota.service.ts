@@ -271,12 +271,12 @@ export class AiQuotaService {
   }
 
   /** İade: satın alınan değer (ya da kalan kadarı) ek bakiyeden düşülür. Düşülen değer döner. */
-  async debitRefund(tx: Db, p: { tenantId: string; purchaseId: string; creditKurus: number; actorId: string }, now = new Date()) {
+  async debitRefund(tx: Db, p: { tenantId: string; purchaseId: string; creditKurus: number; actorId: string; key: string }, now = new Date()) {
     await this.lock(tx, p.tenantId);
     const settings = await tx.aiBillingSettings.findUnique({ where: { id: 1 } });
     const w = await this.refresh(tx, p.tenantId, now, settings);
     const amount = Math.min(p.creditKurus, Math.max(0, w.purchasedRemainingKurus));
-    if (amount > 0) await this.entry(tx, { tenantId: p.tenantId, bucket: "PURCHASED", type: "REFUND_DEBIT", amountKurus: -amount, key: `ai-refund-${p.purchaseId}`, purchaseId: p.purchaseId, actorId: p.actorId });
+    if (amount > 0) await this.entry(tx, { tenantId: p.tenantId, bucket: "PURCHASED", type: "REFUND_DEBIT", amountKurus: -amount, key: p.key, purchaseId: p.purchaseId, actorId: p.actorId });
     await tx.aiWallet.update({ where: { tenantId: p.tenantId }, data: { purchasedRemainingKurus: w.purchasedRemainingKurus - amount, purchasedPeakKurus: Math.max(0, w.purchasedPeakKurus - amount) } });
     return amount;
   }

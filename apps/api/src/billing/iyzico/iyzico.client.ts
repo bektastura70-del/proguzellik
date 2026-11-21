@@ -46,6 +46,34 @@ export interface IyzicoCheckoutResult {
   startDate?: number;
 }
 
+/** Tek seferlik ödeme formu (Ödeme Formu / Checkout Form): ek paket gibi abonelik dışı satışlar. */
+export interface IyzicoPaymentFormInput {
+  conversationId: string;
+  basketId: string;
+  /** KDV dahil, 2 ondalık ("1200.00") */
+  price: string;
+  callbackUrl: string;
+  buyer: { id: string; name: string; surname: string; email: string; gsmNumber: string; identityNumber: string; ip: string; city: string; country: string; registrationAddress: string };
+  billingAddress: { contactName: string; city: string; country: string; address: string };
+  item: { id: string; name: string; category: string };
+}
+
+export interface IyzicoPaymentFormResult {
+  /** iyzico belgesinde değer listesi yok; yalnız "SUCCESS" başarılı sayılır. */
+  paymentStatus?: string;
+  /** 1 onaylı, 0 incelemede, -1 reddedildi */
+  fraudStatus?: number;
+  paymentId?: string;
+  conversationId?: string;
+  basketId?: string;
+  price?: number;
+  paidPrice?: number;
+  currency?: string;
+  installment?: number;
+  itemTransactions?: { itemId: string; paymentTransactionId: string; paidPrice: number; transactionStatus?: number }[];
+  errorMessage?: string;
+}
+
 export class IyzicoError extends Error {
   constructor(
     message: string,
@@ -69,6 +97,14 @@ export abstract class IyzicoClient {
   abstract retrieveCheckout(token: string): Promise<IyzicoCheckoutResult>;
   abstract getSubscription(ref: string): Promise<IyzicoSubscriptionDetail>;
   abstract cancelSubscription(ref: string): Promise<void>;
+  /** Tek seferlik ödeme formunu başlatır (taksit kapalı). */
+  abstract initPaymentForm(p: IyzicoPaymentFormInput): Promise<{ token: string; checkoutFormContent: string; paymentPageUrl?: string }>;
+  /** Ödeme formunun sonucu iyzico'dan sorgulanır (geri dönüş gövdesine güvenilmez). */
+  abstract retrievePaymentForm(token: string, conversationId: string): Promise<IyzicoPaymentFormResult>;
+  /** Aynı gün iptal (tutarın tamamı). */
+  abstract cancelPayment(p: { paymentId: string; conversationId: string; ip: string }): Promise<void>;
+  /** Kısmi/tam iade (365 gün içinde), kalem bazında. */
+  abstract refundPayment(p: { paymentTransactionId: string; price: string; conversationId: string; ip: string }): Promise<void>;
 }
 
 /** IYZWSv2 imzası: HMACSHA256(randomKey + uriPath + body, secretKey) → hex; başlık "IYZWSv2 base64(apiKey:..&randomKey:..&signature:..)". */
@@ -210,5 +246,36 @@ export class HttpIyzicoClient extends IyzicoClient {
 
   async cancelSubscription(ref: string) {
     await this.call("POST", `/v2/subscription/subscriptions/${encodeURIComponent(ref)}/cancel`, {});
+  }
+
+  async initPaymentForm(p: IyzicoPaymentFormInput) {
+    const r = await this.call<{ token: string; checkoutFormContent: string; paymentPageUrl?: string }>("POST", "/payment/iyzipos/checkoutform/initialize/auth/ecom", {
+      locale: "tr",
+      conversationId: p.conversationId,
+      price: p.price,
+      paidPrice: p.price,
+      currency: "TRY",
+      basketId: p.basketId,
+      paymentGroup: "PRODUCT",
+      callbackUrl: p.callbackUrl,
+      // Tek çekim: taksit faizi ödenen tutarı değiştirmesin (tutar doğrulaması paidPrice ile yapılır).
+      enabledInstallments: [1],
+      buyer: p.buyer,
+      billingAddress: p.billingAddress,
+      basketItems: [{ id: p.item.id, name: p.item.name, category1: p.item.category, itemType: "VIRTUAL", price: p.price }],
+    });
+    return { token: r.token, checkoutFormContent: r.checkoutFormContent, paymentPageUrl: r.paymentPageUrl };
+  }
+
+  async retrievePaymentForm(token: string, conversationId: string) {
+    return this.call<IyzicoPaymentFormResult & Json>("POST", "/payment/iyzipos/checkoutform/auth/ecom/detail", { locale: "tr", conversationId, token });
+  }
+
+  async cancelPayment(p: { paymentId: string; conversationId: string; ip: string }) {
+    await this.call("POST", "/payment/cancel", { locale: "tr", conversationId: p.conversationId, paymentId: p.paymentId, ip: p.ip });
+  }
+
+  async refundPayment(p: { paymentTransactionId: string; price: string; conversationId: string; ip: string }) {
+    await this.call("POST", "/payment/refund", { locale: "tr", conversationId: p.conversationId, paymentTransactionId: p.paymentTransactionId, price: p.price, currency: "TRY", ip: p.ip });
   }
 }

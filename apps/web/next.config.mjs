@@ -83,6 +83,7 @@ const nextConfig = {
     return [
       { source: "/:path*", headers: securityHeaders },
       { source: "/panel/abonelik/odeme", headers: paymentPageHeaders },
+      { source: "/panel/abonelik/ai-paket", headers: paymentPageHeaders },
       { source: "/satin-al/odeme", headers: paymentPageHeaders },
       { source: "/panel/kanallar/whatsapp-bagla", headers: metaConnectHeaders },
       { source: "/panel/kanallar/instagram-bagla", headers: metaConnectHeaders },

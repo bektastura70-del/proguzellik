@@ -1,4 +1,4 @@
-import { IyzicoClient, IyzicoError, IyzicoCustomer, IyzicoInterval, IyzicoSubscriptionDetail } from "../src/billing/iyzico/iyzico.client";
+import { IyzicoClient, IyzicoError, IyzicoCustomer, IyzicoInterval, IyzicoPaymentFormInput, IyzicoPaymentFormResult, IyzicoSubscriptionDetail } from "../src/billing/iyzico/iyzico.client";
 
 export const DAY = 86_400_000;
 
@@ -81,5 +81,35 @@ export class FakeIyzico extends IyzicoClient {
     const s = this.subs.get(ref);
     if (s) s.subscriptionStatus = "CANCELED";
   }
+  /* ---------- Tek seferlik ödeme formu ---------- */
+  forms = new Map<string, { input: IyzicoPaymentFormInput; result?: IyzicoPaymentFormResult }>();
+  cancelledPayments: string[] = [];
+  refunds: { paymentTransactionId: string; price: string }[] = [];
+  async initPaymentForm(p: IyzicoPaymentFormInput) {
+    const token = `pf-${++this.n}-abcdefghij`;
+    this.forms.set(token, { input: p });
+    return { token, checkoutFormContent: `<script>/*iyzico ${token}*/</script>` };
+  }
+  /** Kullanıcının formda ödemesi; over ile iyzico yanıtı değiştirilir (tutar uyuşmazlığı, inceleme vb.). */
+  payForm(token: string, over: Partial<IyzicoPaymentFormResult> = {}) {
+    const f = this.forms.get(token)!;
+    const price = Number(f.input.price);
+    f.result = {
+      paymentStatus: "SUCCESS", fraudStatus: 1, paymentId: `pay-${token}`, conversationId: f.input.conversationId, basketId: f.input.basketId,
+      price, paidPrice: price, currency: "TRY", installment: 1,
+      itemTransactions: [{ itemId: f.input.item.id, paymentTransactionId: `ptx-${token}`, paidPrice: price, transactionStatus: 2 }],
+      ...over,
+    };
+  }
+  async retrievePaymentForm(token: string) {
+    const f = this.forms.get(token);
+    if (!f) throw new IyzicoError("Ödeme bulunamadı", "NOT_FOUND");
+    return structuredClone(f.result ?? { paymentStatus: "INIT", conversationId: f.input.conversationId, basketId: f.input.basketId });
+  }
+  async cancelPayment(p: { paymentId: string }) {
+    this.cancelledPayments.push(p.paymentId);
+  }
+  async refundPayment(p: { paymentTransactionId: string; price: string }) {
+    this.refunds.push({ paymentTransactionId: p.paymentTransactionId, price: p.price });
+  }
 }
-

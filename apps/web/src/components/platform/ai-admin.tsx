@@ -50,6 +50,7 @@ export function AiAdminCard() {
           ))}
         </Table>
       </Card>
+      <PurchasesCard onChanged={o.reload} />
       <SettingsForm s={d.settings} onSaved={o.reload} />
     </div>
   );
@@ -99,6 +100,54 @@ function SettingsForm({ s, onSaved }: { s: Settings | null; onSaved: () => void 
           <div className="flex items-end"><Button disabled={busy} className="w-full">Kaydet</Button></div>
         </form>
       </CardBody>
+    </Card>
+  );
+}
+
+type Purchase = {
+  id: string; tenant: { name: string; slug: string }; createdAt: string; status: string; sandbox: boolean;
+  netAmount: string; grossAmount: string; refundedAmount: string; creditTl: string; unusedCreditTl: string; suggestedRefund: string; error: string | null;
+};
+const P_STATUS: Record<string, string> = { COMPLETED: "Yüklendi", REFUNDED: "İade edildi", PENDING: "Bekliyor", FAILED: "Başarısız" };
+
+/** Ek paket alımları ve iyzico üzerinden iade (iade oranında değer cüzdandan geri alınır). */
+function PurchasesCard({ onChanged }: { onChanged: () => void }) {
+  const toast = useToast();
+  const list = useApi<Purchase[]>("/platform/ai/purchases");
+  if (!list.data) return list.error ? <Alert>{list.error.message}</Alert> : <Spinner />;
+  return (
+    <Card>
+      <CardHeader title="Ek paket alımları" description="Önerilen iade, alımın kullanılmamış payı oranındadır (KDV dahil). İade iyzico'da gerçek para iadesi yapar." />
+      <Table head={["Tarih", "İşletme", "Ödenen", "Değer / kullanılmamış", "Durum", ""]} empty="Alım yok">
+        {list.data.map((p) => (
+          <tr key={p.id}>
+            <Td>{new Date(p.createdAt).toLocaleString("tr-TR")}</Td>
+            <Td>{p.tenant.name}<div className="text-xs text-neutral-500">{p.tenant.slug}</div></Td>
+            <Td>{p.grossAmount} TL{Number(p.refundedAmount) > 0 && <div className="text-xs text-neutral-500">İade: {p.refundedAmount} TL</div>}</Td>
+            <Td>{p.creditTl} / {p.unusedCreditTl} TL</Td>
+            <Td>{P_STATUS[p.status] ?? p.status}{p.sandbox && <Badge tone="amber">test</Badge>}{p.error && <div className="text-xs text-red-600">{p.error}</div>}</Td>
+            <Td>
+              {p.status === "COMPLETED" && (
+                <Button size="sm" variant="outline" onClick={async () => {
+                  const v = prompt(`İade tutarı (TL, KDV dahil). Önerilen: ${p.suggestedRefund}`, p.suggestedRefund);
+                  if (!v) return;
+                  const amount = Number(v.replace(",", "."));
+                  if (!(amount > 0)) return toast("Geçerli bir tutar girin", "red");
+                  if (!confirm(`${p.tenant.name} için ${amount.toFixed(2)} TL iyzico'da iade edilecek ve iade oranında kullanım hakkı geri alınacak. Onaylıyor musunuz?`)) return;
+                  try {
+                    await api(`/platform/ai/purchases/${p.id}/refund`, { method: "POST", body: { amount } });
+                    toast("İade yapıldı");
+                    list.reload();
+                    onChanged();
+                  } catch (e) {
+                    toast((e as Error).message, "red");
+                  }
+                }}>İade et</Button>
+              )}
+            </Td>
+          </tr>
+        ))}
+      </Table>
     </Card>
   );
 }
