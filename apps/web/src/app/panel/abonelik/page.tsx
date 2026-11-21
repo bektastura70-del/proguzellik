@@ -92,7 +92,7 @@ function SubscriptionInner() {
       <Card className="mt-6">
         <CardHeader title="Ödeme geçmişi" />
         <Table head={["Tarih", "Açıklama", "Tutar", "Durum", "Sağlayıcı"]} empty="Ödeme yok">
-          {s.payments.map((p) => <tr key={p.id}><Td>{dateTr(p.createdAt)}</Td><Td>{p.description}</Td><Td>{tl(p.amount)}</Td><Td>{p.status === "PAID" ? "Ödendi" : p.status}</Td><Td>{p.provider === "mock" ? "Test" : p.provider === "iyzico" ? "iyzico" : p.provider === "iyzico_sandbox" ? "iyzico (test, ücret alınmadı)" : p.provider}</Td></tr>)}
+          {s.payments.map((p) => <tr key={p.id}><Td>{dateTr(p.createdAt)}</Td><Td>{p.description}</Td><Td>{tl(p.amount)}</Td><Td>{p.status === "PAID" ? "Ödendi" : p.status === "REFUNDED" ? "İade edildi" : p.status === "FAILED" ? "Başarısız" : p.status}</Td><Td>{p.provider === "mock" ? "Test" : p.provider === "iyzico" ? "iyzico" : p.provider === "iyzico_sandbox" ? "iyzico (test, ücret alınmadı)" : p.provider}</Td></tr>)}
         </Table>
       </Card>
       {buy && s.onlinePayment && s.checkoutKind === "iyzico" && (

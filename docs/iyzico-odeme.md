@@ -56,8 +56,9 @@ Not: İlk ödeme webhook'u test etmez (09.11 sandbox testinde ilk ödemede bildi
 Ne zaman: "İade gerekiyor" e-postası (yıllık 14 gün, satın alma çakışması), müşteri talebi, mükerrer ödeme.
 1. iyzico **canlı** panelinde ilgili siparişi (e-postadaki sipariş referansı) bulun ve iade edin.
 2. `/platform` → İşletmeler → ilgili işletme → Abonelik → **Tahsilatlar** tablosunda ödemenin yanındaki **İade edildi** düğmesi → açıklama yazın. Bu işlem para iadesi yapmaz; tahsilatı "İade edildi" yapar, gelir raporundan düşer, denetim kaydına `iyzico.payment_refunded` yazar.
-3. Resmî belge: kesilmiş fatura varsa iade faturası/iptal mali müşavirle elle yapılır (e-Fatura entegratörü yok).
-4. Hesap açılamadan alınan ödemede (`purchase.conflict_refund_needed`) tahsilat kaydı oluşmaz; yalnız 1. adım yapılır.
+3. Tam iadede erişimi bitirmek için (önerilen; karar SaaS sahibinin): aynı ekranda Abonelik → **İptal et** → **Hemen (işletme kapanır)**. Yapılmazsa salon, iade almış olsa da dönem sonuna kadar kullanmaya devam eder (iyzico'da sonraki çekim zaten durmuştur).
+4. Resmî belge: kesilmiş fatura varsa iade faturası/iptal mali müşavirle elle yapılır (e-Fatura entegratörü yok).
+5. Hesap açılamadan alınan ödemede (`purchase.conflict_refund_needed`) tahsilat kaydı oluşmaz; yalnız 1. adım yapılır.
 
 ### 4. Fatura (geçici, elle)
 `EINVOICE_PROVIDER=none`: sistem resmî fatura kesmez. Her PAID tahsilat için (check-payments.sh veya `/platform` gelir raporu) mali müşavir/muhasebe yazılımıyla elle e-Arşiv/e-Fatura kesilir. Entegratör seçilince ayrı iş.
