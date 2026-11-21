@@ -3,11 +3,12 @@ import { ChannelConnection, Prisma } from "@prisma/client";
 import { Job, Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { toZoned } from "../../common/time";
-import { loadEnv } from "../../config/env";
+import { aiAllowedForTenant, loadEnv } from "../../config/env";
+import { AiQuotaService } from "../../ai-quota/ai-quota.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { InboundSink } from "../inbound-sink";
 import { InboxService, windowOpen } from "../inbox.service";
-import { ChatAgent, ChatTurn } from "./chat-agent";
+import { ChatAgent, ChatTurn, consentValid, usageOfError } from "./chat-agent";
 import { PushPlanner } from "../../notifications/push/push.planner";
 import { ChatTools } from "./chat-tools";
 
@@ -22,6 +23,10 @@ export function claimsBooking(text: string): boolean {
   return /randevu[^.!?\n]{0,60}(oluşturuldu|oluşturdum|oluşturulmuştur|onaylandı|onaylanmıştır|kaydedildi|kaydettim|alındı|aldım)(?![a-zçğıöşü])/.test(text.toLocaleLowerCase("tr-TR"));
 }
 const HISTORY = 20;
+/** Modele giden her mesaj bu uzunluğa kırpılır (istem 100K token sınırının altında kalır). */
+const MAX_TURN_CHARS = 1000;
+/** Kullanım hakkı bitince müşteriye konuşmada bir kez giden sabit metin (yapay zekâ üretmez). */
+export const QUOTA_NOTICE = "Mesajınız ekibimize iletildi, en kısa sürede size dönüş yapılacak.";
 
 const LABEL = { STAFF: "Salon personeli", SYSTEM: "Salonun otomatik bildirimi", AI: "", CUSTOMER: "" } as const;
 
@@ -40,6 +45,7 @@ export class ConversationEngine {
     private readonly tools: ChatTools,
     private readonly agent: ChatAgent,
     private readonly push: PushPlanner,
+    private readonly quota: AiQuotaService,
   ) {}
 
   private ctx(tenantId: string) {
@@ -56,7 +62,7 @@ export class ConversationEngine {
       // İş yeniden denenirse aynı mesaja ikinci kez yanıt verilmez.
       const answered = await tx.conversationMessage.count({ where: { conversationId, direction: "OUT", author: "AI", createdAt: { gte: latest.createdAt } } });
       if (answered) return { skip: "answered" as const };
-      const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true, timezone: true, status: true, plan: { select: { features: true } } } });
+      const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true, slug: true, timezone: true, status: true, plan: { select: { features: true } } } });
       return { conv, tenant };
     });
     if ("skip" in pre) return pre.skip!;
@@ -68,7 +74,7 @@ export class ConversationEngine {
       await this.notifyStaff(tenantId, conversationId);
       return "human";
     }
-    if (!c.aiAutoReply || !c.aiDataConsentAt || c.status !== "CONNECTED") {
+    if (!c.aiAutoReply || !consentValid(c, this.agent.name === "anthropic" || this.agent.name === "openai" ? this.agent.name : null) || c.status !== "CONNECTED") {
       await this.notifyStaff(tenantId, conversationId);
       return "ai_off";
     }
@@ -78,9 +84,21 @@ export class ConversationEngine {
     }
     if (!windowOpen(conv.lastInboundAt)) return "window_closed";
 
-    if (this.agent.name === "disabled") {
+    const env = loadEnv();
+    if (this.agent.name === "disabled" || env.AI_GLOBAL_PAUSE === "1") {
       await this.handoff(tenantId, conversationId, "Yapay zekâ yanıtları bu sunucuda kapalı");
       return "handoff";
+    }
+    // Pilot: canlıda gerçek yapay zekâ yalnız listedeki işletmelerde çalışır.
+    if (this.agent.name !== "mock" && !aiAllowedForTenant(env, tenant.slug)) {
+      await this.notifyStaff(tenantId, conversationId);
+      return "ai_off";
+    }
+    const gate = await this.quota.gate(tenantId, conversationId);
+    if (!gate.ok) {
+      if (gate.reason === "quota_exhausted") await this.quotaNotice(tenantId, conversationId);
+      await this.handoff(tenantId, conversationId, gate.message);
+      return gate.reason;
     }
     const recent = await this.prisma.withTenant(this.ctx(tenantId), (tx) =>
       tx.conversationMessage.count({ where: { conversationId, author: "AI", createdAt: { gt: new Date(Date.now() - 3_600_000) } } }),
@@ -93,7 +111,7 @@ export class ConversationEngine {
     const rows = await this.prisma.withTenant(this.ctx(tenantId), (tx) =>
       tx.conversationMessage.findMany({ where: { conversationId, NOT: { author: "SYSTEM", status: "SKIPPED" } }, orderBy: { createdAt: "desc" }, take: HISTORY }),
     );
-    const history = toTurns(rows.reverse());
+    const history = toTurns(rows.reverse().map((r) => ({ ...r, text: r.text.slice(0, MAX_TURN_CHARS) })));
     if (!history.length) return "empty";
 
     const z = toZoned(new Date(), tenant.timezone);
@@ -119,15 +137,19 @@ export class ConversationEngine {
         },
       });
     } catch (e) {
+      const usage = usageOfError(e);
+      if (usage) await this.recordUsage(tenantId, conversationId, messageId, usage, "error");
       this.logger.error(`Yapay zekâ hatası (${conversationId}): ${(e as Error).message.slice(0, 200)}`);
       await this.handoff(tenantId, conversationId, "Yapay zekâ şu anda yanıt veremedi");
       return "error";
     }
+    const result = out.handoff ? "handoff" : out.text ? "replied" : "no_text";
+    if (out.usage) await this.recordUsage(tenantId, conversationId, messageId, out.usage, result);
     this.logger.log(`Yapay zekâ (${conversationId}): araçlar [${trace.join(", ") || "yok"}], randevu ${booked ? "oluştu" : "oluşmadı"}`);
     // Model "randevu oluşturuldu" dese de araç randevuyu oluşturmadıysa müşteriye yanlış söz verilmez; personele devredilir.
     if (out.text && !booked && claimsBooking(out.text)) {
       this.logger.warn(`Yapay zekâ randevu oluşmadan oluşturuldu dedi (${conversationId}); yanıt değiştirildi`);
-      out = { text: "Randevu talebinizi aldım ancak sisteme henüz kaydedemedim. Ekibimiz en kısa sürede sizinle iletişime geçecek.", handoff: "Yapay zekâ randevu oluşmadan oluşturuldu dedi", tools: out.tools };
+      out = { text: "Randevu talebinizi aldım ancak sisteme henüz kaydedemedim. Ekibimiz en kısa sürede sizinle iletişime geçecek.", handoff: "Yapay zekâ randevu oluşmadan oluşturuldu dedi", tools: out.tools, usage: out.usage };
     }
     // Yanıt hazırlanırken personel konuşmayı devraldıysa yapay zekâ yazmaz.
     const still = await this.prisma.withTenant(this.ctx(tenantId), (tx) => tx.conversation.findUnique({ where: { id: conversationId }, select: { mode: true } }));
@@ -138,6 +160,25 @@ export class ConversationEngine {
       return "handoff";
     }
     return out.text ? "replied" : "no_text";
+  }
+
+  /** Kullanım kaydı ve hak düşümü. Hata yanıt akışını bozmaz (kayıt kaybı günlüğe yazılır). */
+  private async recordUsage(tenantId: string, conversationId: string, messageId: string, usage: NonNullable<ReturnType<typeof usageOfError>>, outcome: string) {
+    try {
+      await this.quota.record({ tenantId, conversationId, messageId, usage, outcome });
+    } catch (e) {
+      this.logger.error(`Yapay zekâ kullanımı kaydedilemedi (${conversationId}): ${(e as Error).message.slice(0, 200)}`);
+    }
+  }
+
+  /** Hak bittiğinde müşteriye konuşmada bir kez sabit bilgilendirme. */
+  private async quotaNotice(tenantId: string, conversationId: string) {
+    try {
+      const sent = await this.prisma.withTenant(this.ctx(tenantId), (tx) => tx.conversationMessage.count({ where: { conversationId, author: "SYSTEM", text: QUOTA_NOTICE } }));
+      if (!sent) await this.inbox.send(tenantId, conversationId, QUOTA_NOTICE, "SYSTEM");
+    } catch (e) {
+      this.logger.error(`Kota bilgilendirmesi gönderilemedi (${conversationId}): ${(e as Error).message.slice(0, 200)}`);
+    }
   }
 
   /** Telefon bildirimi (salon uygulaması + Web Push açıksa). Hata yanıt akışını bozmaz. */

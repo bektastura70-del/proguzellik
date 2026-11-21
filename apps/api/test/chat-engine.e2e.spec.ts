@@ -1,4 +1,5 @@
 import { INestApplication } from "@nestjs/common";
+import { AiQuotaService } from "../src/ai-quota/ai-quota.service";
 import { toZoned } from "../src/common/time";
 import { AnthropicChatAgent, ChatAgent, ChatInput, ChatOutput, DisabledChatAgent, MockChatAgent } from "../src/messaging/chat/chat-agent";
 import { ChatTools, isAffirmative } from "../src/messaging/chat/chat-tools";
@@ -289,7 +290,7 @@ describe("Yapay zekâ sohbet motoru: yanıt, kampanya, randevu, personele devir"
     await su.conversationMessage.create({ data: { tenantId: A.tenant.id, conversationId: c.id, direction: "IN", author: "CUSTOMER", text: "Merhaba", status: "DELIVERED" } });
     const m = await su.conversationMessage.findFirstOrThrow({ where: { conversationId: c.id, direction: "IN" }, orderBy: { createdAt: "desc" } });
     const before = (await aiMessages(c.id)).length;
-    const engine = new ConversationEngine(app.get(PrismaService), app.get(InboxService), app.get(ChatTools), new DisabledChatAgent(), app.get(PushPlanner));
+    const engine = new ConversationEngine(app.get(PrismaService), app.get(InboxService), app.get(ChatTools), new DisabledChatAgent(), app.get(PushPlanner), app.get(AiQuotaService));
     expect(await engine.handle(A.tenant.id, c.id, m.id)).toBe("handoff");
     expect(await convOf("905550000001")).toMatchObject({ mode: "HUMAN", handoffReason: "Yapay zekâ yanıtları bu sunucuda kapalı" });
     expect((await aiMessages(c.id)).length).toBe(before);
@@ -337,7 +338,7 @@ describe("AnthropicChatAgent (sahte istemciyle; gerçek API çağrılmaz)", () =
   const base = { salonName: "Deneme", now: "31 Ekim 2026", today: "2026-10-31", channel: "WHATSAPP" as const, history: [{ role: "user" as const, text: "Kampanya var mı?" }] };
   const fake = (responses: unknown[]) => {
     const requests: Record<string, unknown>[] = [];
-    const client = { beta: { messages: { create: async (body: Record<string, unknown>) => (requests.push(structuredClone(body)), responses.shift()) } } };
+    const client = { messages: { create: async (body: Record<string, unknown>) => (requests.push(structuredClone(body)), responses.shift()) } };
     return { client: client as unknown as ConstructorParameters<typeof AnthropicChatAgent>[0], requests };
   };
 
@@ -348,12 +349,16 @@ describe("AnthropicChatAgent (sahte istemciyle; gerçek API çağrılmaz)", () =
     ]);
     const ran: string[] = [];
     const out = await new AnthropicChatAgent(client).reply({ ...base, runTool: async (n) => (ran.push(n), { ok: true, data: [{ baslik: "Kasım indirimi" }] }) });
-    expect(out).toEqual({ text: "Kasım indirimi var.", handoff: undefined, tools: ["kampanyalar"] });
+    expect(out).toMatchObject({ text: "Kasım indirimi var.", handoff: undefined, tools: ["kampanyalar"] });
+    expect(out.usage).toMatchObject({ provider: "anthropic", model: "claude-haiku-5-5", calls: 2 });
     expect(ran).toEqual(["kampanyalar"]);
     const second = requests[1].messages as { role: string; content: unknown }[];
     expect(second[1]).toMatchObject({ role: "assistant" });
     expect(second[2]).toMatchObject({ role: "user", content: [{ type: "tool_result", tool_use_id: "tu_1" }] });
     expect(requests[0].output_config).toEqual({ effort: "low" });
+    expect(requests[0]).toMatchObject({ model: "claude-haiku-5-5", max_tokens: 4000 });
+    expect(requests[0].fallbacks).toBeUndefined();
+    expect(requests[0].betas).toBeUndefined();
     expect((requests[0].tools as { name: string }[]).map((t) => t.name)).toContain("randevu_onayla");
   });
 

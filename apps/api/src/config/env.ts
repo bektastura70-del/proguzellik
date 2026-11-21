@@ -46,7 +46,20 @@ const schema = z.object({
   OPENAI_MODEL: blankToUndef(z.string().min(1).optional()),
   // Akıl yürütme düzeyi (modele göre desteklenen değerler değişir). Boşsa "low".
   OPENAI_REASONING_EFFORT: blankToUndef(z.enum(["none", "minimal", "low", "medium", "high", "xhigh", "max"]).optional()),
-  AI_MODEL: z.string().default("claude-opus-5-5"),
+  // AI_MODE=anthropic için ZORUNLU model adı (ör. claude-haiku-5-5). Varsayılan bilerek yok: pahalı bir modele sessizce düşülmesin.
+  AI_MODEL: blankToUndef(z.string().min(1).optional()),
+  // Sahip asistanı (Sorular): salon sohbetinden ayrı açılır. Varsayılan "mock" (kural tabanlı, dış servis yok).
+  ASSISTANT_AI_MODE: z.enum(["mock", "anthropic"]).default("mock"),
+  // Yapay zekâ kullanım hakkı (kota): off = düşüm yok; shadow = düşülür ve kaydedilir ama engellemez; enforce = hak bitince personele devir.
+  AI_QUOTA_MODE: z.enum(["off", "shadow", "enforce"]).default("off"),
+  // Canlıda (NODE_ENV=production) gerçek yapay zekâ yalnız bu işletme kısa adlarında (slug, virgülle) çalışır; "*" = hepsi. Boşsa canlıda kapalı.
+  AI_PILOT_TENANTS: blankToUndef(z.string().optional()),
+  // Acil durdurma: 1 ise tüm salonlarda yapay zekâ yanıtı durur, konuşmalar personele düşer.
+  AI_GLOBAL_PAUSE: z.enum(["0", "1"]).default("0"),
+  // Bilinmeyen model için fiyat (USD / milyon token): "giriş,çıkış,önbellek_okuma,önbellek_yazma". Tabloda olan modelde kullanılmaz.
+  AI_PRICE_USD_PER_MTOK: blankToUndef(z.string().regex(/^\d+(\.\d+)?(,\d+(\.\d+)?){3}$/).optional()),
+  // Ek konuşma paketi (tek seferlik iyzico ödemesi). Tanımsızsa canlıda kapalı, diğer ortamlarda açık.
+  AI_TOPUP_ENABLED: z.enum(["0", "1"]).optional(),
   // Kimlik doğrulama / oturum
   MFA_ENCRYPTION_KEY: z.string().regex(/^[0-9a-f]{64}$/i, "MFA_ENCRYPTION_KEY 64 karakter hex olmalı"),
   MFA_ENFORCE_PLATFORM: z.enum(["0", "1"]).default("1"),
@@ -213,6 +226,21 @@ export const iyzicoAllTenants = (env: Pick<Env, "IYZICO_PILOT_TENANTS">) => (env
 export const iyzicoPilotTenants = (env: Pick<Env, "IYZICO_PILOT_TENANTS">) =>
   (env.IYZICO_PILOT_TENANTS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter((s) => /^[0-9a-f-]{36}$/.test(s));
 
+/** AI_PILOT_TENANTS: işletme kısa adları (slug) ya da "*". */
+export const aiPilotTenants = (env: Pick<Env, "AI_PILOT_TENANTS">) =>
+  (env.AI_PILOT_TENANTS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter((s) => s === "*" || /^[a-z0-9-]{2,60}$/.test(s));
+
+/** Bu işletmede gerçek yapay zekâ çalışabilir mi? Canlı dışı ortamlarda her zaman; canlıda yalnız pilot listesinde. */
+export const aiAllowedForTenant = (env: Pick<Env, "AI_PILOT_TENANTS" | "NODE_ENV">, slug: string) => {
+  if (env.NODE_ENV !== "production") return true;
+  const p = aiPilotTenants(env);
+  return p.includes("*") || p.includes(slug.toLowerCase());
+};
+
+/** Ek yapay zekâ kullanım paketi satışı açık mı? Canlıda yalnızca AI_TOPUP_ENABLED=1 ile. */
+export const aiTopupEnabled = (env: Pick<Env, "AI_TOPUP_ENABLED" | "NODE_ENV">) =>
+  env.AI_TOPUP_ENABLED ? env.AI_TOPUP_ENABLED === "1" : env.NODE_ENV !== "production";
+
 export const appUrl = (env: Env) => (env.APP_URL ?? env.WEB_ORIGIN.split(",")[0]).replace(/\/$/, "");
 
 /**
@@ -251,6 +279,15 @@ export function productionIssues(env: Env, raw: NodeJS.ProcessEnv = process.env)
   if (env.META_MODE === "mock") warn("META_MODE=mock: işletmelerin WhatsApp/Instagram bağlantıları doğrulanamaz, mesaj alınıp gönderilmez");
   if (env.META_MODE === "live" && env.AI_MODE === "mock") warn("META_MODE=live, AI_MODE=mock: gelen mesajlara yapay zekâ yanıt vermez, tümü personel gelen kutusuna düşer");
   if (env.AI_MODE === "anthropic" && !raw.ANTHROPIC_API_KEY) err("AI_MODE=anthropic için ANTHROPIC_API_KEY gerekli");
+  if (env.AI_MODE === "anthropic" && !env.AI_MODEL) err("AI_MODE=anthropic için AI_MODEL gerekli (ör. claude-haiku-5-5)");
+  if (env.ASSISTANT_AI_MODE === "anthropic" && (!raw.ANTHROPIC_API_KEY || !env.AI_MODEL)) err("ASSISTANT_AI_MODE=anthropic için ANTHROPIC_API_KEY ve AI_MODEL gerekli");
+  if (env.AI_MODE !== "mock") {
+    const pilots = aiPilotTenants(env);
+    warn(pilots.includes("*") ? `AI_MODE=${env.AI_MODE}: yapay zekâ yanıtı TÜM işletmelerde açılabilir` : pilots.length ? `AI_MODE=${env.AI_MODE}: yapay zekâ yalnız ${pilots.join(", ")} işletmesinde` : `AI_MODE=${env.AI_MODE} ama AI_PILOT_TENANTS boş: canlıda yapay zekâ yanıtı kapalı`);
+    if (env.AI_QUOTA_MODE !== "enforce") warn(`AI_QUOTA_MODE=${env.AI_QUOTA_MODE}: kullanım hakkı bitince yapay zekâ DURMAZ`);
+  }
+  if (env.AI_GLOBAL_PAUSE === "1") warn("AI_GLOBAL_PAUSE=1: tüm salonlarda yapay zekâ yanıtı durduruldu");
+  if (env.AI_TOPUP_ENABLED === "1") warn("AI_TOPUP_ENABLED=1: salonlar ek yapay zekâ kullanım paketi satın alabilir");
   if (env.AI_MODE === "openai" && (!env.OPENAI_API_KEY || !env.OPENAI_MODEL)) err("AI_MODE=openai için OPENAI_API_KEY ve OPENAI_MODEL gerekli");
   if (env.AI_MODE === "openai") warn("AI_MODE=openai: müşteri mesajları OpenAI'a (ABD) gönderilir; işletme onayı ve KVKK aydınlatması gerekir. Sahip asistanı (Sorular) kural tabanlı kalır");
   if (env.JOBS_ENABLED !== "1") warn("JOBS_ENABLED=0: günlük abonelik görevi bu süreçte çalışmaz (başka bir süreçte çalıştığından emin olun)");

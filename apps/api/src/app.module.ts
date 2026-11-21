@@ -24,8 +24,9 @@ import { EmailModule } from "./email/email.module";
 import { JobsModule } from "./jobs/jobs.module";
 import { PwaModule } from "./pwa/pwa.module";
 import { DirectoryModule } from "./directory/directory.module";
+import { AiQuotaModule } from "./ai-quota/ai-quota.module";
 
 @Module({
-  imports: [PrismaModule, AuditModule, EmailModule, AuthModule, HealthModule, UsersModule, CustomersModule, CatalogModule, StaffModule, AppointmentsModule, PackagesModule, FinanceModule, StockModule, ReportsModule, BillingModule, PlatformModule, SettingsModule, PublicBookingModule, NotificationsModule, MessagingModule, CampaignsModule, AssistantModule, JobsModule, PwaModule, DirectoryModule],
+  imports: [PrismaModule, AuditModule, EmailModule, AuthModule, HealthModule, UsersModule, CustomersModule, CatalogModule, StaffModule, AppointmentsModule, PackagesModule, FinanceModule, StockModule, ReportsModule, BillingModule, PlatformModule, SettingsModule, PublicBookingModule, NotificationsModule, MessagingModule, CampaignsModule, AssistantModule, JobsModule, PwaModule, DirectoryModule, AiQuotaModule],
 })
 export class AppModule {}

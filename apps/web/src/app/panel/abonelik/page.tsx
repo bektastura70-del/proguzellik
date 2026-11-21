@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { AiQuotaCard } from "@/components/panel/ai-quota-card";
 import { useSession } from "@/components/panel/session";
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Dialog, Field, Input, PageHeader, Select, Spinner, Table, Td, statusTone, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -89,6 +90,7 @@ function SubscriptionInner() {
           ))}
         </div>
       </div>
+      <AiQuotaCard />
       <Card className="mt-6">
         <CardHeader title="Ödeme geçmişi" />
         <Table head={["Tarih", "Açıklama", "Tutar", "Durum", "Sağlayıcı"]} empty="Ödeme yok">

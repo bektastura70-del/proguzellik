@@ -54,20 +54,21 @@ export class MockAiProvider extends AiProvider {
 @Injectable()
 export class AnthropicAiProvider extends AiProvider {
   readonly name = "anthropic";
-  private readonly client: Pick<Anthropic, "beta">;
+  private readonly client: Pick<Anthropic, "messages">;
 
-  constructor(client?: Pick<Anthropic, "beta">) {
+  constructor(client?: Pick<Anthropic, "messages">) {
     super();
-    this.client = client ?? new Anthropic();
+    this.client = client ?? new Anthropic({ timeout: 60_000, maxRetries: 2 });
   }
 
   async answer(question: string, s: BusinessSnapshot): Promise<string> {
-    const response = await this.client.beta.messages.create({
-      model: loadEnv().AI_MODEL,
-      max_tokens: 16000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      output_config: { effort: "medium" },
+    const model = loadEnv().AI_MODEL;
+    if (!model) return "Yapay zekâ asistanı ayarları eksik.";
+    // Haiku 5.5'te sunucu tarafı yedek model yoktur; "fallbacks" gönderilmez, ret aşağıda ele alınır.
+    const response = await this.client.messages.create({
+      model,
+      max_tokens: 4000,
+      output_config: { effort: "low" },
       system: SYSTEM_PROMPT,
       messages: [
         {
@@ -75,12 +76,12 @@ export class AnthropicAiProvider extends AiProvider {
           content: `İşletme verileri (${s.period}, JSON):\n${JSON.stringify({ salon: s.salonName, ...s.metrics })}\n\nSoru: ${question}`,
         },
       ],
-    });
+    } as Anthropic.MessageCreateParamsNonStreaming);
     if (response.stop_reason === "refusal") {
       return "Bu soruya yanıt veremiyorum. Lütfen sorunuzu işletme verileriyle ilgili olacak şekilde yeniden yazın.";
     }
     const text = response.content
-      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
       .join("\n")
       .trim();

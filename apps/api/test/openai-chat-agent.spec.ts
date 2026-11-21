@@ -27,7 +27,8 @@ describe("OpenAiChatAgent (sahte istemciyle; gerçek API çağrılmaz)", () => {
     const { agent, requests } = fake([call("kampanyalar", "{}"), say("Kasım indirimi var.")]);
     const ran: string[] = [];
     const out = await agent.reply({ ...base, runTool: async (n) => (ran.push(n), { ok: true, data: [{ baslik: "Kasım indirimi" }] }) });
-    expect(out).toEqual({ text: "Kasım indirimi var.", handoff: undefined, tools: ["kampanyalar"] });
+    expect(out).toMatchObject({ text: "Kasım indirimi var.", handoff: undefined, tools: ["kampanyalar"] });
+    expect(out.usage).toMatchObject({ provider: "openai", model: "test-model", calls: 2 });
     expect(ran).toEqual(["kampanyalar"]);
     expect(requests[0].url).toBe("https://api.openai.com/v1/responses");
     expect(requests[0].headers.Authorization).toBe("Bearer sk-test-0000000000000000000000");
@@ -81,7 +82,7 @@ describe("OpenAiChatAgent (sahte istemciyle; gerçek API çağrılmaz)", () => {
     const { agent, requests } = fake(Array.from({ length: 8 }, (_, i) => call("hizmetler", "{}", `c${i}`)));
     const out = await agent.reply({ ...base, runTool: async () => ({ ok: true, data: [] }) });
     expect(out).toMatchObject({ text: null, handoff: expect.any(String) });
-    expect(requests).toHaveLength(8);
+    expect(requests).toHaveLength(5);
   });
 
   it("anahtar ya da model yoksa istek atmadan devreder; fabrika AI_MODE=openai'da bu ajanı seçer", async () => {

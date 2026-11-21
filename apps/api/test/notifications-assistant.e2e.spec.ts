@@ -175,23 +175,23 @@ describe("WhatsApp bildirim altyapısı (BullMQ + test sağlayıcısı) ve yapay
     expect(text).not.toMatch(/Ayşe|0555|05550000001|@test\.local/);
   });
 
-  it("Claude sağlayıcısı: model, yedek model ve ret durumu (sahte istemciyle)", async () => {
+  it("Claude sağlayıcısı: model (ortamdan), yedek model yok ve ret durumu (sahte istemciyle)", async () => {
     const captured: any[] = [];
     let stop = "end_turn";
     const fakeClient = {
-      beta: {
-        messages: {
-          create: async (params: any) => {
-            captured.push(params);
-            return { stop_reason: stop, content: [{ type: "text", text: "Öneri: hatırlatmaları açın." }] };
-          },
+      messages: {
+        create: async (params: any) => {
+          captured.push(params);
+          return { stop_reason: stop, content: [{ type: "text", text: "Öneri: hatırlatmaları açın." }] };
         },
       },
     } as any;
     const p = new AnthropicAiProvider(fakeClient);
     const snap = { salonName: "Test", period: "son 30 gün", metrics: { a: 1 } };
     expect(await p.answer("Nasıl gidiyoruz?", snap)).toBe("Öneri: hatırlatmaları açın.");
-    expect(captured[0]).toMatchObject({ model: "claude-opus-5-5", fallbacks: "default", betas: ["server-side-fallback-2026-07-01"], output_config: { effort: "medium" } });
+    expect(captured[0]).toMatchObject({ model: "claude-haiku-5-5", max_tokens: 4000, output_config: { effort: "low" } });
+    expect(captured[0].fallbacks).toBeUndefined();
+    expect(captured[0].betas).toBeUndefined();
     expect(captured[0].temperature).toBeUndefined();
     expect(captured[0].messages[0].content).toContain('"salon":"Test"');
     stop = "refusal";

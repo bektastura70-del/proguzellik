@@ -11,7 +11,7 @@ import { AssistantService } from "./assistant.service";
   controllers: [AssistantController],
   providers: [
     AssistantService,
-    { provide: AiProvider, useFactory: () => (loadEnv().AI_MODE === "anthropic" ? new AnthropicAiProvider() : new MockAiProvider()) },
+    { provide: AiProvider, useFactory: () => (loadEnv().ASSISTANT_AI_MODE === "anthropic" ? new AnthropicAiProvider() : new MockAiProvider()) },
   ],
 })
 export class AssistantModule {}

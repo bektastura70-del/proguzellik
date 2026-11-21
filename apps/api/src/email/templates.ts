@@ -28,7 +28,10 @@ export type EmailTemplate =
   | { name: "owner_notice"; vars: { subject: string; body: string; salon?: string } }
   | { name: "customer_otp"; vars: { salon: string; code: string; minutes: number } }
   | { name: "low_stock_alert"; vars: { salon: string; count: number; items: string; link: string } }
-  | { name: "renewal_reminder"; vars: { salon: string; firstName: string; service: string; dueDate: string; link: string; phone?: string; optOutLink: string } };
+  | { name: "renewal_reminder"; vars: { salon: string; firstName: string; service: string; dueDate: string; link: string; phone?: string; optOutLink: string } }
+  | { name: "ai_quota_low"; vars: { salon: string; link: string } }
+  | { name: "ai_quota_empty"; vars: { salon: string; link: string } }
+  | { name: "ai_credit_purchased"; vars: { salon: string; link: string; amount: string } };
 
 export type TemplateName = EmailTemplate["name"];
 
@@ -67,6 +70,9 @@ export const TEMPLATE_META: Record<TemplateName, { label: string; vars: string[]
   // Yeniden deneme yalnızca kuyruktan yapılır; orada izin/vazgeçme/randevu/tarih her denemede yeniden denetlenir.
   low_stock_alert: { label: "Kritik stok uyarısı (işletme sahibi ve yöneticilere)", vars: ["salon", "count"], secret: false, editable: false },
   renewal_reminder: { label: "Yenilenme hatırlatması (salon müşterisine)", vars: ["salon", "firstName", "service", "dueDate"], secret: true, editable: false },
+  ai_quota_low: { label: "Yapay zekâ kullanım hakkı azaldı", vars: ["salon"], secret: false, editable: false },
+  ai_quota_empty: { label: "Yapay zekâ kullanım hakkı doldu", vars: ["salon"], secret: false, editable: false },
+  ai_credit_purchased: { label: "Yapay zekâ ek paketi alındı", vars: ["salon", "amount"], secret: false, editable: false },
 };
 
 export interface TemplateOverride {
@@ -232,6 +238,29 @@ export function render(t: EmailTemplate, override?: TemplateOverride | null): { 
         `<span style="font-size:12px;color:#777">Bu hatırlatmaları ${esc(t.vars.salon)} gönderiyor. Almak istemiyorsanız: <a href="${esc(t.vars.optOutLink)}">hatırlatmaları kapat</a> (${esc(t.vars.optOutLink)})</span>`,
       ];
       cta = { label: "Randevu al", link: t.vars.link };
+      break;
+    case "ai_quota_low":
+      subject = `${t.vars.salon}: yapay zekâ kullanım hakkınız azaldı`;
+      paras = [
+        `Bu ayki yapay zekâ kullanım hakkınızın yaklaşık %20'si kaldı.`,
+        `Hak bittiğinde yapay zekâ yeni mesajlara yanıt vermez; mesajlar ekibinize düşer. Hakkınız her ay yenilenir; isterseniz panelden ek paket alabilirsiniz.`,
+      ];
+      cta = { label: "Kullanım durumunu gör", link: t.vars.link };
+      break;
+    case "ai_quota_empty":
+      subject = `${t.vars.salon}: yapay zekâ kullanım hakkınız doldu`;
+      paras = [
+        `Bu ayki yapay zekâ kullanım hakkınız doldu. Yeni mesajlar artık ekibinize düşüyor; müşterilerinize sizin yanıt vermeniz gerekiyor.`,
+        `Hakkınız bir sonraki dönemde kendiliğinden yenilenir. Beklemek istemezseniz panelden ek paket alabilirsiniz.`,
+      ];
+      cta = { label: "Ek paket al", link: t.vars.link };
+      break;
+    case "ai_credit_purchased":
+      subject = `${t.vars.salon}: yapay zekâ ek paketiniz yüklendi`;
+      paras = [
+        `${esc(t.vars.amount)} tutarındaki yapay zekâ ek paketiniz hesabınıza yüklendi. Kullanım barınızı panelden görebilirsiniz.`,
+      ];
+      cta = { label: "Kullanım durumunu gör", link: t.vars.link };
       break;
     case "owner_notice":
       subject = t.vars.subject;

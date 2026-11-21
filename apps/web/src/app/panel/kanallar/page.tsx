@@ -3,6 +3,7 @@
 import { Check, Copy, Instagram, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
+import { AiQuotaCard } from "@/components/panel/ai-quota-card";
 import { useSession } from "@/components/panel/session";
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Field, Input, Label, PageHeader, Spinner, Table, Td, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -88,6 +89,7 @@ export default function ChannelsPage() {
   return (
     <>
       <PageHeader title="WhatsApp ve Instagram" description="Salonunuzun kendi WhatsApp Business numarasını ve Instagram hesabını bağlayın; mesajlar Mesajlar sayfasına düşer." />
+      <div className="mb-4"><AiQuotaCard compact /></div>
       {d.metaMode !== "live" && (
         <div className="mb-4">
           <Alert tone="amber">

@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { AiQuotaService } from "../ai-quota/ai-quota.service";
 import { Prisma } from "@prisma/client";
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
@@ -39,6 +40,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     private readonly retention: RetentionService,
     private readonly renewal: RenewalService,
     private readonly lowStock: LowStockService,
+    private readonly aiQuota: AiQuotaService,
   ) {}
 
   async onModuleInit() {
@@ -98,6 +100,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       const ren = await this.renewal.run(now);
       // Kritik stok e-postası (işletme sahibi ve yöneticilere; ayarlardan kapatılabilir)
       const low = await this.lowStock.run(now);
+      // Yapay zekâ kullanım hakkı: dönemi biten cüzdanlarda aylık hak yenilenir, süresi dolan ek bakiye sona erer
+      const ai = await this.aiQuota.runDaily(now);
       const result = {
         ...lifecycle,
         paymentReminders: pay.paymentReminders,
@@ -108,7 +112,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         rebookReminders: ret.rebookReminders,
         renewalReminders: ren.renewalReminders,
         lowStockEmails: low.lowStockEmails,
-        errors: [...lifecycle.errors, ...pay.paymentReminderErrors, ...ret.errors, ...ren.errors, ...low.errors],
+        aiWalletsRenewed: ai.aiWalletsRenewed,
+        errors: [...lifecycle.errors, ...pay.paymentReminderErrors, ...ret.errors, ...ren.errors, ...low.errors, ...ai.errors],
       };
       await db.jobRun.update({
         where: { id: run.id },

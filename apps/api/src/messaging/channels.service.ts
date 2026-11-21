@@ -17,6 +17,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { decrypt, deriveKeyHex, encrypt, randomToken } from "../security/crypto";
 import { IgCreds, MetaApiError, MetaDisabledError, MetaGateway, WaCreds } from "./meta.gateway";
 import { TEMPLATES } from "./templates";
+import { consentProvider, consentValid } from "./chat/ai-consent";
 
 /** Kanal sırları 2FA sırlarından ayrı, türetilmiş bir anahtarla şifrelenir. */
 const secretKey = () => deriveKeyHex(loadEnv().MFA_ENCRYPTION_KEY, "channel-secrets:v1");
@@ -71,7 +72,9 @@ export class ChannelsService {
       lastWebhookAt: c.lastWebhookAt,
       lastError: c.lastError,
       aiAutoReply: c.aiAutoReply,
-      aiDataConsentAt: c.aiDataConsentAt,
+      // Onay başka bir sağlayıcıya verildiyse geçersiz sayılır; panel yeniden onay ister.
+      aiDataConsentAt: consentValid(c) ? c.aiDataConsentAt : null,
+      aiDataConsentProvider: c.aiDataConsentProvider,
       managed: c.managed,
       webhookUrl: c.managed ? `${appUrl(loadEnv())}/api/webhooks/meta` : `${appUrl(loadEnv())}/api/webhooks/meta/${c.id}`,
       updatedAt: c.updatedAt,
@@ -364,7 +367,8 @@ export class ChannelsService {
   async updateAi(t: TenantInfo, channel: ChannelType, b: { aiAutoReply: boolean; aiDataConsent?: boolean }) {
     if (b.aiAutoReply && !t.features.includes("AI_ASSISTANT")) throw new ForbiddenException("Yapay zekâ yanıtları Akıllı pakette bulunur");
     const c = await this.get(t, channel);
-    if (b.aiAutoReply && !c.aiDataConsentAt && !b.aiDataConsent) {
+    const valid = consentValid(c);
+    if (b.aiAutoReply && !valid && !b.aiDataConsent) {
       throw new BadRequestException("Yapay zekâ yanıtlarını açmak için müşteri mesajlarının yapay zekâ sağlayıcısına aktarımını onaylamalısınız");
     }
     return this.prisma.withTenant(t, async (tx) => {
@@ -372,11 +376,11 @@ export class ChannelsService {
         where: { id: c.id },
         data: {
           aiAutoReply: b.aiAutoReply,
-          ...(b.aiDataConsent && !c.aiDataConsentAt ? { aiDataConsentAt: new Date(), aiDataConsentBy: t.userId } : {}),
-          ...(b.aiDataConsent === false ? { aiDataConsentAt: null, aiDataConsentBy: null, aiAutoReply: false } : {}),
+          ...(b.aiDataConsent && !valid ? { aiDataConsentAt: new Date(), aiDataConsentBy: t.userId, aiDataConsentProvider: consentProvider() } : {}),
+          ...(b.aiDataConsent === false ? { aiDataConsentAt: null, aiDataConsentBy: null, aiDataConsentProvider: null, aiAutoReply: false } : {}),
         },
       });
-      await this.audit.log(tx, { tenantId: t.tenantId, actorId: t.userId, action: "channel.ai_updated", entity: "ChannelConnection", entityId: c.id, metadata: { aiAutoReply: u.aiAutoReply, consent: !!u.aiDataConsentAt } });
+      await this.audit.log(tx, { tenantId: t.tenantId, actorId: t.userId, action: "channel.ai_updated", entity: "ChannelConnection", entityId: c.id, metadata: { aiAutoReply: u.aiAutoReply, consent: !!u.aiDataConsentAt, provider: u.aiDataConsentProvider } });
       return ChannelsService.view(u);
     });
   }
