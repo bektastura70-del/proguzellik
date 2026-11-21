@@ -21,7 +21,13 @@ Canlı `4296795`'ten bu dala kadar olan her şey birlikte gider:
 Canlıda `AI_MODE=openai` açık. Yeni kodda gerçek yapay zekâ canlıda **yalnız `AI_PILOT_TENANTS` listesindeki salonlarda** çalışıyor.
 Bu liste boş kalırsa deploy anında yapay zekâ yanıtları durur, mesajlar ekibe düşer.
 
-Bu yüzden deploy ile aynı anda `.env`'e şu satır girmeli: `AI_PILOT_TENANTS=<şu an yapay zekâ açık salon(lar)ın adresi, ör. deneme>`.
+Bu yüzden deploy ile aynı anda `.env`'e şu satır girmeli: `AI_PILOT_TENANTS=deneme`. Canlıda yapay zekâ başka salonlarda da açıksa, onların adresleri de virgülle eklenir.
+
+Kontrol ettiklerim:
+- `off` modunda paket kontrolü yok. Akıllı paket şartı yalnız `enforce`'ta devreye giriyor, bu yüzden Aşama A'da paketi ne olursa olsun pilot salon bugünkü gibi çalışır.
+- Migration ayar satırı (AiBillingSettings) eklemiyor. Ayar yokken `off` ve `shadow` izin verir, yalnız `enforce` engeller.
+- Sonuç: Aşama A'da maliyet tavanları da devrede değil, davranış bugünküyle aynı. Tek fark, pilot listesi dışındaki salonlarda yapay zekânın kapanması.
+- Aşama C'ye (`enforce`) geçmeden önce pilot salon Akıllı pakette olmalı. Değilse "hak tanımlı değil" der ve mesajları ekibe düşürür.
 
 ## 3. .env değişiklikleri (aşama aşama)
 
@@ -35,7 +41,7 @@ Değerler sunucuda `.env`'e elle girilir. Hiçbir anahtar sohbete veya repoya ya
 - `AI_TOPUP_ENABLED=0`: ek paket satışı kapalı.
 - `ASSISTANT_AI_MODE=mock`
 
-**Aşama B: gölge (shadow) pilot, 1–2 hafta.**
+**Aşama B: gölge (shadow) pilot, 1–2 hafta.** (Ayarlar girildiği anda salon günlük $ ve konuşma tavanları her modda çalışmaya başlar.)
 1. Önce SaaS sahibi panelinde Yapay zekâ sayfasından ayarları girin: USD/TL kuru, tampon 1,10, katsayı 3, ek paket oranı 0,5, salon günlük $ sınırı, konuşma token sınırı.
 2. Ardından `AI_QUOTA_MODE=shadow` yapın.
 
@@ -80,6 +86,7 @@ Sıra:
 
 **Geri dönüş:**
 - Yeni sütun ve tablolar eski sürümü bozmaz. Uygulama sorununda yalnız imaj geri alınır (`./rollback.sh 4296795`), veritabanına dokunulmaz.
+- Migration'ın tek parça (transaction) çalıştığını varsaymıyoruz. `migrate deploy` yarıda kalırsa: yedekten geri yükleme, ardından `prisma migrate resolve --rolled-back 20261121150000_ai_quota`, sonra imaj geri alma. Deploy betiği bu yolu yazılı olarak gösterecek.
 - Veritabanına geri yükleme yalnız migration yarıda kalır ya da veri bozulursa yapılır. Bu adım ayrıca sorulur, çünkü yedekten sonraki yazılan veriyi kaybettirir.
 
 ## 5. Deploy betiği (`deploy-app-<sha>.sh`, henüz yazılmadı)
@@ -99,7 +106,7 @@ Sıra:
     - Ana sayfa ve hukuki sayfalar (1.1 metni).
     - Salon paneli açılır, Yapay zekâ kartı görünür.
     - `/platform` Yapay zekâ sekmesi ve Finans raporu çalışır.
-    - Ek paket sayfası "satışta değil" der.
+    - Ek paket sayfası satış kapalı durumunu gösterir, ödeme formu açılmaz.
     - Pilot salonda bir test mesajına yapay zekâ yanıt verir ve `AiUsageEvent` kaydı oluşur.
 11. Otomatik geri dönüş: 8. adımdan sonra bir şey başarısız olursa betik compose ve `.env` yedeklerini geri koyar ve `./rollback.sh 4296795` çalıştırır.
     Migration geri alınmaz; geriye uyumlu olduğu için gerek yok.
@@ -135,9 +142,10 @@ Sıra:
 
 Her biri ayrı "evet" ister. Biri onaylanınca diğerleri onaylanmış sayılmaz.
 
-1. **Deploy + migration (Aşama A):** `4296795` → yeni sürüm. Hukuki metin 1.1 de yayına girer. Yedek ve geri yükleme testinden sonra migration çalışır.
-2. **.env (Aşama A):** `AI_PILOT_TENANTS` (hangi salon?), `AI_PRICE_USD_PER_MTOK` (OpenAI resmi fiyatı), `AI_QUOTA_MODE=off`, `AI_TOPUP_ENABLED=0`.
-3. **Gölge pilot (Aşama B):** panelden kur ve sınır ayarları girildikten sonra `AI_QUOTA_MODE=shadow`.
-4. **Uygulama (Aşama C):** `AI_QUOTA_MODE=enforce`.
-5. **Claude Haiku'ya geçiş (Aşama D):** Anthropic anahtarı ve harcama limiti sizde. Hukuki metin güncellemesi ve avukat onayı, ardından salonların yeniden onayı.
-6. **Gerçek ücretlendirme, ek paket satışı (Aşama E):** `AI_TOPUP_ENABLED=1`. Avukat onaylı metinler ve e-Fatura çözümü gerekir.
+1. **Deploy + migration (Aşama A):** `4296795` → yeni sürüm. Yedek ve geri yükleme testinden sonra migration çalışır.
+2. **Hukuki metin 1.1'in yayını:** 20.11 onayı `adc5f39` betiği içindi. Bu onay, metinlerin bu sürümle birlikte yayınlanması için de geçerli mi?
+3. **.env (Aşama A):** `AI_PILOT_TENANTS=deneme` (başka salon var mı?), `AI_PRICE_USD_PER_MTOK` (OpenAI resmi fiyatı; girilmezse maliyet 0 kaydedilir), `AI_QUOTA_MODE=off`, `AI_TOPUP_ENABLED=0`.
+4. **Gölge pilot (Aşama B):** panelden kur ve sınır ayarları girildikten sonra `AI_QUOTA_MODE=shadow`.
+5. **Uygulama (Aşama C):** `AI_QUOTA_MODE=enforce`; pilot salon Akıllı pakette olmalı.
+6. **Claude Haiku'ya geçiş (Aşama D):** Anthropic anahtarı ve harcama limiti sizde. Hukuki metin güncellemesi ve avukat onayı, ardından salonların yeniden onayı.
+7. **Gerçek ücretlendirme, ek paket satışı (Aşama E):** `AI_TOPUP_ENABLED=1`. Avukat onaylı metinler ve e-Fatura çözümü gerekir.
