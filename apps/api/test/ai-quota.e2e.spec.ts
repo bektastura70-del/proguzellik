@@ -132,6 +132,20 @@ describe("Yapay zekâ kullanım hakkı: cüzdan, defter, dönem, motor", () => {
     expect((await quota.wallet(A.tenant.id)).monthlyRemainingKurus).toBe(50_000);
   });
 
+  it("tavanlar her modda uygulanır: salon günlük maliyet ve konuşma token sınırı (off modunda bile)", async () => {
+    setMode("off");
+    const conversationId = "00000000-0000-4000-8000-000000000001";
+    expect(await quota.gate(P.tenant.id, conversationId)).toEqual({ ok: true });
+    // 150.000 token sınırı: tek kayıt 160.000 token
+    await quota.record({ tenantId: P.tenant.id, conversationId: null, usage: usage(10, 10), outcome: "replied" });
+    await su.aiUsageEvent.create({ data: { tenantId: P.tenant.id, conversationId, provider: "anthropic", model: "claude-haiku-5-5", calls: 1, inputTokens: 160_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costMicroUsd: 16_000, debitKurus: 0, outcome: "replied" } });
+    expect(await quota.gate(P.tenant.id, conversationId)).toMatchObject({ ok: false, reason: "conversation_cap" });
+    // Günlük $2 sınırı (başka konuşma)
+    await su.aiUsageEvent.create({ data: { tenantId: P.tenant.id, provider: "anthropic", model: "claude-haiku-5-5", calls: 1, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costMicroUsd: 2_000_000, debitKurus: 0, outcome: "replied" } });
+    expect(await quota.gate(P.tenant.id, "00000000-0000-4000-8000-000000000002")).toMatchObject({ ok: false, reason: "daily_cap" });
+    await su.aiUsageEvent.deleteMany({ where: { tenantId: P.tenant.id } });
+  });
+
   it("eşzamanlı 40 kayıt: cüzdan ile defter toplamı birebir tutar (kilit)", async () => {
     setMode("shadow");
     await Promise.all(Array.from({ length: 40 }, () => quota.record({ tenantId: A.tenant.id, usage: usage(40_000, 1_000), outcome: "replied" })));

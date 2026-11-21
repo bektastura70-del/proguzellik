@@ -146,11 +146,11 @@ export class AiQuotaService {
 
   /**
    * Model çağrılmadan önce: hak var mı, salon günlük tavanı ve konuşma token tavanı aşıldı mı?
-   * AI_QUOTA_MODE=off: hiçbir kontrol yapılmaz. shadow: tavanlar uygulanır, hak bitince engellenmez.
+   * Tavanlar her modda (ayar varsa); hak bitince engelleme yalnız AI_QUOTA_MODE=enforce.
    */
   async gate(tenantId: string, conversationId: string, now = new Date()): Promise<QuotaGate> {
     const mode = this.mode;
-    if (mode === "off") return { ok: true };
+    // Maliyet tavanları (salon günlük, konuşma) ayar girildiyse her modda uygulanır; hak bitince engelleme yalnız enforce'ta.
     const settings = await this.settings();
     if (!settings) {
       if (mode === "enforce") return { ok: false, reason: "settings_missing", message: "Yapay zekâ kullanım ayarları eksik" };
