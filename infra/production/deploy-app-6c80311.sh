@@ -84,19 +84,23 @@ echo "AI_PILOT_TENANTS (şu an): '$(env_get AI_PILOT_TENANTS)' · AI_QUOTA_MODE:
 echo "Yapay zekâ otomatik yanıtı açık kanallar (salon · kanal · onay):"
 q "SELECT t.slug || ' · ' || c.channel || ' · ' || CASE WHEN c.\"aiDataConsentAt\" IS NULL THEN 'onay yok' ELSE 'onaylı' END FROM \"ChannelConnection\" c JOIN \"Tenant\" t ON t.id = c.\"tenantId\" WHERE c.\"aiAutoReply\" ORDER BY 1" | sed 's/^/  /'
 case "$PILOT" in
-  yok) [[ -z "$(env_get AI_PILOT_TENANTS)" ]] && echo "AI_PILOT=yok: pilot listesi boş kalacak; yapay zekâ hiçbir salonda yanıt vermeyecek." ;;
+  yok) if [[ -z "$(env_get AI_PILOT_TENANTS)" ]]; then echo "AI_PILOT=yok: pilot listesi boş kalacak; yapay zekâ hiçbir salonda yanıt vermeyecek."; fi ;;
   "") fail "AI_PILOT verilmedi. AI_PILOT=deneme (onaylandıysa) ya da AI_PILOT=yok ile çalıştırın; hiçbir şey değiştirilmedi" ;;
   *) [[ "$PILOT" =~ ^[a-z0-9-]{2,60}(,[a-z0-9-]{2,60})*$ ]] || fail "AI_PILOT geçersiz: $PILOT (virgülle salon adresleri)"
      for s in ${PILOT//,/ }; do [[ "$(q "SELECT count(*) FROM \"Tenant\" WHERE slug = '$s'")" == 1 ]] || fail "AI_PILOT: '$s' adresli salon yok"; done
      [[ -z "$(env_get AI_PILOT_TENANTS)" ]] || fail ".env'de AI_PILOT_TENANTS zaten var ($(env_get AI_PILOT_TENANTS)); üzerine yazılmadı"
-     echo "AI_PILOT_TENANTS=$PILOT eklenecek" ;;
+     sq="'"; list="$sq${PILOT//,/$sq,$sq}$sq"
+     others=$(q "SELECT string_agg(DISTINCT t.slug, ', ') FROM \"ChannelConnection\" c JOIN \"Tenant\" t ON t.id = c.\"tenantId\" WHERE c.\"aiAutoReply\" AND c.\"aiDataConsentAt\" IS NOT NULL AND c.status = 'CONNECTED' AND t.slug NOT IN ($list)")
+     [[ -z "$others" ]] || fail "Yapay zekâsı açık başka salon(lar) var: $others. Pilot listesine eklenmezse yanıtları durur; AI_PILOT'u birlikte kararlaştırın. Hiçbir şey değiştirilmedi"
+     echo "AI_PILOT_TENANTS=$PILOT eklenecek (yapay zekâsı açık başka salon yok)" ;;
 esac
 
 log "2/11 Yedek + geri yükleme testi (geçici veritabanına)"
-RESTORE_TEST_WEEKDAY=$(date +%u) ./backup.sh
+bout="/opt/proguzellik/backups/deploy-$STAMP-$NEW.log"
+RESTORE_TEST_WEEKDAY=$(date +%u) ./backup.sh 2>&1 | tee "$bout"
 grep -q " OK " /opt/proguzellik/backups/last-status || fail "Yedek başarısız"
 cat /opt/proguzellik/backups/last-status
-tail -8 /opt/proguzellik/backups/backup.log | grep -iE "geri|restore|TAMAM" || fail "Geri yükleme testi çıktısı bulunamadı (backup.log); migration'a geçilmedi"
+grep -q "Doğrulama başarılı" "$bout" || fail "Geri yükleme testi başarılı görünmüyor ($bout); migration'a geçilmedi"
 
 log "3/11 Çalışan sürümün imajını arşivle"
 ./archive-image.sh "$OLD"

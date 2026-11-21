@@ -1,15 +1,15 @@
 # Yapay zekâ kullanım hakkı ve ek paket: canlıya geçiş planı
 
 Hazırlanma: 21.11.2026 · Dal: `claude/project-thread-oc91uw` · Hedef sürüm: `6c80311` (veya bu belgenin commit'i)
-Canlıdaki sürüm: `4296795`. **Bu planın hiçbir adımı henüz uygulanmadı.** Her aşama ayrı onayla başlar (bölüm 9).
+Canlıdaki sürüm: `adc5f39` (21.11.2026 öğlen yayınlandı; hukuki metinler 1.1 canlıda). 21.11: Bektaş deploy + migration için onay verdi; betik `infra/production/deploy-app-6c80311.sh` hazır, henüz çalıştırılmadı. Diğer aşamalar ayrı onayla başlar (bölüm 9).
 
 ## 1. Bu sürümle canlıya ne gider
 
-Canlı `4296795`'ten bu dala kadar olan her şey birlikte gider:
+Canlı `adc5f39`'dan bu dala kadar olan her şey birlikte gider:
 
 | Commit | İçerik | Not |
 |---|---|---|
-| adc5f39, dafe703 | Hukuki metinler 1.1, Ön Bilgilendirme Formu, ayrı ödeme onayları | 20.11'de onaylandı, henüz yayınlanmadı. Metinler **OpenAI** diyor. |
+| adc5f39, dafe703 | Hukuki metinler 1.1, Ön Bilgilendirme Formu, ayrı ödeme onayları | Canlıda (21.11). Metinler **OpenAI** diyor. |
 | 3fc2016, 7c7f571, d8f91b9 | iyzico iade süreci, panel etiketleri, plan hatası 502 | Migration yok |
 | 0e77b7e … 6c80311 | Kullanım hakkı, maliyet tavanları, ek paket, günlük sınır e-postası, Finans sütunu | **Migration var**: `20261121150000_ai_quota` |
 | 9116114, 10e64e7, 65b8f81, 31d3a04 | İzleme ve salt okunur kontrol betikleri | Sunucuda çalıştırılmadıkça etkisi yok |
@@ -85,7 +85,7 @@ Sıra:
    - `AiCreditLedger` tetikleyicisi var mı.
 
 **Geri dönüş:**
-- Yeni sütun ve tablolar eski sürümü bozmaz. Uygulama sorununda yalnız imaj geri alınır (`./rollback.sh 4296795`), veritabanına dokunulmaz.
+- Yeni sütun ve tablolar eski sürümü bozmaz. Uygulama sorununda yalnız imaj geri alınır (`./rollback.sh adc5f39`), veritabanına dokunulmaz.
 - Migration'ın tek parça (transaction) çalıştığını varsaymıyoruz. `migrate deploy` yarıda kalırsa: yedekten geri yükleme, ardından `prisma migrate resolve --rolled-back 20261121150000_ai_quota`, sonra imaj geri alma. Deploy betiği bu yolu yazılı olarak gösterecek.
 - Veritabanına geri yükleme yalnız migration yarıda kalır ya da veri bozulursa yapılır. Bu adım ayrıca sorulur, çünkü yedekten sonraki yazılan veriyi kaybettirir.
 
@@ -93,7 +93,7 @@ Sıra:
 
 Önceki betiklerle aynı kalıp kullanılır. Farklar: bu sürümde migration var ve compose değişiyor.
 
-1. Ön kontrol: çalışan sürüm `4296795` mı, disk yeri, imajlar yüklü mü. İmajlar Mac'te amd64 için derlenip `docker save | ssh` ile taşınır.
+1. Ön kontrol: çalışan sürüm `adc5f39` mı, disk yeri, imajlar yüklü mü. İmajlar Mac'te amd64 için derlenip `docker save | ssh` ile taşınır.
 2. `backup.sh` ve geri yükleme testi.
 3. `archive-image.sh`: eski imajlar saklanır.
 4. `.env` ve `docker-compose.yml` zaman damgalı yedeklenir.
@@ -108,7 +108,7 @@ Sıra:
     - `/platform` Yapay zekâ sekmesi ve Finans raporu çalışır.
     - Ek paket sayfası satış kapalı durumunu gösterir, ödeme formu açılmaz.
     - Pilot salonda bir test mesajına yapay zekâ yanıt verir ve `AiUsageEvent` kaydı oluşur.
-11. Otomatik geri dönüş: 8. adımdan sonra bir şey başarısız olursa betik compose ve `.env` yedeklerini geri koyar ve `./rollback.sh 4296795` çalıştırır.
+11. Otomatik geri dönüş: 8. adımdan sonra bir şey başarısız olursa betik compose ve `.env` yedeklerini geri koyar ve `./rollback.sh adc5f39` çalıştırır.
     Migration geri alınmaz; geriye uyumlu olduğu için gerek yok.
 
 ## 6. Anthropic API anahtarı ve harcama limiti (Aşama D için)
@@ -120,7 +120,7 @@ Sıra:
   Limit dolarsa Anthropic istekleri reddeder ve mesajlar ekibe düşer.
 - **Ödeme:** Anthropic konsolunda kart veya ön yüklemeli bakiye tanımlı olmalı. Bu adımı siz yaparsınız; ödeme bilgisi giremem.
 - **Hukuki etki (önemli):**
-  - Canlıya gidecek 1.1 metinleri yurt dışına aktarım için **OpenAI**'yi sayıyor, Anthropic'i çıkarmış.
+  - Canlıdaki 1.1 metinleri yurt dışına aktarım için **OpenAI**'yi sayıyor, Anthropic'i çıkarmış.
   - Claude'a geçmeden önce KVKK ve Gizlilik metinlerinin Anthropic'i içerecek şekilde güncellenmesi ve avukatın onayı gerekir.
   - Kod, onayı sağlayıcıya bağlı tutuyor: eski OpenAI onayları Anthropic için geçersiz. Her salonun Kanallar sayfasından yeniden onay vermesi gerekir; onay vermeyen salonda yapay zekâ çalışmaz.
   - Bunun hukuken yeterli olduğunu ben söyleyemem; avukata danışılmalı.
@@ -142,8 +142,8 @@ Sıra:
 
 Her biri ayrı "evet" ister. Biri onaylanınca diğerleri onaylanmış sayılmaz.
 
-1. **Deploy + migration (Aşama A):** `4296795` → yeni sürüm. Yedek ve geri yükleme testinden sonra migration çalışır.
-2. **Hukuki metin 1.1'in yayını:** 20.11 onayı `adc5f39` betiği içindi. Bu onay, metinlerin bu sürümle birlikte yayınlanması için de geçerli mi?
+1. **Deploy + migration (Aşama A):** `adc5f39` → `6c80311` (ONAYLANDI 21.11; betik hazır). Yedek ve geri yükleme testinden sonra migration çalışır.
+2. **Hukuki metin 1.1:** gereksiz, metinler zaten canlıda (adc5f39).
 3. **.env (Aşama A):** `AI_PILOT_TENANTS=deneme` (başka salon var mı?), `AI_PRICE_USD_PER_MTOK` (OpenAI resmi fiyatı; girilmezse maliyet 0 kaydedilir), `AI_QUOTA_MODE=off`, `AI_TOPUP_ENABLED=0`.
 4. **Gölge pilot (Aşama B):** panelden kur ve sınır ayarları girildikten sonra `AI_QUOTA_MODE=shadow`.
 5. **Uygulama (Aşama C):** `AI_QUOTA_MODE=enforce`; pilot salon Akıllı pakette olmalı.
