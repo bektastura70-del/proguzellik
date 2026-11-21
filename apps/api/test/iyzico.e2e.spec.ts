@@ -1,5 +1,5 @@
 import { INestApplication } from "@nestjs/common";
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import request from "supertest";
 import { IyzicoBillingService } from "../src/billing/iyzico/iyzico-billing.service";
 import { HttpIyzicoClient, IyzicoClient, iyzicoAuthHeader, verifyIyzicoSubscriptionSignature } from "../src/billing/iyzico/iyzico.client";
@@ -7,7 +7,8 @@ import { DAY, FakeIyzico } from "./iyzico-fake";
 import { DisabledPaymentProvider, IyzicoPaymentProvider, MockPaymentProvider, PaymentProvider, paymentProviderFor } from "../src/billing/payment-provider";
 import { SubscriptionsService } from "../src/billing/subscriptions.service";
 import { loadEnv } from "../src/config/env";
-import { api, approvePrice, createApp, createTenantWithUser, login, owner, resetDb } from "./helpers";
+import bcrypt from "bcryptjs";
+import { api, approvePrice, createApp, createTenantWithUser, enableMfa, login, owner, resetDb, TEST_PASSWORD } from "./helpers";
 
 const MERCHANT = "3404590";
 const SECRET = "sandbox-test-secret";
@@ -108,6 +109,14 @@ describe("iyzico Abonelik akışı (sahte iyzico ile)", () => {
 
   let token = "";
   let subRef = "";
+  let adminApi: ReturnType<typeof api> | null = null;
+  const platformAdmin = async () => {
+    if (!adminApi) {
+      await su.user.create({ data: { email: "owner@proguzellik.test", fullName: "Platform Sahibi", passwordHash: await bcrypt.hash(TEST_PASSWORD, 4), isPlatformAdmin: true } });
+      adminApi = api(app, (await enableMfa(app, "owner@proguzellik.test")).token);
+    }
+    return adminApi;
+  };
 
   it("panel iyzico ödeme formunu bildirir; test belirteciyle ödeme reddedilir", async () => {
     const s = await a.get("/subscription").expect(200);
@@ -283,6 +292,45 @@ describe("iyzico Abonelik akışı (sahte iyzico ile)", () => {
     expect(r.body.amount).toBe("13200.00");
     expect(fake.plans.find((p) => p.interval === "YEARLY")?.price).toBe("13200.00");
     expect(app.get(IyzicoBillingService).enabled).toBe(true);
+  });
+
+  it("yıllık paket 14 gün içinde iptal edilirse iade kaydı oluşur; iade platformda işaretlenince gelirden düşer", async () => {
+    const tk = [...fake.checkouts.keys()].pop()!;
+    const ref = fake.pay(tk);
+    expect((await http().post("/billing/iyzico/callback").send({ token: tk }).expect(200)).body.ok).toBe(true);
+    const sub = await su.subscription.findFirstOrThrow({ where: { providerRef: ref } });
+    const c = api(app, await login(app, "yil@test.local"), sub.tenantId);
+    await c.post("/subscription/cancel").expect(200);
+    const due = await su.auditLog.findMany({ where: { tenantId: sub.tenantId, action: "iyzico.refund_due" } });
+    expect(due).toHaveLength(1);
+    expect(due[0].metadata).toMatchObject({ order: `ord-${tk}-1`, amount: "13200.00" });
+    // 14 gün sonra iptal kaydı oluşmaz
+    const svc = app.get(IyzicoBillingService);
+    expect(await svc.flagYearlyRefund(sub, null, new Date(sub.currentPeriodStart.getTime() + 15 * DAY))).toBe(false);
+    // aylık abonelik iptalinde iade kaydı yok (önceki test)
+    expect(await su.auditLog.count({ where: { tenantId: A.tenant.id, action: "iyzico.refund_due" } })).toBe(0);
+
+    const pay = await su.subscriptionPayment.findFirstOrThrow({ where: { subscriptionId: sub.id } });
+    const year = new Date().getFullYear();
+    const admin = await platformAdmin();
+    const before = (await admin.get(`/platform/finance/report?year=${year}&granularity=year`).expect(200)).body.totals.onlineCollected;
+    await c.post(`/platform/subscription-payments/${pay.id}/refunded`).send({ note: "iyzico panelinden iade", requestId: randomUUID() }).expect(403);
+    await admin.post(`/platform/subscription-payments/${pay.id}/refunded`).send({ note: "iyzico panelinden iade", requestId: randomUUID() }).expect(200);
+    await admin.post(`/platform/subscription-payments/${pay.id}/refunded`).send({ note: "tekrar", requestId: randomUUID() }).expect(200);
+    expect((await su.subscriptionPayment.findUniqueOrThrow({ where: { id: pay.id } })).status).toBe("REFUNDED");
+    expect(await su.auditLog.count({ where: { entityId: pay.id, action: "iyzico.payment_refunded" } })).toBe(1);
+    const after = (await admin.get(`/platform/finance/report?year=${year}&granularity=year`).expect(200)).body.totals.onlineCollected;
+    expect(Number(before) - Number(after)).toBe(13200);
+  });
+
+  it("sandbox test ödemeleri gelir raporuna girmez", async () => {
+    const pay = await su.subscriptionPayment.findFirstOrThrow({ where: { tenantId: A.tenant.id, status: "PAID" } });
+    const admin = await platformAdmin();
+    const year = new Date().getFullYear();
+    const report = async () => Number((await admin.get(`/platform/finance/report?year=${year}&granularity=year`).expect(200)).body.totals.onlineCollected);
+    const before = await report();
+    await su.subscriptionPayment.update({ where: { id: pay.id }, data: { provider: "iyzico_sandbox" } });
+    expect(before - (await report())).toBe(Number(pay.amount));
   });
 });
 

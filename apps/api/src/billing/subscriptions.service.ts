@@ -202,7 +202,10 @@ export class SubscriptionsService {
     // iyzico: sonraki otomatik çekimler iyzico'da durdurulur; erişim dönem sonuna kadar sürer.
     if (sub.provider === IYZICO) await this.iyzico.cancelAtProvider(sub);
     await this.audit.logPlatform({ tenantId: t.tenantId, actorId: t.userId, action: "subscription.cancel_requested" });
-    return db.subscription.update({ where: { id: sub.id }, data: { cancelAtPeriodEnd: true } });
+    const updated = await db.subscription.update({ where: { id: sub.id }, data: { cancelAtPeriodEnd: true } });
+    // Yıllık pakette 14 gün içinde iptal: iade kaydı + SaaS sahibine bildirim (para iadesi elle).
+    if (!sub.cancelAtPeriodEnd) await this.iyzico.flagYearlyRefund(sub, t.userId);
+    return updated;
   }
 
   private async ownerEmail(tenantId: string) {

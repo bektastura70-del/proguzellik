@@ -136,6 +136,7 @@ const manualRenew = z
 const manualExtend = z.object({ days: z.number().int().min(1, "En az 1 gün").max(366, "En fazla 366 gün"), note, requestId });
 const manualPlan = z.object({ planCode, note, requestId });
 const manualCancel = z.object({ mode: z.enum(["immediate", "period_end"]), note, requestId });
+const paymentRefunded = z.object({ note, requestId });
 
 const roleSchema = z.enum(["OWNER", "MANAGER", "RECEPTION", "STAFF"]);
 const mfaResetSchema = z.object({
@@ -341,6 +342,28 @@ export class PlatformController {
   @HttpCode(200)
   cancelSubscription(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(manualCancel)) b: z.infer<typeof manualCancel>, @Req() req: Request) {
     return this.manual.cancel(id, u.id, b, req.ip);
+  }
+
+  /**
+   * iyzico panelinden elle yapılmış iadeyi kayda geçirir: tahsilat "İade edildi" olur, gelir raporundan düşer.
+   * Bu uç nokta para iadesi YAPMAZ. Tekrar çağrılırsa kayıt değişmez.
+   */
+  @Post("subscription-payments/:id/refunded")
+  @HttpCode(200)
+  async markPaymentRefunded(@CurrentUser() u: AuthUser, @Param("id", ParseUUIDPipe) id: string, @Body(new ZodPipe(paymentRefunded)) b: z.infer<typeof paymentRefunded>, @Req() req: Request) {
+    return this.prisma.platform.$transaction(async (tx) => {
+      const p = await tx.subscriptionPayment.findUnique({ where: { id } });
+      if (!p) throw new NotFoundException("Tahsilat bulunamadı");
+      if (p.status === "REFUNDED") return p;
+      if (p.status !== "PAID") throw new ConflictException("Yalnızca ödenmiş tahsilat iade edildi olarak işaretlenebilir");
+      if (!p.provider.startsWith("iyzico")) throw new ConflictException("Yalnızca iyzico tahsilatları buradan işaretlenir");
+      const updated = await tx.subscriptionPayment.update({ where: { id }, data: { status: "REFUNDED" } });
+      await this.audit.log(tx, {
+        tenantId: p.tenantId, actorId: u.id, ip: req.ip, action: "iyzico.payment_refunded", entity: "SubscriptionPayment", entityId: id,
+        metadata: { order: p.providerRef, amount: p.amount.toFixed(2), provider: p.provider, note: b.note },
+      });
+      return updated;
+    });
   }
 
   // ---- Kullanıcı yönetimi ----

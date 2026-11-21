@@ -13,6 +13,8 @@ import { approvedVersionsOf, cycleAmount, priceForNewSale, withVat } from "../pl
 import { IyzicoClient, IyzicoError, IyzicoOrder, IyzicoSubscriptionDetail, verifyIyzicoSubscriptionSignature } from "./iyzico.client";
 
 export const IYZICO = "iyzico";
+/** Yıllık pakette tam iade süresi (Teslimat ve İade 1.1, seçenek C). */
+export const YEARLY_REFUND_DAYS = 14;
 const addCycle = (d: Date, cycle: BillingCycle) => {
   const n = new Date(d);
   if (cycle === "MONTHLY") n.setUTCMonth(n.getUTCMonth() + 1);
@@ -480,6 +482,36 @@ export class IyzicoBillingService {
     } catch (e) {
       throw new BadGatewayException(`iyzico iptali yapılamadı: ${(e as Error).message}`);
     }
+  }
+
+  /**
+   * Yıllık paket dönem başından itibaren YEARLY_REFUND_DAYS gün içinde iptal edilirse o dönemin bedeli iade edilir
+   * (Teslimat ve İade 1.1). Para iadesi iyzico panelinden elle yapılır: burada yalnız denetim kaydı ve
+   * SaaS sahibine bildirim oluşur. Erişim kuralı değişmez (dönem sonunda iptal).
+   */
+  async flagYearlyRefund(sub: Subscription, actorId: string | null, now = new Date()) {
+    if (sub.provider !== IYZICO || sub.billingCycle !== "YEARLY") return false;
+    const deadline = new Date(sub.currentPeriodStart.getTime() + YEARLY_REFUND_DAYS * 86_400_000);
+    if (now.getTime() > deadline.getTime()) return false;
+    const db = this.prisma.platform;
+    const pay = await db.subscriptionPayment.findFirst({ where: { subscriptionId: sub.id, status: "PAID", provider: IYZICO }, orderBy: { createdAt: "desc" } });
+    const tenant = await db.tenant.findUnique({ where: { id: sub.tenantId }, select: { name: true } });
+    const amount = pay?.amount.toFixed(2) ?? "?";
+    await this.audit.logPlatform({
+      tenantId: sub.tenantId,
+      actorId,
+      action: "iyzico.refund_due",
+      entity: "SubscriptionPayment",
+      entityId: pay?.id,
+      metadata: { reason: "yearly_cancel_within_14_days", order: pay?.providerRef ?? null, amount, periodStart: sub.currentPeriodStart.toISOString(), deadline: deadline.toISOString() },
+    });
+    await this.notifyPlatform(
+      `İade gerekiyor: yıllık paket ${YEARLY_REFUND_DAYS} gün içinde iptal edildi (${amount} TL)`,
+      `${tenant?.name ?? sub.tenantId} yıllık aboneliğini dönem başından itibaren ${YEARLY_REFUND_DAYS} gün içinde iptal etti. ` +
+        `iyzico sipariş referansı: ${pay?.providerRef ?? "bulunamadı"}. iyzico panelinden ${amount} TL iade yapın, ` +
+        `ardından Platform > İşletme > Tahsilatlar bölümünde bu ödemeyi "İade edildi" olarak işaretleyin.`,
+    );
+    return true;
   }
 
   /** Süresi dolup iptal edilen aboneliğin iyzico tarafı da durdurulur (otomatik çekim sürmesin). */

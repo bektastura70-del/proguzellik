@@ -203,7 +203,7 @@ export class PlatformFinanceService {
 
   /**
    * Gelir raporu (İstanbul saatine göre ay/yıl). Tahakkuk, tahsilat ve iade ayrı; bekleyen tutar dönem sonu bakiyesi.
-   * Manuel ücretsiz tanımlamalar gelir sayılmaz, ayrı listelenir. Online sağlayıcı tahsilatları ayrı sütundur.
+   * Manuel ücretsiz tanımlamalar gelir sayılmaz, ayrı listelenir. Online sağlayıcı tahsilatları ayrı sütundur (iade edilenler ve sandbox test ödemeleri hariç).
    */
   async report(year: number, granularity: "month" | "year") {
     const unit = granularity === "month" ? "month" : "year";
@@ -214,7 +214,7 @@ export class PlatformFinanceService {
       FROM "PlatformLedgerEntry" WHERE "occurredAt" >= ${from} AND "occurredAt" < ${to} GROUP BY 1, 2`;
     const online = await this.db.$queryRaw<{ period: string; total: Prisma.Decimal }[]>`
       SELECT to_char(date_trunc(${unit}, "createdAt" AT TIME ZONE 'Europe/Istanbul'), 'YYYY-MM') AS period, sum(amount) AS total
-      FROM "SubscriptionPayment" WHERE status = 'PAID' AND "createdAt" >= ${from} AND "createdAt" < ${to} GROUP BY 1`;
+      FROM "SubscriptionPayment" WHERE status = 'PAID' AND provider NOT LIKE '%sandbox%' AND "createdAt" >= ${from} AND "createdAt" < ${to} GROUP BY 1`;
     const grants = await this.db.$queryRaw<{ period: string; n: bigint; agreed: Prisma.Decimal }[]>`
       SELECT to_char(date_trunc(${unit}, "createdAt" AT TIME ZONE 'Europe/Istanbul'), 'YYYY-MM') AS period, count(*) AS n, sum("agreedAmount") AS agreed
       FROM "SubscriptionGrant" WHERE "isComplimentary" AND action IN ('CREATED', 'RENEWED', 'EXTENDED') AND "createdAt" >= ${from} AND "createdAt" < ${to} GROUP BY 1`;

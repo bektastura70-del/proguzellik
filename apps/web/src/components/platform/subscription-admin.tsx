@@ -28,7 +28,9 @@ export type AdminSubscription = {
   payments: Payment[];
 };
 
-type Mode = null | "create" | "extend" | "renew" | "plan" | "cancel";
+type Mode = null | "create" | "extend" | "renew" | "plan" | "cancel" | "refunded";
+const PAY_STATUS_TR: Record<string, string> = { PAID: "Ödendi", FAILED: "Başarısız", REFUNDED: "İade edildi" };
+const providerTr = (p: string) => (p === "mock" ? "Test" : p === "iyzico_sandbox" ? "iyzico (TEST)" : p);
 
 export function SourceBadge({ s }: { s: Pick<AdminSubscription, "source" | "isComplimentary"> }) {
   if (s.source === "PROVIDER") return <Badge tone="brand">Ödeme sağlayıcısı</Badge>;
@@ -67,6 +69,7 @@ export function SubscriptionAdmin({ tenantId, subscriptions, onChanged }: { tena
   const [requestId, setRequestId] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refundPay, setRefundPay] = useState<Payment | null>(null);
   const current = subscriptions.find((s) => s.status === "ACTIVE" || s.status === "PAST_DUE");
   const grants = subscriptions.flatMap((s) => s.grants).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const payments = subscriptions.flatMap((s) => s.payments).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -175,6 +178,16 @@ export function SubscriptionAdmin({ tenantId, subscriptions, onChanged }: { tena
               {actions("Paketi ata")}
             </form>
           )}
+          {mode === "refunded" && refundPay && (
+            <form className="space-y-3" onSubmit={submit(`/platform/subscription-payments/${refundPay.id}/refunded`, "Tahsilat iade edildi olarak işaretlendi", () => ({}))}>
+              <p className="text-sm">
+                {day(refundPay.createdAt)} · {refundPay.description} · <b>{tl(refundPay.amount)}</b>
+              </p>
+              <p className="text-xs text-neutral-500">Bu işlem para iadesi yapmaz. Önce iadeyi iyzico panelinden yapın; burada yalnızca kayda geçer ve gelir raporundan düşer.</p>
+              {noteField}
+              {actions("İade edildi olarak işaretle", true)}
+            </form>
+          )}
           {mode === "cancel" && (
             <form className="space-y-3" onSubmit={submit(`/platform/subscriptions/${current!.id}/cancel`, "Abonelik iptal edildi", (f) => ({ mode: f.get("mode") }))}>
               <Field label="İptal zamanı">
@@ -203,14 +216,19 @@ export function SubscriptionAdmin({ tenantId, subscriptions, onChanged }: { tena
       </Table>
 
       <h4 className="mb-1 mt-4 text-xs font-semibold uppercase text-neutral-500">Tahsilatlar (ödeme sağlayıcısı)</h4>
-      <Table head={["Tarih", "Açıklama", "Tutar", "Durum", "Sağlayıcı"]} empty="Tahsilat yok">
+      <Table head={["Tarih", "Açıklama", "Tutar", "Durum", "Sağlayıcı", ""]} empty="Tahsilat yok">
         {payments.map((p) => (
           <tr key={p.id}>
             <Td>{day(p.createdAt)}</Td>
             <Td>{p.description}</Td>
             <Td>{tl(p.amount)}</Td>
-            <Td>{p.status === "PAID" ? "Ödendi" : p.status === "FAILED" ? "Başarısız" : p.status}</Td>
-            <Td>{p.provider === "mock" ? "Test" : p.provider}</Td>
+            <Td>{PAY_STATUS_TR[p.status] ?? p.status}</Td>
+            <Td>{providerTr(p.provider)}</Td>
+            <Td>
+              {p.status === "PAID" && p.provider.startsWith("iyzico") && mode === null && (
+                <Button size="sm" variant="ghost" onClick={() => { setRefundPay(p); open("refunded"); }}>İade edildi</Button>
+              )}
+            </Td>
           </tr>
         ))}
       </Table>
