@@ -1,3 +1,4 @@
+import { render } from "../src/email/templates";
 import { INestApplication } from "@nestjs/common";
 import { FetchLike, FxRateService, parseTcmbUsd, TCMB_TODAY_URL } from "../src/ai-quota/fx-rate.service";
 import { api, createApp, createTenantWithUser, enableMfa, owner, resetDb } from "./helpers";
@@ -14,6 +15,17 @@ const xml = (date: string, sell: string, extra = "") => `<?xml version="1.0" enc
 	</Currency>
 	<Currency CrossOrder="1" Kod="AUD" CurrencyCode="AUD"><Unit>1</Unit><ForexSelling>33.7377</ForexSelling></Currency>${extra}
 </Tarih_Date>`;
+
+describe("Kullanım hakkı e-postaları", () => {
+  it("ek paket satışı kapalıyken ek paket önermez", () => {
+    for (const name of ["ai_quota_low", "ai_quota_empty"] as const) {
+      const off = render({ name, vars: { salon: "S", link: "https://x/panel/abonelik", canBuy: false } });
+      expect(off.text).not.toMatch(/ek paket/i);
+      const on = render({ name, vars: { salon: "S", link: "https://x/panel/abonelik", canBuy: true } });
+      expect(on.text).toMatch(/ek paket/i);
+    }
+  });
+});
 
 describe("TCMB kur ayrıştırma", () => {
   it("USD döviz satış kurunu ve bülten tarihini okur (efektif değil)", () => {

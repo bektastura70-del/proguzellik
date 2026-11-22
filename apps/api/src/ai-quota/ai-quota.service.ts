@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { AiBillingSettings, AiCreditBucket, AiCreditEntryType, AiWallet, Prisma } from "@prisma/client";
-import { appUrl, loadEnv } from "../config/env";
+import { aiTopupEnabled, appUrl, loadEnv } from "../config/env";
 import { EmailService } from "../email/email.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AiUsage, costMicroUsd, debitKurus } from "./ai-pricing";
@@ -241,7 +241,9 @@ export class AiQuotaService {
     const to = await this.ownerEmail(w.tenantId);
     if (!to || !tenant) return;
     const link = `${appUrl(loadEnv())}/panel/abonelik`;
-    await this.email.send(to, empty ? { name: "ai_quota_empty", vars: { salon: tenant.name, link } } : { name: "ai_quota_low", vars: { salon: tenant.name, link } }, {
+    // Ek paket satışı kapalıyken e-posta ek paket önermez.
+    const canBuy = aiTopupEnabled(loadEnv());
+    await this.email.send(to, empty ? { name: "ai_quota_empty", vars: { salon: tenant.name, link, canBuy } } : { name: "ai_quota_low", vars: { salon: tenant.name, link, canBuy } }, {
       dedupeKey: `${empty ? "ai-empty" : "ai-low"}:${w.tenantId}:${w.periodStart.toISOString()}`,
       tenantId: w.tenantId,
     });
@@ -319,6 +321,8 @@ export class AiQuotaService {
       renewsInDays,
       renewsAt: w.periodEnd.toISOString(),
       hasExtra: w.purchasedRemainingKurus > 0,
+      // Ek paket satışı açık mı (kapalıyken panelde "Ek paket al" bağlantısı gösterilmez)
+      topup: aiTopupEnabled(loadEnv()),
     };
   }
 

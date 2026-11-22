@@ -5,7 +5,7 @@ import { useApi } from "@/lib/api";
 
 type AiQuota =
   | { available: false }
-  | { available: true; tracking: boolean; enforced: boolean; percent: number; state: "ok" | "low" | "empty"; renewsInDays: number; renewsAt: string; hasExtra: boolean };
+  | { available: true; tracking: boolean; enforced: boolean; percent: number; state: "ok" | "low" | "empty"; renewsInDays: number; renewsAt: string; hasExtra: boolean; topup?: boolean };
 
 /**
  * Yapay zekâ kullanım hakkı barı. Salon para, birim ya da konuşma sayısı görmez; yalnız yaklaşık yüzde.
@@ -42,7 +42,7 @@ export function AiQuotaCard({ compact = false, buyLink = true }: { compact?: boo
         <p className="text-xs text-neutral-500">{renew}{d.hasExtra ? " Ek paketten kalan hakkınız ayrıca korunur." : ""}</p>
         {!d.enforced && <p className="text-xs text-neutral-500">Kullanım ölçümü deneme aşamasında; şu an yanıtlar kesilmez.</p>}
         {/* Tam sayfa geçiş: ödeme sayfası iyzico formu için kendi güvenlik başlıklarıyla yüklenir. */}
-        {buyLink && <a className="inline-block text-sm font-medium text-brand-700 underline" href="/panel/abonelik/ai-paket">Ek paket al</a>}
+        {buyLink && d.topup && <a className="inline-block text-sm font-medium text-brand-700 underline" href="/panel/abonelik/ai-paket">Ek paket al</a>}
       </CardBody>
     </Card>
   );

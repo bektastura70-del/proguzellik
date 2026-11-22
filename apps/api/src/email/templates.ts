@@ -29,8 +29,8 @@ export type EmailTemplate =
   | { name: "customer_otp"; vars: { salon: string; code: string; minutes: number } }
   | { name: "low_stock_alert"; vars: { salon: string; count: number; items: string; link: string } }
   | { name: "renewal_reminder"; vars: { salon: string; firstName: string; service: string; dueDate: string; link: string; phone?: string; optOutLink: string } }
-  | { name: "ai_quota_low"; vars: { salon: string; link: string } }
-  | { name: "ai_quota_empty"; vars: { salon: string; link: string } }
+  | { name: "ai_quota_low"; vars: { salon: string; link: string; canBuy?: boolean } }
+  | { name: "ai_quota_empty"; vars: { salon: string; link: string; canBuy?: boolean } }
   | { name: "ai_credit_purchased"; vars: { salon: string; link: string; amount: string } }
   | { name: "ai_daily_cap"; vars: { salon: string; slug: string; limitUsd: string; link: string } }
   | { name: "ai_fx_stale"; vars: { detail: string; link: string } };
@@ -247,7 +247,7 @@ export function render(t: EmailTemplate, override?: TemplateOverride | null): { 
       subject = `${t.vars.salon}: yapay zekâ kullanım hakkınız azaldı`;
       paras = [
         `Bu ayki yapay zekâ kullanım hakkınızın yaklaşık %20'si kaldı.`,
-        `Hak bittiğinde yapay zekâ yeni mesajlara yanıt vermez; mesajlar ekibinize düşer. Hakkınız her ay yenilenir; isterseniz panelden ek paket alabilirsiniz.`,
+        `Hak bittiğinde yapay zekâ yeni mesajlara yanıt vermez; mesajlar ekibinize düşer. Hakkınız her ay yenilenir${t.vars.canBuy ? "; isterseniz panelden ek paket alabilirsiniz" : ""}.`,
       ];
       cta = { label: "Kullanım durumunu gör", link: t.vars.link };
       break;
@@ -255,9 +255,9 @@ export function render(t: EmailTemplate, override?: TemplateOverride | null): { 
       subject = `${t.vars.salon}: yapay zekâ kullanım hakkınız doldu`;
       paras = [
         `Bu ayki yapay zekâ kullanım hakkınız doldu. Yeni mesajlar artık ekibinize düşüyor; müşterilerinize sizin yanıt vermeniz gerekiyor.`,
-        `Hakkınız bir sonraki dönemde kendiliğinden yenilenir. Beklemek istemezseniz panelden ek paket alabilirsiniz.`,
+        t.vars.canBuy ? `Hakkınız bir sonraki dönemde kendiliğinden yenilenir. Beklemek istemezseniz panelden ek paket alabilirsiniz.` : `Hakkınız bir sonraki dönemde kendiliğinden yenilenir.`,
       ];
-      cta = { label: "Ek paket al", link: t.vars.link };
+      cta = { label: t.vars.canBuy ? "Ek paket al" : "Kullanım durumunu gör", link: t.vars.link };
       break;
     case "ai_credit_purchased":
       subject = `${t.vars.salon}: yapay zekâ ek paketiniz yüklendi`;
