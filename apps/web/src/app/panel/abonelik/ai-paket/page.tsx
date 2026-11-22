@@ -94,7 +94,7 @@ function TopupInner() {
                       <div className="absolute h-3 rounded-full bg-brand-500" style={{ width: `${quote.percentNow}%` }} />
                     </div>
                   </div>
-                  <p className="text-xs text-neutral-500">Ek paket hakkı aylık hakkınız bittikten sonra kullanılır ve son alımdan itibaren 12 ay geçerlidir. Gerçek kullanım konuşmaların uzunluğuna göre değişir.</p>
+                  <p className="text-xs text-neutral-500">Ek paket hakkı aylık hakkınız bittikten sonra kullanılır; aboneliğiniz devam ettiği sürece geçerliliğini korur. Gerçek kullanım konuşmaların uzunluğuna göre değişir.</p>
                   <dl className="grid grid-cols-2 gap-1">
                     <dt>Tutar (KDV hariç)</dt><dd className="text-right">{tl(quote.netAmount)}</dd>
                     <dt>KDV (%{Number(quote.vatRate).toLocaleString("tr-TR")})</dt><dd className="text-right">{tl(quote.vat)}</dd>
@@ -148,7 +148,7 @@ function TopupInner() {
                   {quote && (
                     <div className="rounded-xl bg-sand-50 p-3 text-xs text-neutral-600">
                       <div className="mb-1 font-semibold text-ink">Ön bilgilendirme özeti</div>
-                      Satıcı: Pro Güzellik (künye <a className="underline" href="/yapay-zeka-ek-paket-kosullari" target="_blank">satış koşullarında</a>) · Hizmet: yapay zekâ ek kullanım hakkı, ödeme doğrulanınca hemen yüklenir, son alımdan itibaren 12 ay geçerli · Tutar: {tl(quote.netAmount)} + KDV {tl(quote.vat)} = <b>{tl(quote.grossAmount)}</b>, tek çekim, otomatik yenilenmez · 14 gün içinde talep edilirse kullanılmamış kısım iade edilir.
+                      Satıcı: Pro Güzellik (künye <a className="underline" href="/yapay-zeka-ek-paket-kosullari" target="_blank">satış koşullarında</a>) · Hizmet: yapay zekâ ek kullanım hakkı, ödeme doğrulanınca hemen yüklenir, aboneliğiniz devam ettiği sürece geçerli, cayma hakkı yoktur · Tutar: {tl(quote.netAmount)} + KDV {tl(quote.vat)} = <b>{tl(quote.grossAmount)}</b>, tek çekim, otomatik yenilenmez · 14 gün içinde talep edilirse kullanılmamış kısım iade edilir.
                     </div>
                   )}
                   <div className="space-y-2 text-sm">

@@ -1,6 +1,7 @@
 // Yapay zekâ ek paketi satış koşulları. Claude taslağı (22.11.2026, docs/hukuk/yapay-zeka-ek-paket-taslak.md),
-// Bektaş Tura'nın avukatı tarafından görülüp onaylandı (Bektaş Tura, 22.11.2026).
-// DİKKAT: "AVUKAT KARARI BEKLENİYOR" içeren madde kalırsa yayın betiği durur (sayfada bu ifade aranır).
+// Bektaş Tura'nın avukatı tarafından görülüp onaylandı (Bektaş Tura, 22.11.2026). Md. 6 (12 ay sonu), md. 7 (Akıllı'dan
+// çıkışta iade yok) ve md. 8 (cayma hakkı yok) Bektaş Tura'nın 22.11.2026 cevaplarıyla yazıldı; avukatın yazılı teyidi istendi.
+// Md. 9 (fatura): elle kesilir (Bektaş, 22.11.2026); metin onaylı Mesafeli Satış Sözleşmesi md. 6 ile aynı ifade.
 // Metin değişirse apps/api/src/ai-quota/ai-topup.service.ts içindeki TOPUP_TERMS_VERSION da değiştirilir.
 export const AI_TOPUP_TERMS_TITLE = "Yapay Zekâ Ek Paketi Satış Koşulları";
 
@@ -36,23 +37,21 @@ Ek kullanım hakkı, ödemenin doğrulanmasıyla birlikte Alıcı'nın hesabına
 
 Ek kullanım hakkı son ek paket alımından itibaren 12 ay geçerlidir; her yeni alım bu süreyi yeniden başlatır.
 
-AVUKAT KARARI BEKLENİYOR: süre sonunda kullanılmayan kısım.
+12 ay dolduğunda Alıcı'nın Pro Güzellik aboneliği devam ediyorsa, kullanılmayan ek hak silinmez ve 12 ay daha geçerli kalır. 12 ay dolduğunda Alıcı'nın aboneliği iptal edilerek sona ermişse, kullanılmayan ek hak iade edilmeksizin silinir.
 
 ## 7. Paket değişikliği ve aboneliğin sona ermesi
 
-Alıcı Akıllı paketten çıkarsa ya da aboneliği sona ererse, kalan ek kullanım hakkı bu süre içinde kullanılamaz. Hak silinmez; Alıcı 12 aylık süre içinde Akıllı pakete dönerse yeniden kullanılır.
-
-AVUKAT KARARI BEKLENİYOR: kullanılamayan hakkın iadesi.
+Alıcı Akıllı paketten çıkarsa ya da aboneliği sona ererse kalan ek kullanım hakkı kullanılamaz ve bedeli iade edilmez. Hak 6. maddedeki koşullarla silinmediği sürece, Alıcı Akıllı pakete döndüğünde yeniden kullanılabilir.
 
 ## 8. Cayma ve iade
 
-AVUKAT KARARI BEKLENİYOR: cayma hakkı.
+Ek paket, Alıcı'nın ödeme sırasındaki açık onayıyla derhâl ifa edilen bir hizmet olduğundan cayma hakkı bulunmamaktadır.
 
-Satıcı, alımdan itibaren 14 gün içinde destek kanalından talep edilmesi hâlinde ek paketin kullanılmamış kısmına karşılık gelen bedeli, ödemenin yapıldığı karta iade eder. İade edilen orandaki kullanım hakkı hesaptan düşülür.
+Bununla birlikte Satıcı, alımdan itibaren 14 gün içinde destek kanalından talep edilmesi hâlinde ek paketin kullanılmamış kısmına karşılık gelen bedeli, ödemenin yapıldığı karta iade eder. İade edilen orandaki kullanım hakkı hesaptan düşülür.
 
 ## 9. Fatura
 
-AVUKAT KARARI BEKLENİYOR: fatura kesme yöntemi ve süresi.
+Tahsil edilen ek paket bedeli için yürürlükteki vergi mevzuatına uygun şekilde, Alıcı'nın ödeme sırasında beyan ettiği fatura bilgileriyle fatura düzenlenir. Ayrıntılar [Faturalandırma ve Ödeme Belgeleri Politikası](/faturalandirma-politikasi)'nda yer alır.
 
 ## 10. Kişisel veriler
 

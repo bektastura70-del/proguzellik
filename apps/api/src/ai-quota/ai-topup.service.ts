@@ -17,8 +17,8 @@ export const TOPUP_PRESETS = [250, 500, 1000, 2000];
 export const TOPUP_MIN = 250;
 export const TOPUP_MAX = 10_000;
 export const TOPUP_STEP = 50;
-/** Ek paket onay metinleri TASLAKTIR (avukat onayı olmadan yayımlanmaz); sürüm kayda yazılır. */
-export const TOPUP_TERMS_VERSION = "ai-ek-paket-taslak-1";
+/** Ek paket satış koşulları sürümü (web: content/legal/ai-ek-paket.ts, /yapay-zeka-ek-paket-kosullari); kayda yazılır. */
+export const TOPUP_TERMS_VERSION = "ai-ek-paket-1.0";
 export const AI_TOPUP_CALLBACK_PATH = "/api/odeme/iyzico/ai-paket";
 
 export interface TopupBilling {

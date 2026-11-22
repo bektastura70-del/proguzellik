@@ -189,6 +189,27 @@ describe("Yapay zekâ kullanım hakkı: cüzdan, defter, dönem, motor", () => {
     expect(await ledgerSum(A.tenant.id)).toBe(w.monthlyRemainingKurus + w.purchasedRemainingKurus);
   });
 
+  it("ek bakiye 12 ay dolunca: abonelik devam ediyorsa 12 ay uzar, iptal edilmişse iadesiz silinir", async () => {
+    const before = await su.aiWallet.findUniqueOrThrow({ where: { tenantId: A.tenant.id } });
+    const exp = before.purchasedExpiresAt!;
+    const after = new Date(exp.getTime() + 3_600_000);
+    let w = await quota.wallet(A.tenant.id, after);
+    expect(w.purchasedRemainingKurus).toBe(before.purchasedRemainingKurus);
+    expect(w.purchasedExpiresAt!.getTime()).toBeGreaterThan(after.getTime());
+    // Sistemden çıkış (iptal): süre dolunca silinir
+    const prevStatus = (await su.tenant.findUniqueOrThrow({ where: { id: A.tenant.id } })).status;
+    await su.tenant.update({ where: { id: A.tenant.id }, data: { status: "CANCELLED" } });
+    const later = new Date(w.purchasedExpiresAt!.getTime() + 3_600_000);
+    const saved = { remaining: w.purchasedRemainingKurus, expiresAt: w.purchasedExpiresAt };
+    w = await quota.wallet(A.tenant.id, later);
+    expect(w.purchasedRemainingKurus).toBe(0);
+    expect(await ledgerSum(A.tenant.id)).toBe(w.monthlyRemainingKurus + w.purchasedRemainingKurus);
+    // Sonraki testler için eski hâle getir (defter yalnız eklenir: ayar kaydıyla geri yazılır)
+    await su.tenant.update({ where: { id: A.tenant.id }, data: { status: prevStatus } });
+    await su.aiCreditLedger.create({ data: { tenantId: A.tenant.id, bucket: "PURCHASED", type: "ADMIN_ADJUST", amountKurus: saved.remaining, idempotencyKey: `adj-restore-${Date.now()}` } });
+    await su.aiWallet.update({ where: { tenantId: A.tenant.id }, data: { purchasedRemainingKurus: saved.remaining, purchasedExpiresAt: saved.expiresAt } });
+  });
+
   it("dönem dolunca kalan aylık hak sona erer ve yeni dönem hakkı yazılır; ek bakiye korunur", async () => {
     const before = await quota.wallet(A.tenant.id);
     const later = new Date(before.periodEnd.getTime() + 3_600_000);

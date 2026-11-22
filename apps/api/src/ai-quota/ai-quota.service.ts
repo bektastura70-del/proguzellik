@@ -126,13 +126,24 @@ export class AiQuotaService {
       monthlyRemaining += add;
       Object.assign(data, { warned80At: null, warned100At: null });
     }
-    if (w.purchasedExpiresAt && w.purchasedExpiresAt <= now && purchased > 0) {
+    if (w.purchasedExpiresAt && w.purchasedExpiresAt <= now && purchased > 0 && (await this.stillCustomer(db, tenantId))) {
+      // Satış koşulları md. 6 (Bektaş, 22.11.2026): abonelik devam ediyorsa ek hak silinmez, 12 ay daha geçerli kalır.
+      let until = w.purchasedExpiresAt;
+      while (until <= now) until = addMonths(until, PURCHASE_VALID_MONTHS);
+      Object.assign(data, { purchasedExpiresAt: until });
+    } else if (w.purchasedExpiresAt && w.purchasedExpiresAt <= now && purchased > 0) {
       await this.entry(db, { tenantId, bucket: "PURCHASED", type: "PURCHASE_EXPIRE", amountKurus: -purchased, key: `ai-pexpire-${tenantId}-${w.purchasedExpiresAt.toISOString()}` });
       purchased = 0;
       Object.assign(data, { purchasedExpiresAt: null });
     }
     if (monthlyRemaining === w.monthlyRemainingKurus && monthlyGrant === w.monthlyGrantKurus && purchased === w.purchasedRemainingKurus && Object.keys(data).length === 0) return w;
     return db.aiWallet.update({ where: { tenantId }, data: { ...data, monthlyRemainingKurus: monthlyRemaining, monthlyGrantKurus: monthlyGrant, purchasedRemainingKurus: purchased } });
+  }
+
+  /** Sistemden çıkmamış (aboneliği iptal edilerek sona ermemiş) işletme. */
+  private async stillCustomer(db: Db, tenantId: string) {
+    const t = await db.tenant.findUnique({ where: { id: tenantId }, select: { status: true } });
+    return !!t && t.status !== "CANCELLED";
   }
 
   /** Cüzdanı günceller ve döndürür (kendi işlemiyle). */
