@@ -327,14 +327,14 @@ export class AiQuotaService {
   }
 
   /**
-   * Ek paketin etkisi (birimsiz): paket değeri / aylık hak, yarım katlara yuvarlanmış.
-   * Ör. 1 = "yaklaşık 1 aylık", 0.5 = "yaklaşık yarım aylık".
+   * Ek paketin etkisi (birimsiz): paket değeri / aylık hak, çeyrek katlara AŞAĞI yuvarlanır (fazla vaat edilmez).
+   * Ör. 1 = "yaklaşık 1 katı", 0.5 = "yaklaşık yarısı", 0.25 = "yaklaşık çeyreği".
    */
   async monthsEquivalent(tenantId: string, creditKurus: number) {
     const t = await this.prisma.platform.tenant.findUnique({ where: { id: tenantId }, select: { plan: { select: { aiMonthlyCreditKurus: true } } } });
     const monthly = t?.plan.aiMonthlyCreditKurus ?? 0;
     if (monthly <= 0) return null;
-    return Math.max(0.5, Math.round((creditKurus / monthly) * 2) / 2);
+    return Math.max(0.25, Math.floor((creditKurus / monthly) * 4) / 4);
   }
 
   /** Günlük görev: dönemi geçen cüzdanlar yenilenir (aylık hak yazılır, eskisi sona erer). */

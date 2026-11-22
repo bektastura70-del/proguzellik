@@ -19,7 +19,8 @@ type Started = { checkoutFormContent: string; amount: string };
 /** Birimsiz etki metni: "aylık kullanım hakkınızın yaklaşık 1 katı". */
 function effectText(m: number | null) {
   if (m == null) return "";
-  if (m === 0.5) return "aylık kullanım hakkınızın yaklaşık yarısı kadar ek kullanım sağlar";
+  const part: Record<number, string> = { 0.25: "çeyreği", 0.5: "yarısı", 0.75: "dörtte üçü" };
+  if (part[m]) return `aylık kullanım hakkınızın yaklaşık ${part[m]} kadar ek kullanım sağlar`;
   return `aylık kullanım hakkınızın yaklaşık ${m.toLocaleString("tr-TR")} katı kadar ek kullanım sağlar`;
 }
 

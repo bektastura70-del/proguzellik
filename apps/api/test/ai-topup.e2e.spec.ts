@@ -46,7 +46,9 @@ describe("Yapay zekâ ek paketi (sahte iyzico; gerçek ödeme yok)", () => {
     const p1000 = o.presets.find((p: { amount: number }) => p.amount === 1000);
     // 1.000 TL KDV hariç → 500 TL değer = Akıllı aylık hakkın 1 katı
     expect(p1000).toMatchObject({ netAmount: "1000.00", vat: "200.00", grossAmount: "1200.00", vatRate: "20.00", monthsEquivalent: 1 });
-    expect(o.presets.find((p: { amount: number }) => p.amount === 250).monthsEquivalent).toBe(0.5);
+    // 250 TL → 125 TL değer = aylık hakkın çeyreği (aşağı yuvarlanır, fazla vaat edilmez)
+    expect(o.presets.find((p: { amount: number }) => p.amount === 250).monthsEquivalent).toBe(0.25);
+    expect(o.presets.find((p: { amount: number }) => p.amount === 500).monthsEquivalent).toBe(0.5);
     expect(JSON.stringify(o)).not.toMatch(/credit|kurus/i);
     await a.get("/ai-quota/topup/quote?amount=275").expect(400);
     await a.get("/ai-quota/topup/quote?amount=100").expect(400);
