@@ -145,11 +145,18 @@ function TopupInner() {
                   <Field label="Cep telefonu"><Input name="gsmNumber" required inputMode="tel" placeholder="05xx xxx xx xx" autoComplete="tel" /></Field>
                   <Field label="Şehir"><Input name="city" required minLength={2} maxLength={50} autoComplete="address-level1" /></Field>
                   <Field label="Fatura adresi"><Input name="address" required minLength={5} maxLength={300} autoComplete="street-address" /></Field>
-                  {/* TASLAK: ek paket satış metinleri hukuki onaydan sonra bağlanacak; satış canlıda AI_TOPUP_ENABLED ile kapalıdır. */}
+                  {quote && (
+                    <div className="rounded-xl bg-sand-50 p-3 text-xs text-neutral-600">
+                      <div className="mb-1 font-semibold text-ink">Ön bilgilendirme özeti</div>
+                      Satıcı: Pro Güzellik (künye <a className="underline" href="/yapay-zeka-ek-paket-kosullari" target="_blank">satış koşullarında</a>) · Hizmet: yapay zekâ ek kullanım hakkı, ödeme doğrulanınca hemen yüklenir, son alımdan itibaren 12 ay geçerli · Tutar: {tl(quote.netAmount)} + KDV {tl(quote.vat)} = <b>{tl(quote.grossAmount)}</b>, tek çekim, otomatik yenilenmez · 14 gün içinde talep edilirse kullanılmamış kısım iade edilir.
+                    </div>
+                  )}
                   <div className="space-y-2 text-sm">
                     <label className="flex items-start gap-2">
                       <input type="checkbox" name="onay" className="mt-1" />
-                      <span>Ek paket ön bilgilendirmesini ve satış koşullarını okudum, onaylıyorum. Tek seferlik ödemedir, otomatik yenilenmez.</span>
+                      <span>
+                        <a className="underline" href="/yapay-zeka-ek-paket-kosullari" target="_blank">Yapay Zekâ Ek Paketi Satış Koşulları</a>&apos;nı okudum, onaylıyorum. Tek seferlik ödemedir, otomatik yenilenmez.
+                      </span>
                     </label>
                     <label className="flex items-start gap-2">
                       <input type="checkbox" name="aninda_ifa" className="mt-1" />
