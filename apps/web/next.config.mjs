@@ -36,10 +36,14 @@ const paymentPageHeaders = [
       `img-src 'self' data: blob: ${IYZICO}`,
       `font-src 'self' data: ${IYZICO}`,
       `connect-src 'self' ${IYZICO}`,
-      `frame-src ${IYZICO}`,
+      // 3D Secure: iyzico kart doğrulamasında bankanın kendi sayfasına (her bankada farklı alan adı) yönlendirir ya da onu
+      // çerçevede açar. Yalnız iyzico'ya izin verilince canlıda "Öde" düğmesi dönüp kalıyordu (sandbox'ta 3D sayfası
+      // iyzico'nun kendi alan adında olduğu için görülmedi). Bu yüzden çerçeve ve form hedefi yalnız ödeme sayfalarında
+      // herhangi bir HTTPS adrese açıktır; betikler yine yalnız iyzico'dan yüklenir.
+      `frame-src ${IYZICO} https:`,
       "frame-ancestors 'none'",
       "base-uri 'self'",
-      `form-action 'self' ${IYZICO}`,
+      `form-action 'self' ${IYZICO} https:`,
     ].join("; "),
   },
 ];
