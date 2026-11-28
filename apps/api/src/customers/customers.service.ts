@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { TenantInfo } from "../common/decorators";
 import { assertUsageLimit } from "../billing/plan-pricing";
-import { phoneVariants, trNational } from "../common/phone";
+import { canonicalPhone, phoneVariants, trNational } from "../common/phone";
 import { FinanceService } from "../finance/finance.service";
 import { PrismaService, Tx } from "../prisma/prisma.service";
 
@@ -131,7 +131,12 @@ export class CustomersService {
         const c = await this.find(tx, id);
         if (c.anonymizedAt) throw new ConflictException("Anonimleştirilmiş müşteri düzenlenemez");
         const data = this.toData(input);
-        if (input.phone && input.phone !== c.phone) await this.assertPhoneFree(tx, input.phone, id);
+        if (input.phone && c.phone && canonicalPhone(input.phone) === canonicalPhone(c.phone)) {
+          // Aynı numara (yalnızca yazım farkı): kayıttaki değer korunur; eski mükerrer çiftlerde düzenleme 409 vermez.
+          delete (data as { phone?: string }).phone;
+        } else if (input.phone) {
+          await this.assertPhoneFree(tx, input.phone, id);
+        }
         // Zaten kapalıysa ilk vazgeçme zamanı korunur.
         if (input.renewalRemindersOptOut && c.renewalRemindersOptOutAt) delete (data as { renewalRemindersOptOutAt?: Date }).renewalRemindersOptOutAt;
         const updated = await tx.customer.update({ where: { id }, data });

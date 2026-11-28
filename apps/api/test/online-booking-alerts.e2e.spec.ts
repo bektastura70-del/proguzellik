@@ -136,7 +136,28 @@ describe("Online randevu: işletmeye bildirim, müşteri eşleştirme, iptal ba�
       .send({ serviceId: s.service.id, startsAt: futureAt(7, "10:00"), firstName: "zeynep", lastName: "KAYA", phone: "05559990011", kvkkConsent: true })
       .expect(201);
     const appt = await su.appointment.findUniqueOrThrow({ where: { id: r.body.bookingId } });
-    expect(appt.notes).toMatch(/Olası mükerrer kayıt: Zeynep Kaya \(\+905321112233\)/);
+    expect(appt.notes).toMatch(/Olası mükerrer kayıt: .*\(Zeynep Kaya\)/);
+    expect(appt.notes).not.toMatch(/532/);
+  });
+
+  it("başkasının telefonuyla randevu alan ziyaretçiye giden onay e-postası kayıttaki kişinin adını göstermez", async () => {
+    const r = await http()
+      .post(`/public/salons/${slug}/bookings`)
+      .send({ serviceId: s.service.id, startsAt: futureAt(8, "10:00"), firstName: "Başka", lastName: "Biri", phone: "+90 532 111 22 33", email: "baska@ziyaretci.test", kvkkConsent: true })
+      .expect(201);
+    const n = await su.notification.findFirstOrThrow({ where: { appointmentId: r.body.bookingId, template: "eposta_musteri_randevu_onay" } });
+    expect(n.recipient).toBe("baska@ziyaretci.test");
+    expect(await run(n.id)).toBe("sent");
+    const out = await su.outboundEmail.findFirstOrThrow({ where: { to: "baska@ziyaretci.test" } });
+    expect(out.body).toContain("Merhaba Başka");
+    expect(out.body).not.toContain("Zeynep");
+  });
+
+  it("eski mükerrer çiftte (aynı numara iki yazımla) kayıt düzenlenebilir; numara yazımı korunur", async () => {
+    const x = await su.customer.create({ data: { tenantId: A.tenant.id, firstName: "Eski", lastName: "Kayit", phone: "+905367778899" } });
+    await su.customer.create({ data: { tenantId: A.tenant.id, firstName: "Eski", lastName: "Kayit2", phone: "05367778899" } });
+    const r = await a.patch(`/customers/${x.id}`).send({ firstName: "Eski", lastName: "Düzeltildi", phone: "+90 536 777 88 99" }).expect(200);
+    expect(r.body).toMatchObject({ lastName: "Düzeltildi", phone: "+905367778899" });
   });
 
   it("panelde aynı numara farklı yazımla ikinci kez eklenemez; yeni kayıtlar tek biçimde saklanır", async () => {

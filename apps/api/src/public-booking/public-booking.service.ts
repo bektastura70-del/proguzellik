@@ -136,7 +136,7 @@ export class PublicBookingService {
                   { firstName: { equals: b.firstName.trim(), mode: "insensitive" }, lastName: { equals: b.lastName.trim(), mode: "insensitive" } },
                 ],
               },
-              select: { firstName: true, lastName: true, phone: true },
+              select: { firstName: true, lastName: true },
             })
           : null;
         if (!customer) {
@@ -160,8 +160,9 @@ export class PublicBookingService {
         const nameMismatch = !isNew && norm(`${b.firstName} ${b.lastName}`) !== norm(`${customer.firstName} ${customer.lastName}`);
         const notes = [
           nameMismatch ? `Online formdaki ad: ${b.firstName} ${b.lastName} (kayıttaki müşteri adından farklı; lütfen telefonla teyit edin)` : null,
+          // Telefon nota yazılmaz (not personele de görünür; personel yalnız kendi müşterisinin telefonunu görür).
           possibleDuplicate
-            ? `Olası mükerrer kayıt: ${possibleDuplicate.firstName} ${possibleDuplicate.lastName}${possibleDuplicate.phone ? ` (${possibleDuplicate.phone})` : ""} adlı müşteri aynı ad ya da e-postayla kayıtlı; aynı kişi olabilir, lütfen telefonla teyit edin`
+            ? `Olası mükerrer kayıt: aynı ad ya da e-postayla başka bir müşteri kaydı var (${possibleDuplicate.firstName} ${possibleDuplicate.lastName}); Müşteriler sayfasında kontrol edin`
             : null,
           b.notes ?? null,
         ].filter(Boolean).join("\n") || undefined;
@@ -174,7 +175,8 @@ export class PublicBookingService {
           notes,
           source: "ONLINE",
         });
-        await this.emails.customerConfirmation(tx, appt.id, b.email ?? (isNew ? null : customer.email));
+        // Onay yalnızca formda bu randevu için yazılan e-postaya gider (eşleşen eski kaydın e-postasına değil).
+        await this.emails.customerConfirmation(tx, appt.id, b.email, b.firstName);
         await this.audit.log(tx, { tenantId: t.id, action: "booking.online_created", entity: "Appointment", entityId: appt.id, ip });
         return { appt, service, staffName: slot.staffName };
       })

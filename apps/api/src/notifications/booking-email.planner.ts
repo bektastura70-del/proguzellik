@@ -107,7 +107,7 @@ export class BookingEmailPlanner {
    * Adres, formda bu randevu için yazılan e-postadır (telefonla eşleşen eski müşteri kaydına yazılmaz).
    * WhatsApp/Instagram'da müşteri yanıtı zaten konuşmada alır; orada çağrılmaz.
    */
-  async customerConfirmation(tx: Tx, appointmentId: string, email: string | null | undefined) {
+  async customerConfirmation(tx: Tx, appointmentId: string, email: string | null | undefined, firstName: string) {
     const to = email?.trim().toLowerCase();
     if (!to) return;
     const c = await this.load(tx, appointmentId);
@@ -124,7 +124,8 @@ export class BookingEmailPlanner {
         email: {
           name: "booking_confirmation_customer",
           vars: {
-            salon: tenant.name, firstName: appt.customer.firstName, service: appt.service.name, staff: appt.staff.displayName, when,
+            // Formdaki ad kullanılır: telefon başka bir kayıtla eşleşse de o kişinin adı e-postada görünmez.
+            salon: tenant.name, firstName, service: appt.service.name, staff: appt.staff.displayName, when,
             address: fullAddress(tenant.address, tenant.neighborhood, loc) ?? undefined, phone: tenant.phone ?? undefined,
             cancelLink: `${appUrl(loadEnv())}${bookingCancelPath(tenant.slug, appt.id)}`, cancelHours: CUSTOMER_CANCEL_MIN_HOURS,
           },

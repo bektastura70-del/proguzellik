@@ -21,9 +21,19 @@ test("online rezervasyon: hizmet → gün → saat → bilgiler → onay → ipt
   await page.getByRole("button", { name: "Randevuyu onayla" }).click();
   await expect(page.getByRole("heading", { name: "Randevunuz alındı" })).toBeVisible();
   await expect(page.getByText("Kirpik Lifting")).toBeVisible();
-  await page.getByRole("link", { name: "Randevuyu iptal et" }).click();
+  // WhatsApp bağlı değil, e-posta verilmedi: WhatsApp onayı vaat edilmez.
+  await expect(page.getByTestId("onay-metni")).toContainText("Randevunuz işletmeye iletildi.");
+  // Müşteri sayfaya döndüğünde randevusunu görür (bağlantıyı kaybetse de yeniden kayıt gerekmez).
+  await page.getByRole("button", { name: "Salon sayfasına dön" }).click();
+  const saved = page.getByTestId("kayitli-randevular");
+  await expect(saved).toContainText("Kirpik Lifting");
+  await saved.getByRole("link", { name: "Görüntüle / iptal et" }).click();
+  await expect(page.getByTestId("randevu-ozeti")).toContainText("Kirpik Lifting");
   await page.getByRole("button", { name: "Evet, iptal et" }).click();
   await expect(page.getByText("Randevunuz iptal edildi.")).toBeVisible();
+  await page.getByRole("link", { name: "Salon sayfasına dön" }).click();
+  await expect(page.getByRole("heading", { name: "Işıltı Güzellik Stüdyosu" })).toBeVisible();
+  await expect(page.getByTestId("kayitli-randevular")).toHaveCount(0);
 });
 
 test("KVKK onayı olmadan rezervasyon gönderilemez", async ({ page }) => {

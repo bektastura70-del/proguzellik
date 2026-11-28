@@ -101,7 +101,10 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
    */
   private async sendBookingEmail(n: { id: string; tenantId: string; recipient: string; template: string; appointmentId: string | null; payload: unknown }, last: boolean) {
     const db = this.prisma.platform;
-    if (!this.email) return "skipped";
+    if (!this.email) {
+      await db.notification.update({ where: { id: n.id }, data: { status: "SKIPPED", error: "E-posta servisi bu süreçte yok" } });
+      return "skipped";
+    }
     if (n.appointmentId && BOOKING_EMAIL_NEEDS_ACTIVE.includes(n.template)) {
       const appt = await db.appointment.findUnique({ where: { id: n.appointmentId }, select: { status: true } });
       if (!appt || !["BOOKED", "CONFIRMED"].includes(appt.status)) {

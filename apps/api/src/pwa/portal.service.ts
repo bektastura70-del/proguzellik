@@ -212,7 +212,7 @@ export class PortalService {
           portalIdentityId: me.identityId,
           idempotencyKey: key,
         });
-        await this.emails.customerConfirmation(tx, appt.id, me.email);
+        await this.emails.customerConfirmation(tx, appt.id, me.email, b.firstName);
         await this.audit.log(tx, { tenantId: t.id, action: "booking.portal_created", entity: "Appointment", entityId: appt.id, ip });
         return { appt, service, staffName: slot.staffName, replay: false };
       });
