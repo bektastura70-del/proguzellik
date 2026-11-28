@@ -27,11 +27,16 @@ export default function Cerez() {
           ]}
         />
         <p>
-          Tarayıcının yerel depolama alanı (localStorage) yalnızca şu işlevsel amaçlarla, yalnızca sizin cihazınızda kullanılır ve
-          sunucuya gönderilmez: online randevu aldığınız cihazda randevunuzu yeniden görebilmeniz ve iptal edebilmeniz için randevu
-          bilgisi ve iptal bağlantısı (pg_bookings; randevu tarihinden bir gün sonra listeden düşer, ad ve telefon içermez), kapattığınız
-          uygulama yükleme ve panel uyarılarının tekrar gösterilmemesi. Oturum depolama (sessionStorage) yalnızca panelde kurulum
-          sayfasına yönlendirmenin bir kez yapılması için kullanılır. Bu bilgileri tarayıcı verilerini silerek kaldırabilirsiniz.
+          Tarayıcının yerel depolama alanı (localStorage) yalnızca şu işlevsel amaçlarla, yalnızca sizin cihazınızda tutulur:
+          online randevu aldığınız cihazda randevunuzu yeniden görebilmeniz ve iptal edebilmeniz için randevu bilgisi ve iptal
+          bağlantısı (pg_bookings; randevu tarihinden bir gün sonra listeden düşer, ad ve telefon içermez; randevunun güncel durumunu
+          göstermek için bu bağlantıyla salonun sayfasından okunur), yalnızca &quot;Bilgilerimi bu cihazda hatırla&quot; seçeneğini
+          işaretlerseniz sonraki randevu formunu doldurmak için yazdığınız ad, soyad, telefon ve e-posta (pg_contact; formdaki
+          &quot;Bilgilerimi unut&quot; bağlantısıyla ya da kutuyu işaretlemeden randevu alarak silebilirsiniz), &quot;Tekrar al&quot; için
+          her salonda son seçtiğiniz hizmet ve uzman (pg_last; kişisel veri içermez), kapattığınız uygulama yükleme ve panel
+          uyarılarının tekrar gösterilmemesi. Oturum depolama (sessionStorage) panelde kurulum sayfasına yönlendirmenin bir kez
+          yapılması ve randevu durumunun sık sık sorgulanmaması (pg_bookings_checked) için kullanılır. Bu bilgileri tarayıcı
+          verilerini silerek kaldırabilirsiniz.
         </p>
       </LegalNote>
     </LegalPage>

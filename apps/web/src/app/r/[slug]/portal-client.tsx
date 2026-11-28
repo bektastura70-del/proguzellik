@@ -13,6 +13,8 @@ import { AfterBookingInstall, InstallBanner } from "./install";
 import { AccountExtras } from "./portal-extras";
 import { NativeDirectoryLink, NativeHomeLink, NativeReminderSync } from "./native";
 import { syncNativeReminders } from "@/lib/native-app";
+import { forgetContact, loadContact, SavedContact, saveContact } from "./customer-memory";
+import { contactFromForm, RememberContact } from "./remember-contact";
 
 type Tab = "book" | "mine" | "packages" | "account";
 type Me = { email: string; notifyAppointments: boolean; notifyReminders: boolean };
@@ -245,6 +247,8 @@ function BookTab({ slug, salon, me, app, onLoggedIn, onDone, onOpenAccount }: { 
   const [done, setDone] = useState<{ service: string; staff: string; startsAt: string; price: string } | null>(null);
   // Aynı onay için tekrar denemede aynı anahtar gönderilir (mükerrer randevu oluşmaz).
   const [idemKey, setIdemKey] = useState(newKey);
+  const [contact, setContact] = useState<SavedContact | null>(null);
+  useEffect(() => setContact(loadContact()), []);
   const service = salon.services.find((s) => s.id === serviceId);
   const staffForService = salon.staff.filter((s) => s.serviceIds.includes(serviceId ?? ""));
 
@@ -266,6 +270,10 @@ function BookTab({ slug, salon, me, app, onLoggedIn, onDone, onOpenAccount }: { 
           notes: f.get("notes") || undefined, kvkkConsent: f.get("kvkk") === "on", marketingConsent: f.get("marketing") === "on",
         },
       });
+      // Portal formunda e-posta alanı yok: cihazda kayıtlı e-posta korunur (giriş e-postası yazılmaz).
+      const m = contactFromForm(f);
+      if (m.remember) saveContact({ ...m.contact, email: loadContact()?.email });
+      else forgetContact();
       setDone(r);
     } catch (x) {
       if (x instanceof PortalError && x.status === 401) onLoggedIn();
@@ -334,10 +342,10 @@ function BookTab({ slug, salon, me, app, onLoggedIn, onDone, onOpenAccount }: { 
           {err && <div className="mt-3"><Alert>{err}</Alert></div>}
           <form onSubmit={book} className="mt-4 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Adınız"><Input name="firstName" required autoComplete="given-name" /></Field>
-              <Field label="Soyadınız"><Input name="lastName" required autoComplete="family-name" /></Field>
+              <Field label="Adınız"><Input name="firstName" required autoComplete="given-name" defaultValue={contact?.firstName} /></Field>
+              <Field label="Soyadınız"><Input name="lastName" required autoComplete="family-name" defaultValue={contact?.lastName} /></Field>
             </div>
-            <Field label="Cep telefonu"><Input name="phone" type="tel" required autoComplete="tel" inputMode="tel" placeholder="05xx xxx xx xx" /></Field>
+            <Field label="Cep telefonu"><Input name="phone" type="tel" required autoComplete="tel" inputMode="tel" placeholder="05xx xxx xx xx" defaultValue={contact?.phone} /></Field>
             <Field label="Not (isteğe bağlı)"><Textarea name="notes" maxLength={500} /></Field>
             <label className="flex items-start gap-3 text-sm text-neutral-600">
               <input type="checkbox" name="kvkk" required className="mt-1 size-4" />
@@ -347,6 +355,7 @@ function BookTab({ slug, salon, me, app, onLoggedIn, onDone, onOpenAccount }: { 
               <input type="checkbox" name="marketing" className="mt-1 size-4" />
               <span>Salondan kampanya ve bilgilendirme mesajları almak istiyorum (isteğe bağlı).</span>
             </label>
+            <RememberContact contact={contact} onForget={() => setContact(null)} fields={["firstName", "lastName", "phone"]} />
             <Button size="lg" className="w-full bg-[var(--salon)] hover:opacity-90" disabled={busy}>{busy ? "Kaydediliyor…" : "Randevuyu onayla"}</Button>
           </form>
         </Card>

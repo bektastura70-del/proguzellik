@@ -10,7 +10,10 @@ import { Alert, Button, Card, Field, Input, Spinner, Textarea } from "@/componen
 import { api, useApi } from "@/lib/api";
 import { addDays, dateTr, isoDay, timeTr, tl } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { cancelHref, loadSavedBookings, SavedBooking, saveBooking } from "./saved-bookings";
+import { syncNativeReminders } from "@/lib/native-app";
+import { forgetContact, LastChoice, loadContact, loadLastChoice, SavedContact, saveContact, saveLastChoice } from "./customer-memory";
+import { contactFromForm, RememberContact } from "./remember-contact";
+import { cancelHref, loadSavedBookings, refreshSavedBookings, SavedBooking, saveBooking } from "./saved-bookings";
 
 type Salon = {
   salon: { name: string; slug: string; phone: string | null; address: string | null; directionsUrl?: string | null };
@@ -18,6 +21,8 @@ type Salon = {
   staff: { id: string; displayName: string; title: string | null; serviceIds: string[] }[];
 };
 type Slot = { staffId: string; staffName: string; startsAt: string; endsAt: string };
+
+const SAVED_STATUS: Record<string, string> = { CONFIRMED: "Onaylandı", COMPLETED: "Tamamlandı", CANCELLED: "İptal edildi", NO_SHOW: "Gelinmedi" };
 
 export function BookingClient({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
@@ -32,12 +37,38 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
     confirmation?: { whatsapp: boolean; email: boolean }; cancelHours?: number;
   } | null>(null);
   const [saved, setSaved] = useState<SavedBooking[]>([]);
-  useEffect(() => setSaved(loadSavedBookings(slug)), [slug, done]);
+  const [contact, setContact] = useState<SavedContact | null>(null);
+  const [lastChoice, setLastChoice] = useState<LastChoice | null>(null);
+  useEffect(() => {
+    setSaved(loadSavedBookings(slug));
+    setContact(loadContact());
+    setLastChoice(loadLastChoice(slug));
+    // Salon iptal ettiyse ya da saati değiştirdiyse liste güncellenir (sekme başına 10 dakikada bir).
+    let live = true;
+    void refreshSavedBookings(slug).then((l) => live && setSaved(l));
+    return () => {
+      live = false;
+    };
+  }, [slug, done]);
+  // Mağaza uygulamasında girişsiz müşteriye de telefon hatırlatması (yalnız etkin randevular; izin yoksa bir şey yapılmaz).
+  const salonName = data?.salon.name;
+  useEffect(() => {
+    if (!salonName) return;
+    void syncNativeReminders(slug, salonName, saved.map((b) => ({ id: b.id, startsAt: b.startsAt, status: b.status ?? "BOOKED", service: b.service })));
+  }, [slug, salonName, saved]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const days = useMemo(() => Array.from({ length: 14 }, (_, i) => addDays(isoDay(), i)), []);
   const service = data?.services.find((s) => s.id === serviceId);
+  // "Tekrar al" yalnız hizmet (ve seçilen uzman) hâlâ online randevuya açıksa görünür.
+  const rebook = useMemo(() => {
+    if (!lastChoice || !data) return null;
+    const svc = data.services.find((s) => s.id === lastChoice.serviceId);
+    if (!svc) return null;
+    const st = lastChoice.staffId ? data.staff.find((s) => s.id === lastChoice.staffId && s.serviceIds.includes(svc.id)) : null;
+    return { serviceId: svc.id, service: svc.name, staffId: st ? st.id : "", staff: st ? st.displayName : "Uzman fark etmez" };
+  }, [lastChoice, data]);
   const staffForService = data?.staff.filter((s) => s.serviceIds.includes(serviceId ?? "")) ?? [];
 
   useEffect(() => {
@@ -77,7 +108,13 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
           marketingConsent: f.get("marketing") === "on",
         },
       });
-      if (r) saveBooking(slug, { id: r.bookingId, token: r.cancelToken, service: r.service, staff: r.staff, startsAt: r.startsAt });
+      if (r) {
+        saveBooking(slug, { id: r.bookingId, token: r.cancelToken, service: r.service, staff: r.staff, startsAt: r.startsAt, status: "BOOKED" });
+        saveLastChoice(slug, { serviceId, staffId, service: r.service, staff: staffId ? r.staff : "Fark etmez" });
+        const m = contactFromForm(f);
+        if (m.remember) saveContact(m.contact);
+        else forgetContact();
+      }
       setDone(r);
     } catch (e) {
       setErr((e as Error).message);
@@ -150,9 +187,12 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
             <ul className="mt-3 divide-y divide-sand-100">
               {saved.map((b) => (
                 <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                  <span>
+                  <span className={b.status === "CANCELLED" ? "text-neutral-400 line-through" : undefined}>
                     <b>{dateTr(b.startsAt, { weekday: "long", day: "numeric", month: "long" })} {timeTr(b.startsAt)}</b> · {b.service} · {b.staff}
                   </span>
+                  {b.status && b.status !== "BOOKED" && (
+                    <span className={cn("rounded-full px-2 py-0.5 text-xs", b.status === "CANCELLED" ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700")}>{SAVED_STATUS[b.status] ?? b.status}</span>
+                  )}
                   <Link href={cancelHref(slug, b)} className="text-brand-700 underline">Görüntüle / iptal et</Link>
                 </li>
               ))}
@@ -160,6 +200,15 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
           </Card>
         )}
         {err && <Alert>{err}</Alert>}
+        {rebook && serviceId !== rebook.serviceId && (
+          <Card className="flex flex-wrap items-center justify-between gap-3 p-5" data-testid="tekrar-al">
+            <div className="text-sm">
+              <div className="font-semibold">Aynı randevuyu tekrar alın</div>
+              <div className="text-neutral-600">{rebook.service} · {rebook.staff}</div>
+            </div>
+            <Button onClick={() => { setServiceId(rebook.serviceId); setStaffId(rebook.staffId); setSlot(null); }}>Tekrar al</Button>
+          </Card>
+        )}
         <Card className="p-5">
           <h2 className="font-semibold">1. Hizmet seçin</h2>
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -222,12 +271,12 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
             <p className="mt-1 text-sm text-neutral-500">{service?.name} · {dateTr(slot.startsAt, { weekday: "long", day: "numeric", month: "long" })} {timeTr(slot.startsAt)}</p>
             <form onSubmit={book} className="mt-4 space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Adınız"><Input name="firstName" required autoComplete="given-name" /></Field>
-                <Field label="Soyadınız"><Input name="lastName" required autoComplete="family-name" /></Field>
+                <Field label="Adınız"><Input name="firstName" required autoComplete="given-name" defaultValue={contact?.firstName} /></Field>
+                <Field label="Soyadınız"><Input name="lastName" required autoComplete="family-name" defaultValue={contact?.lastName} /></Field>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Cep telefonu"><Input name="phone" type="tel" required autoComplete="tel" placeholder="05xx xxx xx xx" /></Field>
-                <Field label="E-posta (isteğe bağlı)" hint="Onay ve iptal bağlantısı e-postanıza gönderilir."><Input name="email" type="email" autoComplete="email" /></Field>
+                <Field label="Cep telefonu"><Input name="phone" type="tel" required autoComplete="tel" placeholder="05xx xxx xx xx" defaultValue={contact?.phone} /></Field>
+                <Field label="E-posta (isteğe bağlı)" hint="Onay ve iptal bağlantısı e-postanıza gönderilir."><Input name="email" type="email" autoComplete="email" defaultValue={contact?.email} /></Field>
               </div>
               <Field label="Not (isteğe bağlı)"><Textarea name="notes" maxLength={500} /></Field>
               <label className="flex items-start gap-3 text-sm text-neutral-600">
@@ -238,6 +287,7 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
                 <input type="checkbox" name="marketing" className="mt-1 size-4 accent-brand-600" />
                 <span>Kampanya ve bilgilendirme mesajları almak istiyorum (isteğe bağlı).</span>
               </label>
+              <RememberContact contact={contact} onForget={() => setContact(null)} fields={["firstName", "lastName", "phone", "email"]} />
               <Button size="lg" className="w-full" disabled={busy}>{busy ? "Kaydediliyor…" : "Randevuyu onayla"}</Button>
             </form>
           </Card>

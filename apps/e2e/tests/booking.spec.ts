@@ -36,6 +36,56 @@ test("online rezervasyon: hizmet → gün → saat → bilgiler → onay → ipt
   await expect(page.getByTestId("kayitli-randevular")).toHaveCount(0);
 });
 
+test("bilgilerimi hatırla: sonraki randevuda form dolu gelir, Tekrar al son hizmeti seçer, unut siler", async ({ page }) => {
+  await page.goto("/r/isilti-guzellik");
+  await page.getByRole("button", { name: /Kirpik Lifting/ }).click();
+  const days = page.locator("main .overflow-x-auto button");
+  let found = false;
+  for (let i = 1; i < 10 && !found; i++) {
+    await days.nth(i).click();
+    await page.waitForTimeout(400);
+    found = (await page.getByRole("button", { name: /^\d{2}:\d{2}$/ }).count()) > 0;
+  }
+  expect(found).toBe(true);
+  await page.getByRole("button", { name: /^\d{2}:\d{2}$/ }).first().click();
+  const phone = `0555${String(Date.now()).slice(-7)}`;
+  await page.getByLabel("Adınız", { exact: true }).fill("Hatırla");
+  await page.getByLabel("Soyadınız").fill("Deneme");
+  await page.getByLabel("Cep telefonu").fill(phone);
+  // Varsayılan olarak işaretli değildir (açık rıza ile).
+  await expect(page.getByTestId("bilgileri-hatirla")).not.toBeChecked();
+  await page.getByTestId("bilgileri-hatirla").check();
+  await page.getByRole("checkbox").first().check();
+  await page.getByRole("button", { name: "Randevuyu onayla" }).click();
+  await expect(page.getByRole("heading", { name: "Randevunuz alındı" })).toBeVisible();
+
+  // Uygulama yeniden açılmış gibi: sayfa baştan yüklenir.
+  await page.goto("/r/isilti-guzellik");
+  await expect(page.getByTestId("kayitli-randevular")).toContainText("Kirpik Lifting");
+  const rebook = page.getByTestId("tekrar-al");
+  await expect(rebook).toContainText("Kirpik Lifting");
+  await rebook.getByRole("button", { name: "Tekrar al" }).click();
+  await expect(page.getByRole("button", { name: /Kirpik Lifting/ })).toHaveClass(/border-brand-500/);
+  found = false;
+  for (let i = 1; i < 10 && !found; i++) {
+    await days.nth(i).click();
+    await page.waitForTimeout(400);
+    found = (await page.getByRole("button", { name: /^\d{2}:\d{2}$/ }).count()) > 0;
+  }
+  await page.getByRole("button", { name: /^\d{2}:\d{2}$/ }).first().click();
+  await expect(page.getByLabel("Adınız", { exact: true })).toHaveValue("Hatırla");
+  await expect(page.getByLabel("Cep telefonu")).toHaveValue(phone);
+  await expect(page.getByTestId("bilgileri-hatirla")).toBeChecked();
+  await page.getByTestId("bilgileri-unut").click();
+  await expect(page.getByLabel("Adınız", { exact: true })).toHaveValue("");
+  expect(await page.evaluate(() => localStorage.getItem("pg_contact"))).toBeNull();
+
+  // Temizlik: alınan randevu iptal edilir.
+  await page.getByTestId("kayitli-randevular").getByRole("link", { name: "Görüntüle / iptal et" }).first().click();
+  await page.getByRole("button", { name: "Evet, iptal et" }).click();
+  await expect(page.getByText("Randevunuz iptal edildi.")).toBeVisible();
+});
+
 test("KVKK onayı olmadan rezervasyon gönderilemez", async ({ page }) => {
   await page.goto("/r/isilti-guzellik");
   await page.getByRole("button", { name: /Kalıcı Oje/ }).click();
