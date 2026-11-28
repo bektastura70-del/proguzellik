@@ -51,6 +51,17 @@ export class PublicBookingController {
     return this.booking.book(s, b, req.ip);
   }
 
+  @Get("bookings/:id")
+  details(
+    @Param("slug", new ZodPipe(slug)) s: string,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Query(new ZodPipe(cancelSchema)) q: z.infer<typeof cancelSchema>,
+    @Req() req: Request,
+  ) {
+    this.rateLimit.hit(`booking-view:${req.ip}`, 60, 60 * 60_000);
+    return this.booking.details(s, id, q.token);
+  }
+
   @Post("bookings/:id/cancel")
   @HttpCode(200)
   cancel(

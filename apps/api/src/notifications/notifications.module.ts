@@ -1,5 +1,6 @@
 import { Global, Module } from "@nestjs/common";
 import { loadEnv } from "../config/env";
+import { BookingEmailPlanner } from "./booking-email.planner";
 import { NotificationQueue } from "./notification-queue";
 import { NotificationHooks } from "./notification.hooks";
 import { PushPlanner } from "./push/push.planner";
@@ -34,7 +35,8 @@ import { CloudWhatsAppProvider, DisabledWhatsAppProvider, MockWhatsAppProvider, 
     LiveWebPushSender,
     WebPushDelivery,
     PushPlanner,
+    BookingEmailPlanner,
   ],
-  exports: [NotificationQueue, NotificationHooks, RetentionService, RenewalService, WhatsAppProvider, MockWhatsAppProvider, MockWebPushSender, PushPlanner],
+  exports: [NotificationQueue, NotificationHooks, RetentionService, RenewalService, WhatsAppProvider, MockWhatsAppProvider, MockWebPushSender, PushPlanner, BookingEmailPlanner],
 })
 export class NotificationsModule {}

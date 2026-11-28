@@ -33,7 +33,10 @@ export type EmailTemplate =
   | { name: "ai_quota_empty"; vars: { salon: string; link: string; canBuy?: boolean } }
   | { name: "ai_credit_purchased"; vars: { salon: string; link: string; amount: string } }
   | { name: "ai_daily_cap"; vars: { salon: string; slug: string; limitUsd: string; link: string } }
-  | { name: "ai_fx_stale"; vars: { detail: string; link: string } };
+  | { name: "ai_fx_stale"; vars: { detail: string; link: string } }
+  | { name: "booking_new_staff"; vars: { salon: string; customer: string; phone?: string; service: string; staff: string; when: string; source: string; notes?: string; link: string } }
+  | { name: "booking_cancelled_staff"; vars: { salon: string; customer: string; phone?: string; service: string; staff: string; when: string; link: string } }
+  | { name: "booking_confirmation_customer"; vars: { salon: string; firstName: string; service: string; staff: string; when: string; address?: string; phone?: string; cancelLink: string; cancelHours: number } };
 
 export type TemplateName = EmailTemplate["name"];
 
@@ -77,6 +80,10 @@ export const TEMPLATE_META: Record<TemplateName, { label: string; vars: string[]
   ai_credit_purchased: { label: "Yapay zekâ ek paketi alındı", vars: ["salon", "amount"], secret: false, editable: false },
   ai_fx_stale: { label: "Yapay zekâ: TCMB kuru güncellenemedi (SaaS sahibine)", vars: ["detail"], secret: false, editable: false },
   ai_daily_cap: { label: "Yapay zekâ günlük maliyet sınırı aşıldı (SaaS sahibine)", vars: ["salon", "slug", "limitUsd"], secret: false, editable: false },
+  // Müşteri adı/telefonu içerir: değişkenler e-posta kaydında saklanmaz (secret); yeniden deneme kuyruktan yapılır.
+  booking_new_staff: { label: "Yeni online randevu (işletme yetkililerine)", vars: ["salon", "customer", "service", "when"], secret: true, editable: false },
+  booking_cancelled_staff: { label: "Müşteri randevuyu iptal etti (işletme yetkililerine)", vars: ["salon", "customer", "service", "when"], secret: true, editable: false },
+  booking_confirmation_customer: { label: "Online randevu onayı ve iptal bağlantısı (salon müşterisine)", vars: ["salon", "firstName", "service", "when"], secret: true, editable: false },
 };
 
 export interface TemplateOverride {
@@ -282,6 +289,43 @@ export function render(t: EmailTemplate, override?: TemplateOverride | null): { 
         `Gün sonuna kadar bu işletmede gelen mesajlar yapay zekâ yerine ekibe yönlendiriliyor. Sınır olağan dışı bir kullanımı gösteriyor olabilir; konuşmaları kontrol edin. Sınırı SaaS sahibi panelindeki Yapay zekâ sayfasından değiştirebilirsiniz.`,
       ];
       cta = { label: "Yapay zekâ sayfasını aç", link: t.vars.link };
+      break;
+    case "booking_new_staff":
+      subject = `Yeni online randevu: ${t.vars.when}`;
+      paras = [
+        `${esc(t.vars.salon)} için ${esc(t.vars.source)} yeni bir randevu alındı.`,
+        [
+          `<b>Müşteri:</b> ${esc(t.vars.customer)}`,
+          ...(t.vars.phone ? [`<b>Telefon:</b> ${esc(t.vars.phone)}`] : []),
+          `<b>Hizmet:</b> ${esc(t.vars.service)}`,
+          `<b>Uzman:</b> ${esc(t.vars.staff)}`,
+          `<b>Tarih:</b> ${esc(t.vars.when)}`,
+        ].join("<br>"),
+        ...(t.vars.notes ? [`<b>Not:</b> ${esc(t.vars.notes).replace(/\n/g, "<br>")}`] : []),
+        "Randevu takviminizde “Bekliyor” durumunda görünür. Müşteriyi arayarak teyit edebilir ve randevuyu onaylayabilirsiniz.",
+        `<span style="font-size:12px;color:#777">Bu e-postaları panelde Bildirim merkezi sayfasındaki “Yeni randevular” tercihinden kapatabilirsiniz.</span>`,
+      ];
+      cta = { label: "Randevuyu panelde gör", link: t.vars.link };
+      break;
+    case "booking_cancelled_staff":
+      subject = `Müşteri randevuyu iptal etti: ${t.vars.when}`;
+      paras = [
+        `${esc(t.vars.customer)}${t.vars.phone ? ` (${esc(t.vars.phone)})` : ""}, ${esc(t.vars.salon)} için aldığı randevuyu iptal etti.`,
+        [`<b>Hizmet:</b> ${esc(t.vars.service)}`, `<b>Uzman:</b> ${esc(t.vars.staff)}`, `<b>Tarih:</b> ${esc(t.vars.when)}`].join("<br>"),
+        "Saat takviminizde yeniden boşa çıktı.",
+      ];
+      cta = { label: "Takvimi aç", link: t.vars.link };
+      break;
+    case "booking_confirmation_customer":
+      subject = `${t.vars.salon}: randevunuz alındı (${t.vars.when})`;
+      paras = [
+        `Merhaba ${esc(t.vars.firstName)},`,
+        `${esc(t.vars.salon)} için randevunuz alındı.`,
+        [`<b>Hizmet:</b> ${esc(t.vars.service)}`, `<b>Uzman:</b> ${esc(t.vars.staff)}`, `<b>Tarih:</b> ${esc(t.vars.when)}`, ...(t.vars.address ? [`<b>Adres:</b> ${esc(t.vars.address)}`] : [])].join("<br>"),
+        `Randevunuzu en geç ${t.vars.cancelHours} saat öncesine kadar aşağıdaki bağlantıdan iptal edebilirsiniz. Bu e-postayı saklayın; bağlantı yalnızca bu randevu içindir.`,
+        ...(t.vars.phone ? [`Değişiklik ve sorularınız için ${esc(t.vars.salon)}: ${esc(t.vars.phone)}`] : []),
+      ];
+      cta = { label: "Randevuyu görüntüle / iptal et", link: t.vars.cancelLink };
       break;
     case "owner_notice":
       subject = t.vars.subject;

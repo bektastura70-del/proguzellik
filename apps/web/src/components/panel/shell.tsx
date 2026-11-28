@@ -34,7 +34,7 @@ const NAV: Item[] = [
   { href: "/panel/bildirimler", label: "Bildirimler", icon: Bell, roles: ["OWNER", "MANAGER", "RECEPTION"], feature: "WHATSAPP" },
   { href: "/panel/asistan", label: "Asistan", icon: Sparkles, roles: ["OWNER", "MANAGER"], feature: "AI_ASSISTANT" },
   { href: "/panel/abonelik", label: "Abonelik", icon: CreditCard, roles: ["OWNER", "MANAGER"] },
-  { href: "/panel/bildirim-merkezi", label: "Bildirim merkezi", icon: BellRing, pwa: true },
+  { href: "/panel/bildirim-merkezi", label: "Bildirim merkezi", icon: BellRing },
   { href: "/panel/uygulama", label: "Salon uygulaması", icon: Smartphone, roles: ["OWNER", "MANAGER"] },
   { href: "/panel/ayarlar", label: "Ayarlar", icon: Settings, roles: ["OWNER", "MANAGER"] },
 ];
@@ -104,10 +104,38 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
   const [native, setNative] = useState(false);
   useEffect(() => setNative(isNativeApp()), []);
 
+  // Okunmamış panel bildirimi (yeni online randevu, müşteri iptali…): tüm işletmelerde, salon uygulamasından bağımsız.
+  const prevUnread = useRef<number | null>(null);
+  const [bookingBanner, setBookingBanner] = useState(false);
   useEffect(() => {
-    if (!mobileApp || !tenantId) return;
-    api<{ unread: number }>("/pwa/notifications?unread=1", { tenant: tenantId }).then((r) => setUnread(r.unread)).catch(() => undefined);
-  }, [mobileApp, tenantId, path]);
+    if (!tenantId) return;
+    let stop = false;
+    const load = () => {
+      if (document.visibilityState === "hidden") return;
+      api<{ unread: number }>("/pwa/notifications?unread=1", { tenant: tenantId })
+        .then((r) => !stop && setUnread(r.unread))
+        .catch(() => undefined);
+    };
+    load();
+    const timer = setInterval(load, 30_000);
+    document.addEventListener("visibilitychange", load);
+    return () => {
+      stop = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", load);
+    };
+  }, [tenantId, path]);
+  useEffect(() => {
+    const prev = prevUnread.current;
+    prevUnread.current = unread;
+    if (unread === 0) setBookingBanner(false);
+    if (prev === null || unread <= prev) return;
+    setBookingBanner(true);
+    beep();
+    if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.visibilityState === "hidden") {
+      new Notification("Yeni bildirim", { body: "Yeni online randevu ya da müşteri iptali var. Bildirim merkezini açın.", tag: "randevu-bildirimi" });
+    }
+  }, [unread]);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -198,6 +226,15 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
           >
             <i.icon className="size-[18px]" />
             {i.label}
+            {i.href === "/panel/bildirim-merkezi" && unread > 0 && (
+              <span
+                data-testid="bildirim-rozeti"
+                aria-label={`${unread} okunmamış bildirim`}
+                className="ml-auto grid min-w-5 place-items-center rounded-full bg-rose-500 px-1.5 text-xs font-semibold text-white"
+              >
+                {unread > 99 ? "99+" : unread}
+              </span>
+            )}
             {i.href === "/panel/mesajlar" && waiting > 0 && (
               <span
                 data-testid="mesaj-rozeti"
@@ -262,6 +299,13 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      {bookingBanner && !banner && (
+        <div role="alert" data-testid="bildirim-uyarisi" className="fixed left-1/2 top-3 z-50 flex max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-xl bg-brand-700 px-4 py-2.5 text-sm text-white shadow-lg">
+          <span>Yeni bildirim: online randevu ya da müşteri iptali</span>
+          <Link href="/panel/bildirim-merkezi" onClick={() => setBookingBanner(false)} className="rounded-lg bg-white/20 px-2.5 py-1 font-medium hover:bg-white/30">Gör</Link>
+          <button type="button" aria-label="Kapat" onClick={() => setBookingBanner(false)} className="text-white/80 hover:text-white"><X className="size-4" /></button>
+        </div>
+      )}
       {banner && (
         <div role="alert" data-testid="mesaj-uyarisi" className="fixed left-1/2 top-3 z-50 flex max-w-[92vw] -translate-x-1/2 items-center gap-3 rounded-xl bg-rose-600 px-4 py-2.5 text-sm text-white shadow-lg">
           <span>Bir konuşma personel yanıtı bekliyor</span>
@@ -282,7 +326,10 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
           <Menu className="size-6" />
         </button>
         <Logo className="text-lg" />
-        <span className="w-8" />
+        <Link href="/panel/bildirim-merkezi" aria-label={unread ? `Bildirimler: ${unread} okunmamış` : "Bildirimler"} className="relative rounded-lg p-1.5 hover:bg-sand-100">
+          <BellRing className="size-6" />
+          {unread > 0 && <span data-testid="bildirim-rozeti-ust" className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-red-600 px-1 text-center text-[10px] font-semibold leading-4 text-white">{unread > 9 ? "9+" : unread}</span>}
+        </Link>
       </header>
       <main className={cn("mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10", mobileApp && "pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-10")}>
         {me.emailVerified === false && (

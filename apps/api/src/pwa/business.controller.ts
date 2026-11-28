@@ -58,6 +58,12 @@ export class BusinessPwaController {
     return this.svc.flags(t);
   }
 
+  @Get("alert-channels")
+  @Roles()
+  alertChannels(@CurrentTenant() t: TenantInfo) {
+    return this.svc.alertChannels(t);
+  }
+
   @Get("agenda")
   @Roles()
   agenda(@CurrentTenant() t: TenantInfo, @Query(new ZodPipe(agendaSchema)) q: z.infer<typeof agendaSchema>) {

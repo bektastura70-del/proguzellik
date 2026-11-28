@@ -8,6 +8,8 @@ import { recordTemplateInConversation } from "../messaging/inbox.service";
 import { renderTemplate } from "../messaging/templates";
 import { MetaDisabledError, MetaGateway } from "../messaging/meta.gateway";
 import { EmailService } from "../email/email.service";
+import { EmailTemplate } from "../email/templates";
+import { BOOKING_EMAIL_NEEDS_ACTIVE, BOOKING_EMAIL_TEMPLATES } from "./booking-email.constants";
 import { WebPushDelivery } from "./push/web-push.delivery";
 import { RENEWAL_TEMPLATE, renewalEmailVars, renewalSkipReason } from "./renewal-checks";
 import { WhatsAppNotConfiguredError, WhatsAppProvider } from "./whatsapp.provider";
@@ -93,6 +95,38 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
     throw new Error("E-posta gönderilemedi");
   }
 
+  /**
+   * Randevu e-postası (işletmeye yeni randevu/iptal, müşteriye onay). Yeni randevu ve müşteri onayı,
+   * randevu bu arada iptal edildiyse gönderilmez. SMTP yoksa SKIPPED; geçici hata yeniden denenir.
+   */
+  private async sendBookingEmail(n: { id: string; tenantId: string; recipient: string; template: string; appointmentId: string | null; payload: unknown }, last: boolean) {
+    const db = this.prisma.platform;
+    if (!this.email) return "skipped";
+    if (n.appointmentId && BOOKING_EMAIL_NEEDS_ACTIVE.includes(n.template)) {
+      const appt = await db.appointment.findUnique({ where: { id: n.appointmentId }, select: { status: true } });
+      if (!appt || !["BOOKED", "CONFIRMED"].includes(appt.status)) {
+        await db.notification.update({ where: { id: n.id }, data: { status: "SKIPPED", error: "Randevu artık planlı değil" } });
+        return "skipped";
+      }
+    }
+    const tpl = (n.payload as { email?: EmailTemplate }).email;
+    if (!tpl) {
+      await db.notification.update({ where: { id: n.id }, data: { status: "FAILED", error: "E-posta içeriği yok" } });
+      return "failed";
+    }
+    const r = await this.email.send(n.recipient, tpl, { tenantId: n.tenantId });
+    if ("sent" in r) {
+      await db.notification.update({ where: { id: n.id }, data: { status: "SENT", sentAt: new Date(), attempts: { increment: 1 }, error: null } });
+      return "sent";
+    }
+    if ("failed" in r && r.code === "EMAIL_NOT_CONFIGURED") {
+      await db.notification.update({ where: { id: n.id }, data: { status: "SKIPPED", attempts: { increment: 1 }, error: "E-posta (SMTP) yapılandırılmadı" } });
+      return "not_configured";
+    }
+    await db.notification.update({ where: { id: n.id }, data: { attempts: { increment: 1 }, error: "E-posta gönderilemedi", ...(last ? { status: "FAILED" } : {}) } });
+    throw new Error("E-posta gönderilemedi");
+  }
+
   async process(job: Job<{ notificationId: string }>) {
     const db = this.prisma.platform;
     const n = await db.notification.findUnique({ where: { id: job.data.notificationId } });
@@ -110,6 +144,12 @@ export class NotificationQueue implements OnModuleInit, OnModuleDestroy {
         return "skipped";
       }
       if (n.channel === "EMAIL") return this.sendRenewalEmail(n, job.attemptsMade + 1 >= MAX_ATTEMPTS);
+    }
+    if (n.channel === "EMAIL") {
+      if (BOOKING_EMAIL_TEMPLATES.includes(n.template)) return this.sendBookingEmail(n, job.attemptsMade + 1 >= MAX_ATTEMPTS);
+      // Tanınmayan e-posta kaydı asla WhatsApp yoluna düşmemeli.
+      await db.notification.update({ where: { id: n.id }, data: { status: "SKIPPED", error: "Bilinmeyen e-posta şablonu" } });
+      return "skipped";
     }
     if (n.channel === "WEBPUSH") {
       if (!this.webPush) return "skipped";

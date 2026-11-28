@@ -3,7 +3,7 @@
 import { CalendarOff, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { AppointmentDetail, NewAppointment, TimeOffDialog } from "@/components/calendar/dialogs";
 import { END_H, layoutLanes, movable, PX_PER_MIN, SNAP, START_H, STATUS_DOT, STATUS_STYLE, TimeOff } from "@/components/calendar/shared";
 import { useSession } from "@/components/panel/session";
@@ -59,6 +59,15 @@ function CalendarInner() {
   const allStaff = staff.data ?? [];
   const columns = staffFilter ? allStaff.filter((s) => s.id === staffFilter) : allStaff;
   const visible = (appts.data ?? []).filter((a) => (showCancelled || a.status !== "CANCELLED") && (!staffFilter || a.staff.id === staffFilter));
+  // E-postadaki "Randevuyu panelde gör" bağlantısı: ?tarih=…&randevu=<id> ile randevu ayrıntısı açılır.
+  const focusId = params.get("randevu");
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (!focusId || focused || !appts.data) return;
+    const hit = appts.data.find((a) => a.id === focusId);
+    if (hit) setSelected(hit);
+    setFocused(true);
+  }, [focusId, focused, appts.data]);
   const reload = () => {
     appts.reload();
     offs.reload();

@@ -1,15 +1,18 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { AppointmentHooks, AppointmentsService } from "../appointments/appointments.service";
 import { AvailabilityService } from "../appointments/availability.service";
 import { AuditService } from "../audit/audit.service";
 import { assertUsageLimit, UsageLimitError } from "../billing/plan-pricing";
-import { loadEnv } from "../config/env";
+import { bookingToken } from "../common/booking-token";
+import { phoneVariants } from "../common/phone";
 import { directionsUrl, fullAddress } from "../directory/address";
+import { CUSTOMER_CANCEL_MIN_HOURS } from "../notifications/booking-email.constants";
+import { BookingEmailPlanner } from "../notifications/booking-email.planner";
 import { PrismaService } from "../prisma/prisma.service";
 
 const MAX_DAYS_AHEAD = 60;
-const CANCEL_MIN_HOURS = 2;
+const CANCEL_MIN_HOURS = CUSTOMER_CANCEL_MIN_HOURS;
 
 export interface BookingInput {
   serviceId: string;
@@ -32,6 +35,7 @@ export class PublicBookingService {
     private readonly audit: AuditService,
     private readonly appointments: AppointmentsService,
     private readonly hooks: AppointmentHooks,
+    private readonly emails: BookingEmailPlanner,
   ) {}
 
   /** Online rezervasyona açık işletmeyi slug ile bulur (yalnızca herkese açık alanlar). */
@@ -55,7 +59,7 @@ export class PublicBookingService {
   }
 
   static token(appointmentId: string) {
-    return createHmac("sha256", loadEnv().JWT_SECRET).update(`booking:${appointmentId}`).digest("base64url");
+    return bookingToken(appointmentId);
   }
 
   async salon(slug: string) {
@@ -115,9 +119,26 @@ export class PublicBookingService {
         const slot = slots.find((s) => s.startsAt === start.toISOString());
         if (!slot) throw new ConflictException("Seçilen saat artık müsait değil");
 
-        let customer = await tx.customer.findUnique({ where: { tenantId_phone: { tenantId: t.id, phone: b.phone } } });
-        if (customer?.anonymizedAt) customer = null;
+        // Aynı numaranın eski yazımları (+90 / 0 / boşluklu) da aynı müşteri sayılır.
+        let customer = await tx.customer.findFirst({
+          where: { phone: { in: phoneVariants(b.phone) }, anonymizedAt: null },
+          orderBy: { createdAt: "asc" },
+        });
         const isNew = !customer;
+        // Telefon eşleşmediyse ama aynı e-posta ya da ad soyad kayıtlıysa yeni kayıt açılır (kimlik doğrulanamaz),
+        // resepsiyon birleştirebilsin diye nota yazılır.
+        const possibleDuplicate = isNew
+          ? await tx.customer.findFirst({
+              where: {
+                anonymizedAt: null,
+                OR: [
+                  ...(b.email ? [{ email: { equals: b.email.trim(), mode: "insensitive" as const } }] : []),
+                  { firstName: { equals: b.firstName.trim(), mode: "insensitive" }, lastName: { equals: b.lastName.trim(), mode: "insensitive" } },
+                ],
+              },
+              select: { firstName: true, lastName: true, phone: true },
+            })
+          : null;
         if (!customer) {
           await assertUsageLimit(tx, t.id, "customer");
           customer = await tx.customer.create({
@@ -139,6 +160,9 @@ export class PublicBookingService {
         const nameMismatch = !isNew && norm(`${b.firstName} ${b.lastName}`) !== norm(`${customer.firstName} ${customer.lastName}`);
         const notes = [
           nameMismatch ? `Online formdaki ad: ${b.firstName} ${b.lastName} (kayıttaki müşteri adından farklı; lütfen telefonla teyit edin)` : null,
+          possibleDuplicate
+            ? `Olası mükerrer kayıt: ${possibleDuplicate.firstName} ${possibleDuplicate.lastName}${possibleDuplicate.phone ? ` (${possibleDuplicate.phone})` : ""} adlı müşteri aynı ad ya da e-postayla kayıtlı; aynı kişi olabilir, lütfen telefonla teyit edin`
+            : null,
           b.notes ?? null,
         ].filter(Boolean).join("\n") || undefined;
 
@@ -150,6 +174,7 @@ export class PublicBookingService {
           notes,
           source: "ONLINE",
         });
+        await this.emails.customerConfirmation(tx, appt.id, b.email ?? (isNew ? null : customer.email));
         await this.audit.log(tx, { tenantId: t.id, action: "booking.online_created", entity: "Appointment", entityId: appt.id, ip });
         return { appt, service, staffName: slot.staffName };
       })
@@ -159,8 +184,12 @@ export class PublicBookingService {
         return AppointmentsService.overlapGuard(e);
       });
 
+    // Müşteriye onay mesajı hangi yoldan gidecek: yalnızca gerçekten gidecek kanallar söylenir.
+    const wa = await this.prisma.platform.channelConnection.findUnique({ where: { tenantId_channel: { tenantId: t.id, channel: "WHATSAPP" } }, select: { status: true } });
     return {
       bookingId: result.appt.id,
+      confirmation: { whatsapp: t.plan.features.includes("WHATSAPP") && wa?.status === "CONNECTED", email: !!b.email },
+      cancelHours: CANCEL_MIN_HOURS,
       cancelToken: PublicBookingService.token(result.appt.id),
       salon: t.name,
       service: result.service.name,
@@ -171,11 +200,40 @@ export class PublicBookingService {
     };
   }
 
-  async cancel(slug: string, bookingId: string, token: string) {
-    const t = await this.resolve(slug);
+  private checkToken(bookingId: string, token: string) {
     const expected = Buffer.from(PublicBookingService.token(bookingId));
     const given = Buffer.from(token);
     if (expected.length !== given.length || !timingSafeEqual(expected, given)) throw new ForbiddenException("Geçersiz iptal bağlantısı");
+  }
+
+  /** İptal bağlantısıyla randevunun özeti (müşteri adı/telefonu dönmez). */
+  async details(slug: string, bookingId: string, token: string) {
+    const t = await this.resolve(slug);
+    this.checkToken(bookingId, token);
+    return this.prisma.withTenant(this.ctx(t.id), async (tx) => {
+      const appt = await tx.appointment.findUnique({
+        where: { id: bookingId },
+        select: { id: true, startsAt: true, endsAt: true, status: true, price: true, service: { select: { name: true } }, staff: { select: { displayName: true } } },
+      });
+      if (!appt) throw new NotFoundException("Randevu bulunamadı");
+      const active = ["BOOKED", "CONFIRMED"].includes(appt.status);
+      return {
+        salon: { name: t.name, phone: t.phone },
+        service: appt.service.name,
+        staff: appt.staff.displayName,
+        startsAt: appt.startsAt,
+        endsAt: appt.endsAt,
+        price: appt.price,
+        status: appt.status,
+        cancellable: active && appt.startsAt.getTime() - Date.now() >= CANCEL_MIN_HOURS * 3_600_000,
+        cancelHours: CANCEL_MIN_HOURS,
+      };
+    });
+  }
+
+  async cancel(slug: string, bookingId: string, token: string) {
+    const t = await this.resolve(slug);
+    this.checkToken(bookingId, token);
     return this.prisma.withTenant(this.ctx(t.id), async (tx) => {
       const appt = await tx.appointment.findUnique({ where: { id: bookingId } });
       if (!appt) throw new NotFoundException("Randevu bulunamadı");

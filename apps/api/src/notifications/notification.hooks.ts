@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { AppointmentStatus } from "@prisma/client";
 import { ActorKind, AppointmentHooks } from "../appointments/appointments.service";
 import { Tx } from "../prisma/prisma.service";
+import { BookingEmailPlanner } from "./booking-email.planner";
 import { NotificationQueue } from "./notification-queue";
 import { PUSH_REMINDER_TEMPLATES, PushPlanner } from "./push/push.planner";
 import { TemplateName } from "./whatsapp.provider";
@@ -9,7 +10,7 @@ import { TemplateName } from "./whatsapp.provider";
 const REMINDER_HOURS = 24;
 
 /**
- * Randevu olaylarında WhatsApp bildirimleri planlar.
+ * Randevu olaylarında WhatsApp, push, uygulama içi ve e-posta bildirimlerini planlar.
  * Kayıtlar randevuyla aynı transaction'da yazılır; gönderim BullMQ işçisindedir.
  */
 @Injectable()
@@ -19,6 +20,7 @@ export class NotificationHooks extends AppointmentHooks {
   constructor(
     private readonly queue: NotificationQueue,
     private readonly push: PushPlanner,
+    private readonly emails: BookingEmailPlanner,
   ) {
     super();
   }
@@ -66,6 +68,8 @@ export class NotificationHooks extends AppointmentHooks {
       await this.scheduleReminder(tx, c);
     }
     await this.push.plan(tx, appt.id, "created", by);
+    // Müşterinin kendi aldığı randevu: işletmeye (ve e-posta verdiyse müşteriye) e-posta; WhatsApp/PWA'ya bağlı değil.
+    if (by === "CUSTOMER") await this.emails.created(tx, appt.id);
   }
 
   /** Saat değişince eski hatırlatma iptal edilir, yeni saate göre yeniden planlanır. */
@@ -88,5 +92,6 @@ export class NotificationHooks extends AppointmentHooks {
     if (c && c.appt.startsAt > new Date()) await this.schedule(tx, c, "randevu_iptal", new Date());
     const future = await tx.appointment.findUnique({ where: { id: appt.id }, select: { startsAt: true } });
     if (future && future.startsAt > new Date()) await this.push.plan(tx, appt.id, "cancelled", by, { actorId });
+    if (by === "CUSTOMER") await this.emails.cancelledByCustomer(tx, appt.id);
   }
 }

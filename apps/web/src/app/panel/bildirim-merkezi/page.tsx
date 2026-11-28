@@ -10,14 +10,16 @@ import { cn } from "@/lib/utils";
 import { StaffPushCard } from "./push-card";
 
 type N = { id: string; type: string; title: string; body: string; appointmentId: string | null; readAt: string | null; createdAt: string };
+type AlertChannels = { email: { enabled: boolean; to: string | null }; push: { available: boolean }; whatsapp: { inPlan: boolean; connected: boolean } };
 type Prefs = { newAppointments: boolean; cancellations: boolean; changes: boolean; assignments: boolean };
 
 /** Uygulama içi bildirim merkezi: yalnız oturumdaki kullanıcıya ait bildirimler. */
 export default function NotificationCenterPage() {
-  const { pwa, can } = useSession();
+  const { can } = useSession();
   const toast = useToast();
   const list = useApi<{ items: N[]; unread: number }>("/pwa/notifications");
   const prefs = useApi<Prefs>("/pwa/preferences");
+  const channels = useApi<AlertChannels>("/pwa/alert-channels");
 
   async function readAll() {
     await api("/pwa/notifications/read-all", { method: "POST" });
@@ -35,8 +37,6 @@ export default function NotificationCenterPage() {
     }
   }
 
-  if (pwa && !pwa.businessPwaEnabled) return <Empty title="İşletme mobil uygulaması bu işletmede açık değil" />;
-
   const PREFS: { key: keyof Prefs; label: string; desk?: boolean }[] = [
     { key: "newAppointments", label: "Yeni randevular (tüm işletme)", desk: true },
     { key: "assignments", label: "Bana atanan randevular" },
@@ -47,7 +47,7 @@ export default function NotificationCenterPage() {
     <>
       <PageHeader
         title="Bildirim merkezi"
-        description="Yalnızca size ait randevu bildirimleri burada görünür."
+        description="Müşterilerin online aldığı ve iptal ettiği randevular burada görünür; ayrıca e-postanıza gelir."
         action={list.data?.unread ? <Button variant="secondary" size="sm" onClick={() => void readAll()}>Tümünü okundu yap</Button> : undefined}
       />
       <div className="grid gap-4 lg:grid-cols-3">
@@ -77,9 +77,35 @@ export default function NotificationCenterPage() {
           <p className="mt-4 text-sm"><Link href="/panel/bugun" className="text-brand-700 underline">Bugünün planına git</Link></p>
         </div>
         <div className="space-y-4">
+          {channels.data && (
+            <Card className="p-4" data-testid="bildirim-kanallari">
+              <h2 className="font-semibold">Bildirimler nereye gelir?</h2>
+              <ul className="mt-3 space-y-2 text-sm text-neutral-700">
+                <li><b>Panel:</b> bu sayfa ve menüdeki kırmızı rozet.</li>
+                <li>
+                  <b>E-posta:</b>{" "}
+                  {channels.data.email.enabled && channels.data.email.to ? <>{channels.data.email.to}</> : <span className="text-amber-700">şu an gönderilmiyor</span>}
+                </li>
+                <li>
+                  <b>Telefon bildirimi:</b>{" "}
+                  {channels.data.push.available ? "aşağıdan bu cihazda açabilirsiniz." : "salon uygulaması (pilot) açık işletmelerde kullanılabilir."}
+                </li>
+                <li>
+                  <b>Müşteriye WhatsApp onayı:</b>{" "}
+                  {channels.data.whatsapp.connected ? "açık." : (
+                    <>
+                      <span className="text-amber-700">gönderilmiyor (WhatsApp bağlı değil).</span>{" "}
+                      Müşteri formda e-posta yazdıysa onay ve iptal bağlantısı e-postayla gider.
+                    </>
+                  )}
+                </li>
+              </ul>
+            </Card>
+          )}
           <StaffPushCard />
           <Card className="p-4">
             <h2 className="font-semibold">Bildirim tercihleri</h2>
+            <p className="mt-1 text-xs text-neutral-500">Panel, e-posta ve telefon bildirimleri için geçerlidir.</p>
             {!prefs.data ? <Spinner /> : (
               <ul className="mt-3 space-y-2">
                 {PREFS.filter((p) => !p.desk || can("OWNER", "MANAGER", "RECEPTION")).map((p) => (

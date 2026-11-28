@@ -1,10 +1,13 @@
 import { z } from "zod";
+import { canonicalPhone } from "./phone";
 
+/** Türkiye numaraları tek biçimde (0XXXXXXXXXX) saklanır; +90 / 0 / boşluk farkı mükerrer kayıt oluşturmaz. */
 export const phoneSchema = z
   .string()
   .trim()
-  .transform((v) => v.replace(/[\s()-]/g, ""))
-  .pipe(z.string().regex(/^\+?[0-9]{10,15}$/, "Geçersiz telefon numarası"));
+  .transform((v) => v.replace(/[\s().-]/g, ""))
+  .pipe(z.string().regex(/^\+?[0-9]{10,15}$/, "Geçersiz telefon numarası"))
+  .transform(canonicalPhone);
 
 export const moneySchema = z.coerce.number().min(0).max(10_000_000).multipleOf(0.01);
 export const paginationSchema = z.object({

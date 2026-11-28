@@ -10,6 +10,7 @@ import { Alert, Button, Card, Field, Input, Spinner, Textarea } from "@/componen
 import { api, useApi } from "@/lib/api";
 import { addDays, dateTr, isoDay, timeTr, tl } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { cancelHref, loadSavedBookings, SavedBooking, saveBooking } from "./saved-bookings";
 
 type Salon = {
   salon: { name: string; slug: string; phone: string | null; address: string | null; directionsUrl?: string | null };
@@ -26,7 +27,12 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
   const [day, setDay] = useState(isoDay());
   const [slot, setSlot] = useState<Slot | null>(null);
   const [slots, setSlots] = useState<Slot[] | null>(null);
-  const [done, setDone] = useState<{ bookingId: string; cancelToken: string; service: string; staff: string; startsAt: string; price: string } | null>(null);
+  const [done, setDone] = useState<{
+    bookingId: string; cancelToken: string; service: string; staff: string; startsAt: string; price: string;
+    confirmation?: { whatsapp: boolean; email: boolean }; cancelHours?: number;
+  } | null>(null);
+  const [saved, setSaved] = useState<SavedBooking[]>([]);
+  useEffect(() => setSaved(loadSavedBookings(slug)), [slug, done]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -71,6 +77,7 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
           marketingConsent: f.get("marketing") === "on",
         },
       });
+      if (r) saveBooking(slug, { id: r.bookingId, token: r.cancelToken, service: r.service, staff: r.staff, startsAt: r.startsAt });
       setDone(r);
     } catch (e) {
       setErr((e as Error).message);
@@ -90,7 +97,15 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
   }
 
   if (done) {
-    const cancelUrl = `/r/${slug}/iptal?id=${done.bookingId}&t=${encodeURIComponent(done.cancelToken)}`;
+    const cancelUrl = cancelHref(slug, { id: done.bookingId, token: done.cancelToken });
+    const conf = done.confirmation;
+    const confText = conf?.whatsapp && conf.email
+      ? "Onay mesajı WhatsApp ve e-postayla gönderilecek."
+      : conf?.whatsapp
+        ? "Onay mesajı WhatsApp üzerinden gönderilecek."
+        : conf?.email
+          ? "Onay ve iptal bağlantısı e-posta adresinize gönderildi."
+          : "Randevunuz işletmeye iletildi.";
     return (
       <div className="mx-auto max-w-md px-5 py-16">
         <Card className="p-6 text-center">
@@ -103,8 +118,11 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
             <div><b>Tarih:</b> {dateTr(done.startsAt, { weekday: "long", day: "numeric", month: "long" })} {timeTr(done.startsAt)}</div>
             <div><b>Ücret:</b> {tl(done.price)}</div>
           </div>
-          <p className="mt-4 text-xs text-neutral-500">Onay mesajı WhatsApp üzerinden gönderilecektir. İptal etmek için bu bağlantıyı saklayın:</p>
-          <Link href={cancelUrl} className="mt-1 block break-all text-sm text-brand-700 underline">Randevuyu iptal et</Link>
+          <p className="mt-4 text-xs text-neutral-500" data-testid="onay-metni">
+            {confText} Randevunuz bu cihazda bu sayfada da görünür; iptal etmek için {data.salon.name} sayfasına tekrar girebilir ya da bu bağlantıyı kullanabilirsiniz{done.cancelHours ? ` (en geç ${done.cancelHours} saat öncesine kadar)` : ""}:
+          </p>
+          <Link href={cancelUrl} className="mt-1 block break-all text-sm text-brand-700 underline">Randevuyu görüntüle / iptal et</Link>
+          <Button variant="outline" className="mt-4" onClick={() => { setDone(null); setSlot(null); }}>Salon sayfasına dön</Button>
         </Card>
       </div>
     );
@@ -125,6 +143,22 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
       </header>
 
       <main className="mx-auto -mt-6 max-w-3xl space-y-6 px-4">
+        {saved.length > 0 && (
+          <Card className="p-5" data-testid="kayitli-randevular">
+            <h2 className="font-semibold">Randevularınız</h2>
+            <p className="mt-1 text-xs text-neutral-500">Bu cihazdan aldığınız randevular. Yeniden kayıt olmanıza gerek yok.</p>
+            <ul className="mt-3 divide-y divide-sand-100">
+              {saved.map((b) => (
+                <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                  <span>
+                    <b>{dateTr(b.startsAt, { weekday: "long", day: "numeric", month: "long" })} {timeTr(b.startsAt)}</b> · {b.service} · {b.staff}
+                  </span>
+                  <Link href={cancelHref(slug, b)} className="text-brand-700 underline">Görüntüle / iptal et</Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
         {err && <Alert>{err}</Alert>}
         <Card className="p-5">
           <h2 className="font-semibold">1. Hizmet seçin</h2>
@@ -193,7 +227,7 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Cep telefonu"><Input name="phone" type="tel" required autoComplete="tel" placeholder="05xx xxx xx xx" /></Field>
-                <Field label="E-posta (isteğe bağlı)"><Input name="email" type="email" autoComplete="email" /></Field>
+                <Field label="E-posta (isteğe bağlı)" hint="Onay ve iptal bağlantısı e-postanıza gönderilir."><Input name="email" type="email" autoComplete="email" /></Field>
               </div>
               <Field label="Not (isteğe bağlı)"><Textarea name="notes" maxLength={500} /></Field>
               <label className="flex items-start gap-3 text-sm text-neutral-600">

@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { phoneVariants } from "../common/phone";
+import { BookingEmailPlanner } from "../notifications/booking-email.planner";
 import { AppointmentHooks, AppointmentsService } from "../appointments/appointments.service";
 import { AvailabilityService } from "../appointments/availability.service";
 import { AuditService } from "../audit/audit.service";
@@ -42,6 +44,7 @@ export class PortalService {
     private readonly appointments: AppointmentsService,
     private readonly hooks: AppointmentHooks,
     private readonly audit: AuditService,
+    private readonly emails: BookingEmailPlanner,
   ) {}
 
   private ctx(tenantId: string) {
@@ -184,7 +187,7 @@ export class PortalService {
         if (!customer) {
           // 2) Telefon başka bir kayıtla eşleşiyorsa kişinin o müşteri olduğu kanıtlanamaz: kayıt değiştirilmez,
           //    randevu bağlanır ve resepsiyon teyit etsin diye not düşülür (KVKK onayı/izinler o kayda yazılmaz).
-          const byPhone = await tx.customer.findUnique({ where: { tenantId_phone: { tenantId: t.id, phone: b.phone } } });
+          const byPhone = await tx.customer.findFirst({ where: { phone: { in: phoneVariants(b.phone) } }, orderBy: { createdAt: "asc" } });
           if (byPhone && !byPhone.anonymizedAt) {
             customer = byPhone;
             note = `Online portal: e-posta ${me.email} ile doğrulanmış kişi bu telefonla randevu aldı; kayıttaki müşteriyle aynı kişi olduğunu lütfen teyit edin.`;
@@ -209,6 +212,7 @@ export class PortalService {
           portalIdentityId: me.identityId,
           idempotencyKey: key,
         });
+        await this.emails.customerConfirmation(tx, appt.id, me.email);
         await this.audit.log(tx, { tenantId: t.id, action: "booking.portal_created", entity: "Appointment", entityId: appt.id, ip });
         return { appt, service, staffName: slot.staffName, replay: false };
       });

@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { TenantInfo } from "../common/decorators";
 import { assertUsageLimit } from "../billing/plan-pricing";
+import { phoneVariants, trNational } from "../common/phone";
 import { FinanceService } from "../finance/finance.service";
 import { PrismaService, Tx } from "../prisma/prisma.service";
 
@@ -38,6 +39,13 @@ export class CustomersService {
     };
   }
 
+  /** Aynı numara başka yazımla (0532… / +90532…) kayıtlıysa yeni kayıt açılmaz. */
+  private async assertPhoneFree(tx: Tx, phone: string | undefined | null, selfId?: string) {
+    if (!phone) return;
+    const other = await tx.customer.findFirst({ where: { phone: { in: phoneVariants(phone) }, anonymizedAt: null, ...(selfId ? { id: { not: selfId } } : {}) }, select: { id: true } });
+    if (other) throw new ConflictException("Bu telefon numarası ile kayıtlı müşteri var");
+  }
+
   private uniqueGuard(e: unknown): never {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       throw new ConflictException("Bu telefon numarası ile kayıtlı müşteri var");
@@ -53,7 +61,9 @@ export class CustomersService {
         where.OR = [
           { firstName: { contains: s, mode: "insensitive" } },
           { lastName: { contains: s, mode: "insensitive" } },
-          { phone: { contains: s.replace(/\s/g, "") } },
+          { phone: { contains: s.replace(/[\s().-]/g, "") } },
+          // "+90 532 …" ile aranınca "0532…" olarak kayıtlı müşteri de bulunur (ve tersi).
+          ...(trNational(s) ? [{ phone: { in: phoneVariants(s) } }] : []),
           { email: { contains: s, mode: "insensitive" } },
         ];
       }
@@ -100,6 +110,7 @@ export class CustomersService {
     return this.prisma
       .withTenant(t, async (tx) => {
         await assertUsageLimit(tx, t.tenantId, "customer");
+        await this.assertPhoneFree(tx, input.phone);
         const c = await tx.customer.create({ data: { tenantId: t.tenantId, ...this.toData(input), firstName: input.firstName, lastName: input.lastName },
         });
         await this.audit.log(tx, {
@@ -120,6 +131,7 @@ export class CustomersService {
         const c = await this.find(tx, id);
         if (c.anonymizedAt) throw new ConflictException("Anonimleştirilmiş müşteri düzenlenemez");
         const data = this.toData(input);
+        if (input.phone && input.phone !== c.phone) await this.assertPhoneFree(tx, input.phone, id);
         // Zaten kapalıysa ilk vazgeçme zamanı korunur.
         if (input.renewalRemindersOptOut && c.renewalRemindersOptOutAt) delete (data as { renewalRemindersOptOutAt?: Date }).renewalRemindersOptOutAt;
         const updated = await tx.customer.update({ where: { id }, data });
@@ -210,6 +222,7 @@ export class CustomersService {
         await tx.notification.updateMany({ where: { appointmentId: { in: ids }, status: "QUEUED" }, data: { status: "SKIPPED" } });
       }
       await tx.notification.updateMany({ where: { recipient: c.phone ?? "__none__", status: "QUEUED" }, data: { status: "SKIPPED" } });
+      await tx.notification.updateMany({ where: { customerId: id, status: "QUEUED" }, data: { status: "SKIPPED" } });
       await tx.customerNote.deleteMany({ where: { customerId: id } });
       const updated = await tx.customer.update({
         where: { id },

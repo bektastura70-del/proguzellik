@@ -91,7 +91,8 @@ export class PushPlanner {
     const pushOn = pwa.webPushEnabled && mode !== "off";
     const customerPush = pushOn && pwa.customerBookingEnabled;
     const staffPush = pushOn && pwa.businessPwaEnabled;
-    const inApp = pwa.businessPwaEnabled;
+    // Panel içi bildirim (Bildirim merkezi + rozet) her işletmede yazılır; salon uygulaması bayrağına bağlı değildir.
+    const inApp = true;
     if (!customerPush && !staffPush && !inApp) return;
 
     const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: appt.tenantId }, select: { name: true, slug: true, timezone: true } });
