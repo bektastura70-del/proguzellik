@@ -7,7 +7,8 @@ import { Logo } from "@/components/logo";
 import { Alert, Button, Card, Spinner } from "@/components/ui";
 import { api } from "@/lib/api";
 import { dateTr, timeTr, tl } from "@/lib/format";
-import { forgetBooking } from "../saved-bookings";
+import { syncNativeReminders } from "@/lib/native-app";
+import { forgetBooking, loadSavedBookings } from "../saved-bookings";
 
 type Details = {
   salon: { name: string; phone: string | null };
@@ -52,6 +53,8 @@ function Cancel({ slug }: { slug: string }) {
     try {
       await api(`/public/salons/${slug}/bookings/${id}/cancel`, { method: "POST", body: { token } });
       forgetBooking(slug, id);
+      // Mağaza uygulamasında bu randevunun telefon hatırlatmaları da kaldırılır.
+      if (d) void syncNativeReminders(slug, d.salon.name, loadSavedBookings(slug).map((b) => ({ id: b.id, startsAt: b.startsAt, status: b.status ?? "BOOKED", service: b.service })));
       setState("done");
     } catch (e) {
       setErr((e as Error).message);

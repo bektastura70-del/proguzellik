@@ -60,6 +60,11 @@ export async function refreshSavedBookings(slug: string, force = false): Promise
   }
   const next: SavedBooking[] = [];
   for (const b of list) {
+    // Sonuçlanmış ya da saati geçmiş randevu yeniden sorulmaz (sorgu sınırı ortak IP'lerde de yetsin).
+    if (["CANCELLED", "COMPLETED", "NO_SHOW"].includes(b.status ?? "") || new Date(b.startsAt).getTime() < Date.now()) {
+      next.push(b);
+      continue;
+    }
     try {
       const r = await fetch(`/api/p/public/salons/${slug}/bookings/${b.id}?token=${encodeURIComponent(b.token)}`, { cache: "no-store" });
       if (r.status === 403 || r.status === 404) continue;

@@ -11,6 +11,7 @@ import { api, useApi } from "@/lib/api";
 import { addDays, dateTr, isoDay, timeTr, tl } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { syncNativeReminders } from "@/lib/native-app";
+import { NativeReminders } from "./native";
 import { forgetContact, LastChoice, loadContact, loadLastChoice, SavedContact, saveContact, saveLastChoice } from "./customer-memory";
 import { contactFromForm, RememberContact } from "./remember-contact";
 import { cancelHref, loadSavedBookings, refreshSavedBookings, SavedBooking, saveBooking } from "./saved-bookings";
@@ -159,6 +160,8 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
             {confText} Randevunuz bu cihazda bu sayfada da görünür; iptal etmek için {data.salon.name} sayfasına tekrar girebilir ya da bu bağlantıyı kullanabilirsiniz{done.cancelHours ? ` (en geç ${done.cancelHours} saat öncesine kadar)` : ""}:
           </p>
           <Link href={cancelUrl} className="mt-1 block break-all text-sm text-brand-700 underline">Randevuyu görüntüle / iptal et</Link>
+          {/* Yalnız mağaza uygulamasında ve izin henüz verilmemişse görünür. */}
+          <div className="mt-4 text-left"><NativeReminders compact /></div>
           <Button variant="outline" className="mt-4" onClick={() => { setDone(null); setSlot(null); }}>Salon sayfasına dön</Button>
         </Card>
       </div>
