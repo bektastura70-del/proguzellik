@@ -12,6 +12,7 @@ import { Alert, Badge, Spinner } from "@/components/ui";
 import { STATUS_TR } from "@/lib/format";
 import { isNativeApp } from "@/lib/native-app";
 import { cn } from "@/lib/utils";
+import { PushNudge } from "./push-nudge";
 import { Membership, useSession } from "./session";
 
 type Item = { href: string; label: string; icon: React.ComponentType<{ className?: string }>; roles?: Membership["role"][]; feature?: string; pwa?: boolean; renewal?: boolean };
@@ -361,6 +362,7 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
             </Alert>
           </div>
         )}
+        {!native && <PushNudge />}
         {children}
       </main>
       {mobileApp && <BottomNav path={path} unread={unread} onMenu={() => setOpen(true)} />}

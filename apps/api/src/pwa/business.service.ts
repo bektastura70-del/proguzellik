@@ -1,9 +1,9 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { TenantInfo } from "../common/decorators";
 import { zonedTime } from "../common/time";
-import { inviteDeliveryEnabled, loadEnv, webPushMode } from "../config/env";
+import { inviteDeliveryEnabled, loadEnv } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
-import { effectivePwa } from "./pwa-settings";
+import { effectivePwa, staffPushOn } from "./pwa-settings";
 
 const DESK = ["OWNER", "MANAGER", "RECEPTION"];
 
@@ -21,8 +21,9 @@ export class BusinessPwaService {
       customerBookingEnabled: pwa.customerBookingEnabled,
       webPushEnabled: pwa.webPushEnabled,
       customerSessionTrackingEnabled: pwa.customerSessionTrackingEnabled,
-      pushAvailable: pwa.businessPwaEnabled && pwa.webPushEnabled && webPushMode(loadEnv()) !== "off",
-      vapidPublicKey: pwa.businessPwaEnabled && pwa.webPushEnabled && webPushMode(loadEnv()) !== "off" ? (loadEnv().VAPID_PUBLIC_KEY ?? null) : null,
+      // Personel telefon bildirimi tüm işletmelerde (pilot bayrağından bağımsız).
+      pushAvailable: staffPushOn(),
+      vapidPublicKey: staffPushOn() ? (loadEnv().VAPID_PUBLIC_KEY ?? null) : null,
     };
   }
 
@@ -32,13 +33,12 @@ export class BusinessPwaService {
    */
   async alertChannels(t: TenantInfo) {
     const db = this.prisma.platform;
-    const [tenant, wa, pwa, me] = await Promise.all([
+    const [tenant, wa, me] = await Promise.all([
       db.tenant.findUniqueOrThrow({ where: { id: t.tenantId }, select: { plan: { select: { features: true } } } }),
       db.channelConnection.findUnique({ where: { tenantId_channel: { tenantId: t.tenantId, channel: "WHATSAPP" } }, select: { status: true } }),
-      effectivePwa(db, t.tenantId),
       db.user.findUnique({ where: { id: t.userId }, select: { email: true } }),
     ]);
-    const pushAvailable = pwa.businessPwaEnabled && pwa.webPushEnabled && webPushMode(loadEnv()) !== "off";
+    const pushAvailable = staffPushOn();
     return {
       email: { enabled: inviteDeliveryEnabled(loadEnv()), to: me?.email ?? null },
       inApp: true,

@@ -74,11 +74,10 @@ describe("Web Push ve uygulama içi bildirimler (Modül 3)", () => {
     await a.post("/pwa/push/subscriptions").send({ ...sub("x"), keys: { p256dh: "kisa", auth: AUTH } }).expect(400);
   });
 
-  it("bayrak kapalıyken abonelik açılamaz (404); açıkken personel ve müşteri abone olur", async () => {
+  it("müşteri aboneliği bayrak kapalıyken açılamaz (404); işletme kullanıcıları bayraktan bağımsız abone olur", async () => {
     await su.tenantPwaSettings.update({ where: { tenantId: A.tenant.id }, data: { webPushEnabled: false } });
-    await a.post("/pwa/push/subscriptions").send(sub("owner-1")).expect(404);
     await portal(app, A.tenant.slug, token).post("/push/subscriptions").send(sub("cust-1")).expect(404);
-    expect((await a.get("/pwa/push").expect(200)).body).toMatchObject({ available: false, devices: 0 });
+    expect((await a.get("/pwa/push").expect(200)).body).toMatchObject({ available: true, devices: 0 });
     await su.tenantPwaSettings.update({ where: { tenantId: A.tenant.id }, data: { webPushEnabled: true } });
     await a.post("/pwa/push/subscriptions").send(sub("owner-1")).expect(201);
     await rec.post("/pwa/push/subscriptions").send(sub("rec-1")).expect(201);
@@ -228,15 +227,17 @@ describe("Web Push ve uygulama içi bildirimler (Modül 3)", () => {
     expect(outbox.slice(before).map((m) => m.endpoint)).toEqual([sub("owner-1").endpoint]);
   });
 
-  it("web_push_enabled kapalıyken push kaydı yazılmaz, işletme bildirim merkezi çalışmaya devam eder; bekleyenler gönderilmez", async () => {
+  it("web_push_enabled kapalıyken müşteriye push kaydı yazılmaz (personele yazılır), bildirim merkezi çalışır; bekleyen müşteri bildirimleri gönderilmez", async () => {
     const pending = (await a.post("/appointments").send({ customerId, staffId: s.staff.id, serviceId: s.service.id, startsAt: futureAt(11, "11:00") }).expect(201)).body;
-    await su.tenantPwaSettings.update({ where: { tenantId: A.tenant.id }, data: { webPushEnabled: false } });
+    await su.tenantPwaSettings.update({ where: { tenantId: A.tenant.id }, data: { webPushEnabled: false, businessPwaEnabled: false } });
     const appt = (await a.post("/appointments").send({ customerId, staffId: s.staff.id, serviceId: s.service.id, startsAt: futureAt(12, "11:00") }).expect(201)).body;
-    expect(await pushRows(appt.id)).toHaveLength(0);
+    const rows = await pushRows(appt.id);
+    expect(rows.map((r) => [r.template, r.recipient])).toEqual([["push_isletme_atama", `user:${elifUserId}`]]);
+    expect(await run(rows[0].id)).toBe("sent");
     expect(await su.inAppNotification.count({ where: { appointmentId: appt.id } })).toBe(1);
     const created = (await pushRows(pending.id)).find((r) => r.template === "push_randevu_olusturuldu")!;
     expect(await run(created.id)).toBe("skipped");
-    await su.tenantPwaSettings.update({ where: { tenantId: A.tenant.id }, data: { webPushEnabled: true } });
+    await su.tenantPwaSettings.update({ where: { tenantId: A.tenant.id }, data: { webPushEnabled: true, businessPwaEnabled: true } });
   });
 
   it("WhatsApp bildirim listesi Web Push kayıtlarını göstermez", async () => {

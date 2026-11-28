@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { Notification } from "@prisma/client";
 import { loadEnv, webPushMode } from "../../config/env";
 import { PrismaService } from "../../prisma/prisma.service";
-import { effectivePwa } from "../../pwa/pwa-settings";
+import { effectivePwa, staffPushOn } from "../../pwa/pwa-settings";
 import type { PushPayload } from "./push.planner";
 import { LiveWebPushSender, MockWebPushSender, PushResult } from "./web-push.sender";
 
@@ -14,7 +14,7 @@ export class TransientPushError extends Error {}
 
 /**
  * Kuyruktaki WEBPUSH bildiriminin gönderimi. Gönderim anında yeniden denetlenir:
- * bayrak + ortam kipi, alıcının hâlâ yetkili olması, tercihleri, randevunun durumu ve saati.
+ * ortam kipi (müşteri için salon bayrakları), alıcının hâlâ yetkili olması, tercihleri, randevunun durumu ve saati.
  * Alıcının tüm etkin cihazlarına gönderilir; en az biri başarılıysa SENT (yeniden denemede çift bildirim olmaz).
  * 404/410 dönen (tarayıcıda kaldırılmış) abonelikler devre dışı bırakılır.
  */
@@ -35,9 +35,10 @@ export class WebPushDelivery {
     const db = this.prisma.platform;
     const mode = webPushMode(loadEnv());
     const pwa = await effectivePwa(db, n.tenantId);
-    if (mode === "off" || !pwa.webPushEnabled) return this.skip(n.id, "Web Push kapalı");
     const p = n.payload as unknown as PushPayload;
     const [kind, ownerId] = n.recipient.split(":");
+    // Müşteri push'u salon uygulaması bayraklarına, işletme kullanıcılarınınki yalnız ortam anahtarlarına bağlıdır.
+    if (mode === "off" || (kind === "user" ? !staffPushOn() : !pwa.webPushEnabled)) return this.skip(n.id, "Web Push kapalı");
     const now = Date.now();
     if (p.expiresAt && Date.parse(p.expiresAt) <= now) return this.skip(n.id, "Süresi geçti");
 
@@ -48,7 +49,6 @@ export class WebPushDelivery {
       if (!idt) return this.skip(n.id, "Alıcı yok");
       if ((p.pref === "reminders" && !idt.notifyReminders) || (p.pref === "appointments" && !idt.notifyAppointments)) return this.skip(n.id, "Müşteri bu bildirimi kapattı");
     } else if (kind === "user") {
-      if (!pwa.businessPwaEnabled) return this.skip(n.id, "İşletme uygulaması kapalı");
       const m = await db.membership.findFirst({ where: { tenantId: n.tenantId, userId: ownerId, isActive: true }, select: { role: true } });
       if (!m) return this.skip(n.id, "Kullanıcı artık işletmede değil");
       role = m.role;

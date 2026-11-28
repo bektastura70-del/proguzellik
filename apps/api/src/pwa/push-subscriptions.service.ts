@@ -5,7 +5,7 @@ import { NotificationQueue } from "../notifications/notification-queue";
 import { AUTH_RE, isAllowedPushEndpoint, P256DH_RE } from "../notifications/push/push-endpoint";
 import { PUSH_TEMPLATES } from "../notifications/push/push.planner";
 import { PrismaService, Tx } from "../prisma/prisma.service";
-import { EffectivePwa, effectivePwa } from "./pwa-settings";
+import { EffectivePwa, effectivePwa, staffPushOn } from "./pwa-settings";
 
 export interface SubscriptionInput {
   endpoint: string;
@@ -30,8 +30,8 @@ export class PushSubscriptionsService {
   }
 
   static pushAvailable(pwa: EffectivePwa, audience: "STAFF" | "CUSTOMER") {
-    const on = pwa.webPushEnabled && webPushMode(loadEnv()) !== "off";
-    return on && (audience === "STAFF" ? pwa.businessPwaEnabled : pwa.customerBookingEnabled);
+    if (audience === "STAFF") return staffPushOn();
+    return pwa.webPushEnabled && webPushMode(loadEnv()) !== "off" && pwa.customerBookingEnabled;
   }
 
   private where(o: Owner) {

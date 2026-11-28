@@ -2,6 +2,7 @@ import { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { canonicalPhone, phoneVariants } from "../src/common/phone";
 import { NotificationQueue } from "../src/notifications/notification-queue";
+import { MockWebPushSender } from "../src/notifications/push/web-push.sender";
 import { MockWhatsAppProvider } from "../src/notifications/whatsapp.provider";
 import { addMember, api, createApp, createTenantWithUser, futureAt, login, owner, resetDb, setupSalon } from "./helpers";
 
@@ -170,6 +171,44 @@ describe("Online randevu: işletmeye bildirim, müşteri eşleştirme, iptal ba�
 
   it("panel bildirim kanalları özeti: WhatsApp bağlı değil, e-posta ve panel bildirimi açık", async () => {
     const r = await a.get("/pwa/alert-channels").expect(200);
-    expect(r.body).toMatchObject({ inApp: true, whatsapp: { connected: false }, email: { to: "sahip@salon.test" }, push: { available: false } });
+    expect(r.body).toMatchObject({ inApp: true, whatsapp: { connected: false }, email: { to: "sahip@salon.test" }, push: { available: true } });
+  });
+
+  /**
+   * Gerçek salonda (28.11, iPhone ana ekran uygulaması): telefon bildirimi yalnız salon uygulaması pilotunda açıktı,
+   * sahip abone olamıyordu ve yeni online randevu telefona düşmüyordu. Artık işletme kullanıcıları pilotsuz da abone olur.
+   */
+  it("PWA pilotu kapalı işletmede sahip telefonuna abone olur; yeni online randevu telefona push olarak düşer ve dokununca takvimde randevu açılır", async () => {
+    const P256 = "B" + "A".repeat(86);
+    const sub = { endpoint: "https://web.push.apple.com/sahip-iphone", keys: { p256dh: P256, auth: "C".repeat(22) } };
+    expect(await su.tenantPwaSettings.count({ where: { tenantId: A.tenant.id } })).toBe(0);
+    const st = await a.get("/pwa/push").expect(200);
+    expect(st.body).toMatchObject({ available: true, devices: 0 });
+    expect((await a.get("/pwa/flags").expect(200)).body).toMatchObject({ businessPwaEnabled: false, pushAvailable: true });
+    await a.post("/pwa/push/subscriptions").send(sub).expect(201);
+    expect((await a.get("/pwa/push").expect(200)).body.devices).toBe(1);
+    // Müşteri tarafı push (salon uygulaması portalı) pilotta kalır
+    await http().post(`/public/salons/${slug}/portal/push/subscriptions`).send(sub).expect((x) => expect([401, 404]).toContain(x.status));
+
+    const r = await http()
+      .post(`/public/salons/${slug}/bookings`)
+      .send({ serviceId: s.service.id, startsAt: futureAt(9, "11:00"), firstName: "Ayşe", lastName: "Yılmaz", phone: "05061234567", kvkkConsent: true })
+      .expect(201);
+    const rows = await su.notification.findMany({ where: { appointmentId: r.body.bookingId, channel: "WEBPUSH" } });
+    expect(rows.map((x) => [x.template, x.recipient])).toEqual([["push_isletme_yeni_randevu", `user:${A.user.id}`]]);
+    const outbox = app.get(MockWebPushSender).outbox;
+    const before = outbox.length;
+    expect(await run(rows[0].id)).toBe("sent");
+    const msg = outbox.slice(before);
+    expect(msg).toHaveLength(1);
+    expect(msg[0].endpoint).toBe(sub.endpoint);
+    expect(msg[0].message.title).toBe("Yeni online randevu");
+    expect(msg[0].message.url).toMatch(new RegExp(`^/panel/takvim\\?gorunum=gun&tarih=\\d{4}-\\d{2}-\\d{2}&randevu=${r.body.bookingId}$`));
+    // Kilit ekranında müşteri adı/telefonu görünmez
+    expect(JSON.stringify(msg)).not.toMatch(/Ayşe|Yılmaz|0506/);
+
+    // Deneme bildirimi de pilotsuz çalışır
+    const t = await a.post("/pwa/push/test").expect(202);
+    expect(await run(t.body.id)).toBe("sent");
   });
 });

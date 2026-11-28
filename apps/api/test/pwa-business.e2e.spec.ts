@@ -41,7 +41,8 @@ describe("PWA işletme ve personel mobil paneli (Modül 2) + SaaS sahibi bayrakl
 
   it("bayrak kapalıyken mobil uç noktalar 404; bayraklar okunabilir ve kapalı", async () => {
     const f = await a.get("/pwa/flags").expect(200);
-    expect(f.body).toMatchObject({ businessPwaEnabled: false, customerBookingEnabled: false, pushAvailable: false });
+    // Personel telefon bildirimi salon uygulaması pilotundan bağımsızdır (tüm işletmeler).
+    expect(f.body).toMatchObject({ businessPwaEnabled: false, customerBookingEnabled: false, pushAvailable: true });
     await a.get(`/pwa/agenda?date=${dateStr()}`).expect(404);
     await a.get("/pwa/pending").expect(404);
   });

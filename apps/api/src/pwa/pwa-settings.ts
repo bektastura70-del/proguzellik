@@ -1,5 +1,5 @@
 import { TenantPwaSettings } from "@prisma/client";
-import { loadEnv, pwaEnabled } from "../config/env";
+import { loadEnv, pwaEnabled, webPushMode } from "../config/env";
 import { Tx } from "../prisma/prisma.service";
 
 export const PWA_FLAGS = [
@@ -53,4 +53,15 @@ export async function effectivePwa(db: Pick<Tx, "tenantPwaSettings">, tenantId: 
   if (!pwaEnabled(loadEnv())) for (const f of PWA_FLAGS) s[f] = false;
   if (!s.customerBookingEnabled) s.customerSessionTrackingEnabled = false;
   return s;
+}
+
+/**
+ * İşletme kullanıcılarına (sahip, yönetici, resepsiyon, personel) telefon bildirimi (Web Push) bu ortamda açık mı?
+ * Salon uygulaması pilotuna (businessPwaEnabled / webPushEnabled) bağlı DEĞİLDİR: panel her işletmede ana ekrana
+ * eklenebilir ve yeni online randevu her salonda telefona düşmelidir. Yalnız ortam anahtarları (PWA_ENABLED, WEB_PUSH_MODE + VAPID) kapatır.
+ * Müşteri tarafı push (salon uygulaması portalı) pilot bayraklarına bağlı kalır.
+ */
+export function staffPushOn() {
+  const env = loadEnv();
+  return pwaEnabled(env) && webPushMode(env) !== "off";
 }

@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { loadEnv, webPushMode } from "../../config/env";
 import { Tx } from "../../prisma/prisma.service";
-import { effectivePwa } from "../../pwa/pwa-settings";
+import { effectivePwa, staffPushOn } from "../../pwa/pwa-settings";
 import { NotificationQueue } from "../notification-queue";
 
 export type ActorKind = "STAFF" | "CUSTOMER";
@@ -90,7 +90,8 @@ export class PushPlanner {
     const mode = webPushMode(loadEnv());
     const pushOn = pwa.webPushEnabled && mode !== "off";
     const customerPush = pushOn && pwa.customerBookingEnabled;
-    const staffPush = pushOn && pwa.businessPwaEnabled;
+    // İşletme kullanıcılarına telefon bildirimi her işletmede (salon uygulaması pilotundan bağımsız).
+    const staffPush = staffPushOn();
     // Panel içi bildirim (Bildirim merkezi + rozet) her işletmede yazılır; salon uygulaması bayrağına bağlı değildir.
     const inApp = true;
     if (!customerPush && !staffPush && !inApp) return;
@@ -151,6 +152,9 @@ export class PushPlanner {
         const subs = staffPush
           ? new Set((await tx.pushSubscription.findMany({ where: { tenantId: appt.tenantId, audience: "STAFF", userId: { in: targets.map((t) => t.userId) }, revokedAt: null }, select: { userId: true } })).map((s) => s.userId))
           : new Set<string | null>();
+        // Bildirime dokununca takvimde o gün açılır ve randevu kartı (onayla / reddet / başka saat) gösterilir.
+        const day = new Intl.DateTimeFormat("en-CA", { timeZone: tenant.timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(appt.startsAt);
+        const staffUrl = `/panel/takvim?gorunum=gun&tarih=${day}&randevu=${appt.id}`;
         const initial = appt.customer.anonymizedAt ? "Müşteri" : `${appt.customer.firstName} ${appt.customer.lastName.slice(0, 1)}.`;
         for (const t of targets) {
           const meta = STAFF_META[t.type];
@@ -166,7 +170,7 @@ export class PushPlanner {
           if (staffPush && subs.has(t.userId)) {
             rows.push({
               recipient: `user:${t.userId}`, template: meta.template, scheduledFor: new Date(), dedupeKey: `wp:${t.type}:${keyTail}`,
-              payload: { title: meta.title, body: when, url: "/panel/bugun", tag: `randevu-${appt.id}`, startsAt: iso, pref: meta.pref, requireActive: t.type !== "cancel" },
+              payload: { title: meta.title, body: when, url: staffUrl, tag: `randevu-${appt.id}`, startsAt: iso, pref: meta.pref, requireActive: t.type !== "cancel" },
             });
           }
         }
@@ -196,8 +200,7 @@ export class PushPlanner {
   async planConversation(tx: Tx, conversationId: string) {
     const conv = await tx.conversation.findUnique({ where: { id: conversationId }, select: { id: true, tenantId: true, lastInboundAt: true } });
     if (!conv) return;
-    const pwa = await effectivePwa(tx, conv.tenantId);
-    if (!pwa.businessPwaEnabled || !pwa.webPushEnabled || webPushMode(loadEnv()) === "off") return;
+    if (!staffPushOn()) return;
     const desk = await tx.membership.findMany({ where: { tenantId: conv.tenantId, isActive: true, role: { in: DESK as never[] } }, select: { userId: true } });
     const subs = await tx.pushSubscription.findMany({
       where: { tenantId: conv.tenantId, audience: "STAFF", userId: { in: desk.map((d) => d.userId) }, revokedAt: null },

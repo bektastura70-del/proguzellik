@@ -104,7 +104,7 @@ export default function NotificationCenterPage() {
                 </li>
                 <li>
                   <b>Telefon bildirimi:</b>{" "}
-                  {channels.data.push.available ? "aşağıdan bu cihazda açabilirsiniz." : "salon uygulaması (pilot) açık işletmelerde kullanılabilir."}
+                  {channels.data.push.available ? "aşağıdaki karttan her telefonda ayrı ayrı açılır (iPhone'da ana ekrana eklenen uygulamadan)." : "şu an sistem genelinde kapalı."}
                 </li>
                 <li>
                   <b>Müşteriye bilgi:</b>{" "}
