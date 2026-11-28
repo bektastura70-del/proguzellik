@@ -106,6 +106,7 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
 
   // Okunmamış panel bildirimi (yeni online randevu, müşteri iptali…): tüm işletmelerde, salon uygulamasından bağımsız.
   const prevUnread = useRef<number | null>(null);
+  const unreadLoaded = useRef(false);
   const [bookingBanner, setBookingBanner] = useState(false);
   useEffect(() => {
     if (!tenantId) return;
@@ -113,7 +114,11 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
     const load = () => {
       if (document.visibilityState === "hidden") return;
       api<{ unread: number }>("/pwa/notifications?unread=1", { tenant: tenantId })
-        .then((r) => !stop && setUnread(r.unread))
+        .then((r) => {
+          if (stop) return;
+          unreadLoaded.current = true;
+          setUnread(r.unread);
+        })
         .catch(() => undefined);
     };
     load();
@@ -126,6 +131,8 @@ export function PanelShell({ children }: { children: React.ReactNode }) {
     };
   }, [tenantId, path]);
   useEffect(() => {
+    // İlk yüklemedeki sayı uyarı sayılmaz (rozet yeter); yalnızca panel açıkken gelen yeni bildirim uyarır.
+    if (!unreadLoaded.current) return;
     const prev = prevUnread.current;
     prevUnread.current = unread;
     if (unread === 0) setBookingBanner(false);
