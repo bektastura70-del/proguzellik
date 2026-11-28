@@ -16,7 +16,7 @@ export default function Cerez() {
   return (
     <LegalPage title={COOKIE_TITLE} imprint={<LegalImprint />}>
       <LegalMarkdown source={COOKIE_BODY} />
-      <LegalNote title="Güncel çerez tablosu" asOf="04.11.2026">
+      <LegalNote title="Güncel çerez tablosu" asOf="28.11.2026">
         <p>Herkese açık sayfalar çerez oluşturmaz. Aşağıdaki iki çerez yalnızca kullanıcı panele giriş yaptığında oluşturulur. Analitik, reklam veya üçüncü taraf çerezi ve dış kaynaklı script kullanılmamaktadır; bu nedenle şu anda çerez onay bandı gösterilmez.</p>
         <NoteTable
           head={["Ad", "Sağlayıcı", "Amaç", "Süre", "Tür"]}
@@ -26,7 +26,13 @@ export default function Cerez() {
             ["Uygulama önbelleği (proguzellik-v1)", "Pro Güzellik (birinci taraf)", "Çevrimdışı sayfa, simge ve uygulama dosyalarını cihazda tutarak hızlı açılış sağlamak. Kişisel veri içermez; API yanıtları önbelleğe alınmaz.", "Tarayıcı verileri silinene veya yeni sürüm yüklenene kadar", "Kesinlikle gerekli (benzer teknoloji)"],
           ]}
         />
-        <p>Yerel depolama (localStorage) ve oturum depolama (sessionStorage) kullanılmamaktadır.</p>
+        <p>
+          Tarayıcının yerel depolama alanı (localStorage) yalnızca şu işlevsel amaçlarla, yalnızca sizin cihazınızda kullanılır ve
+          sunucuya gönderilmez: online randevu aldığınız cihazda randevunuzu yeniden görebilmeniz ve iptal edebilmeniz için randevu
+          bilgisi ve iptal bağlantısı (pg_bookings; randevu tarihinden bir gün sonra listeden düşer, ad ve telefon içermez), kapattığınız
+          uygulama yükleme ve panel uyarılarının tekrar gösterilmemesi. Oturum depolama (sessionStorage) yalnızca panelde kurulum
+          sayfasına yönlendirmenin bir kez yapılması için kullanılır. Bu bilgileri tarayıcı verilerini silerek kaldırabilirsiniz.
+        </p>
       </LegalNote>
     </LegalPage>
   );
