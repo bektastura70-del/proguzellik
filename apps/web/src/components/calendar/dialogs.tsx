@@ -196,13 +196,34 @@ export function TimeOffDialog({ value, staff, onClose, onDone }: { value: { staf
   );
 }
 
-export function AppointmentDetail({ appt, staff, onClose, onChange }: { appt: Appointment; staff: Staff[]; onClose: () => void; onChange: () => void }) {
+type AlertChannels = { whatsapp: { connected: boolean } };
+const DECLINE_REASONS = ["Bu saat dolu", "Uzman bu saatte müsait değil", "Salon bu saatte kapalı"];
+
+/** Salonun kararı müşteriye hangi yoldan bildirilir: yalnız gerçekten gidecek kanallar söylenir. */
+function customerNotice(kind: "cancel" | "edit" | "confirm", email: boolean | undefined, wa: boolean | undefined) {
+  if (email === undefined) return null;
+  // Bağlı WhatsApp'ta yalnız iptal için müşteriye şablon mesajı vardır.
+  const viaWa = !!wa && kind === "cancel";
+  if (email && viaWa) return "Müşteriye e-posta ve WhatsApp ile bildirilir.";
+  if (email) return "Müşteriye e-postayla bildirilir.";
+  if (viaWa) return "Müşteriye WhatsApp ile bildirilir.";
+  return "Müşterinin e-postası yok: sonucu telefonla bildirmeniz gerekir.";
+}
+
+export function AppointmentDetail({ appt, staff, onClose, onChange, initialMode }: { appt: Appointment; staff: Staff[]; onClose: () => void; onChange: () => void; initialMode?: "edit" | "cancel" }) {
   const toast = useToast();
   const { can, has } = useSession();
   const stock = has("STOCK");
   const [lines, setLines] = useState<SaleLine[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [mode, setMode] = useState<"view" | "pay" | "edit" | "cancel">("view");
+  const [mode, setMode] = useState<"view" | "pay" | "edit" | "cancel">(initialMode ?? "view");
+  // Doğrudan "Reddet" / "Başka saat" ile açıldıysa Vazgeç pencereyi kapatır.
+  const back = () => (initialMode ? onClose() : setMode("view"));
+  const info = useApi<{ customerEmail: boolean }>(`/appointments/${appt.id}`, [appt.id]);
+  const channels = useApi<AlertChannels>("/pwa/alert-channels");
+  const email = info.data?.customerEmail;
+  const wa = channels.data?.whatsapp.connected;
+  const [reason, setReason] = useState("");
   const desk = can("OWNER", "MANAGER", "RECEPTION");
   const open = appt.status === "BOOKED" || appt.status === "CONFIRMED";
   // Tahsilat penceresinde ürün satışı (stok paketi varsa)
@@ -284,7 +305,7 @@ export function AppointmentDetail({ appt, staff, onClose, onChange }: { appt: Ap
           if (f.get("force") === "on") body.ignoreSchedule = true;
           try {
             await api(`/appointments/${appt.id}`, { method: "PATCH", body });
-            toast("Randevu güncellendi");
+            toast(email && body.startsAt !== new Date(appt.startsAt).toISOString() ? "Randevu güncellendi; yeni saat müşteriye e-postayla bildiriliyor" : "Randevu güncellendi");
             onChange();
           } catch (e) { setErr((e as Error).message); }
         }}>
@@ -299,20 +320,29 @@ export function AppointmentDetail({ appt, staff, onClose, onChange }: { appt: Ap
           </Field>
           {can("OWNER", "MANAGER") && !appt.customerPackageId && <Field label="Fiyat (₺)"><Input name="price" type="number" step="0.01" min={0} defaultValue={Number(appt.price)} /></Field>}
           <Field label="Not"><Textarea name="notes" defaultValue={appt.notes ?? ""} maxLength={1000} /></Field>
+          {customerNotice("edit", email, wa) && <p className="text-xs text-neutral-500">Saat değişirse: {customerNotice("edit", email, wa)}</p>}
           {can("OWNER", "MANAGER") && <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="force" className="accent-brand-600" /> Çalışma saati dışına izin ver</label>}
           <div className="flex gap-2">
             <Button className="flex-1">Kaydet</Button>
-            <Button type="button" variant="outline" onClick={() => setMode("view")}>Vazgeç</Button>
+            <Button type="button" variant="outline" onClick={back}>Vazgeç</Button>
           </div>
         </form>
       )}
       {mode === "cancel" && (
-        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); status("CANCELLED", (new FormData(e.currentTarget).get("reason") as string) || undefined); }}>
-          <p className="text-sm text-neutral-600">Müşteriye WhatsApp iptal bildirimi planlanır (paketinizde varsa).</p>
-          <Field label="İptal sebebi"><Input name="reason" maxLength={300} placeholder="Müşteri talebi" /></Field>
+        <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); status("CANCELLED", reason.trim() || undefined); }}>
+          <p className="text-sm text-neutral-600">{appt.customer.firstName} {appt.customer.lastName} · {appt.service.name} · {dateTr(appt.startsAt, { day: "numeric", month: "long" })} {timeTr(appt.startsAt)}</p>
+          {customerNotice("cancel", email, wa) && <p className="text-sm text-neutral-600" data-testid="musteri-bildirim">{customerNotice("cancel", email, wa)}{email ? " Yazdığınız sebep e-postada yer alır." : ""}</p>}
+          {appt.source !== "PANEL" && (
+            <div className="flex flex-wrap gap-2">
+              {DECLINE_REASONS.map((r) => (
+                <button key={r} type="button" onClick={() => setReason(r)} className={cn("rounded-full border px-3 py-1 text-xs", reason === r ? "border-brand-600 bg-brand-50 text-brand-800" : "border-sand-200 hover:bg-sand-50")}>{r}</button>
+              ))}
+            </div>
+          )}
+          <Field label="İptal sebebi"><Input name="reason" maxLength={300} placeholder="Müşteri talebi" value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
           <div className="flex gap-2">
-            <Button variant="danger" className="flex-1">İptal et</Button>
-            <Button type="button" variant="outline" onClick={() => setMode("view")}>Vazgeç</Button>
+            <Button variant="danger" className="flex-1">{appt.status === "BOOKED" && appt.source !== "PANEL" ? "Reddet ve iptal et" : "İptal et"}</Button>
+            <Button type="button" variant="outline" onClick={back}>Vazgeç</Button>
           </div>
         </form>
       )}
@@ -330,13 +360,16 @@ export function AppointmentDetail({ appt, staff, onClose, onChange }: { appt: Ap
           {open && desk && (
             <div className="grid grid-cols-2 gap-2">
               {appt.status === "BOOKED" && <Button variant="outline" onClick={() => status("CONFIRMED")}>Onayla</Button>}
+              {appt.status === "BOOKED" && appt.source !== "PANEL" && <Button variant="outline" onClick={() => setMode("cancel")}>Reddet</Button>}
               <Button onClick={() => status("COMPLETED")}>Tamamlandı</Button>
               <Button variant="outline" onClick={() => setMode("edit")}>Düzenle / ertele</Button>
               <Button variant="outline" onClick={() => status("NO_SHOW")}>Gelmedi</Button>
               <Button variant="danger" onClick={() => setMode("cancel")}>İptal et</Button>
             </div>
           )}
+          {open && !desk && appt.status === "BOOKED" && <Button variant="outline" onClick={() => status("CONFIRMED")} className="w-full">Onayla</Button>}
           {open && !desk && <Button onClick={() => status("COMPLETED")} className="w-full">Tamamlandı olarak işaretle</Button>}
+          {appt.status === "BOOKED" && customerNotice("confirm", email, wa) && <p className="text-xs text-neutral-500">Onaylarsanız: {customerNotice("confirm", email, wa)}</p>}
           {appt.status === "COMPLETED" && canPay && <Button variant="outline" className="w-full" onClick={() => setMode("pay")}>Tahsilat al</Button>}
         </div>
       )}

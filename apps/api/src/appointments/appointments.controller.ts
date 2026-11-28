@@ -48,6 +48,19 @@ export class AppointmentsController {
     return this.appts.list(t, q);
   }
 
+  /** Onay bekleyen randevular (her işletmede; salon uygulaması pilotuna bağlı değil). */
+  @Get("appointments/pending")
+  @Roles()
+  pending(@CurrentTenant() t: TenantInfo) {
+    return this.appts.pending(t);
+  }
+
+  @Get("appointments/:id")
+  @Roles()
+  get(@CurrentTenant() t: TenantInfo, @Param("id", ParseUUIDPipe) id: string) {
+    return this.appts.get(t, id);
+  }
+
   @Post("appointments")
   @Roles(...DESK)
   create(@CurrentTenant() t: TenantInfo, @Body(new ZodPipe(createSchema)) b: z.infer<typeof createSchema>) {

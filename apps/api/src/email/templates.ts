@@ -36,7 +36,10 @@ export type EmailTemplate =
   | { name: "ai_fx_stale"; vars: { detail: string; link: string } }
   | { name: "booking_new_staff"; vars: { salon: string; customer: string; phone?: string; service: string; staff: string; when: string; source: string; notes?: string; link: string } }
   | { name: "booking_cancelled_staff"; vars: { salon: string; customer: string; phone?: string; service: string; staff: string; when: string; link: string } }
-  | { name: "booking_confirmation_customer"; vars: { salon: string; firstName: string; service: string; staff: string; when: string; address?: string; phone?: string; cancelLink: string; cancelHours: number } };
+  | { name: "booking_confirmation_customer"; vars: { salon: string; firstName: string; service: string; staff: string; when: string; address?: string; phone?: string; cancelLink: string; cancelHours: number } }
+  | { name: "booking_confirmed_customer"; vars: { salon: string; firstName: string; service: string; staff: string; when: string; address?: string; phone?: string; cancelLink: string; cancelHours: number } }
+  | { name: "booking_rescheduled_customer"; vars: { salon: string; firstName: string; service: string; staff: string; when: string; previousWhen: string; phone?: string; cancelLink: string; cancelHours: number } }
+  | { name: "booking_declined_customer"; vars: { salon: string; firstName: string; service: string; when: string; reason?: string; phone?: string; bookLink: string } };
 
 export type TemplateName = EmailTemplate["name"];
 
@@ -84,6 +87,9 @@ export const TEMPLATE_META: Record<TemplateName, { label: string; vars: string[]
   booking_new_staff: { label: "Yeni online randevu (işletme yetkililerine)", vars: ["salon", "customer", "service", "when"], secret: true, editable: false },
   booking_cancelled_staff: { label: "Müşteri randevuyu iptal etti (işletme yetkililerine)", vars: ["salon", "customer", "service", "when"], secret: true, editable: false },
   booking_confirmation_customer: { label: "Online randevu onayı ve iptal bağlantısı (salon müşterisine)", vars: ["salon", "firstName", "service", "when"], secret: true, editable: false },
+  booking_confirmed_customer: { label: "Salon randevuyu onayladı (salon müşterisine)", vars: ["salon", "firstName", "service", "when"], secret: true, editable: false },
+  booking_rescheduled_customer: { label: "Salon randevu saatini değiştirdi (salon müşterisine)", vars: ["salon", "firstName", "service", "when", "previousWhen"], secret: true, editable: false },
+  booking_declined_customer: { label: "Salon randevuyu iptal etti / reddetti (salon müşterisine)", vars: ["salon", "firstName", "service", "when"], secret: true, editable: false },
 };
 
 export interface TemplateOverride {
@@ -326,6 +332,37 @@ export function render(t: EmailTemplate, override?: TemplateOverride | null): { 
         ...(t.vars.phone ? [`Değişiklik ve sorularınız için ${esc(t.vars.salon)}: ${esc(t.vars.phone)}`] : []),
       ];
       cta = { label: "Randevuyu görüntüle / iptal et", link: t.vars.cancelLink };
+      break;
+    case "booking_confirmed_customer":
+      subject = `${t.vars.salon}: randevunuz onaylandı (${t.vars.when})`;
+      paras = [
+        `Merhaba ${esc(t.vars.firstName)},`,
+        `${esc(t.vars.salon)} randevunuzu onayladı. Sizi bekliyoruz.`,
+        [`<b>Hizmet:</b> ${esc(t.vars.service)}`, `<b>Uzman:</b> ${esc(t.vars.staff)}`, `<b>Tarih:</b> ${esc(t.vars.when)}`, ...(t.vars.address ? [`<b>Adres:</b> ${esc(t.vars.address)}`] : [])].join("<br>"),
+        `Gelemeyecekseniz randevunuzu en geç ${t.vars.cancelHours} saat öncesine kadar aşağıdaki bağlantıdan iptal edebilirsiniz.`,
+        ...(t.vars.phone ? [`Değişiklik ve sorularınız için ${esc(t.vars.salon)}: ${esc(t.vars.phone)}`] : []),
+      ];
+      cta = { label: "Randevuyu görüntüle / iptal et", link: t.vars.cancelLink };
+      break;
+    case "booking_rescheduled_customer":
+      subject = `${t.vars.salon}: randevu saatiniz değişti (${t.vars.when})`;
+      paras = [
+        `Merhaba ${esc(t.vars.firstName)},`,
+        `${esc(t.vars.salon)} randevunuz için yeni bir saat belirledi.`,
+        [`<b>Yeni tarih:</b> ${esc(t.vars.when)}`, `<b>Önceki tarih:</b> ${esc(t.vars.previousWhen)}`, `<b>Hizmet:</b> ${esc(t.vars.service)}`, `<b>Uzman:</b> ${esc(t.vars.staff)}`].join("<br>"),
+        `Yeni saat size uymuyorsa ${t.vars.phone ? `${esc(t.vars.salon)} ile ${esc(t.vars.phone)} numarasından görüşebilir ya da ` : ""}randevunuzu en geç ${t.vars.cancelHours} saat öncesine kadar aşağıdaki bağlantıdan iptal edebilirsiniz.`,
+      ];
+      cta = { label: "Randevuyu görüntüle / iptal et", link: t.vars.cancelLink };
+      break;
+    case "booking_declined_customer":
+      subject = `${t.vars.salon}: randevunuz iptal edildi (${t.vars.when})`;
+      paras = [
+        `Merhaba ${esc(t.vars.firstName)},`,
+        `${esc(t.vars.salon)}, ${esc(t.vars.when)} tarihli ${esc(t.vars.service)} randevunuzu gerçekleştiremeyeceğini bildirdi ve randevuyu iptal etti.`,
+        ...(t.vars.reason ? [`<b>Açıklama:</b> ${esc(t.vars.reason)}`] : []),
+        `Size uygun başka bir saat için aşağıdaki bağlantıdan yeniden randevu alabilirsiniz.${t.vars.phone ? ` Sorularınız için ${esc(t.vars.salon)}: ${esc(t.vars.phone)}` : ""}`,
+      ];
+      cta = { label: "Yeni randevu al", link: t.vars.bookLink };
       break;
     case "owner_notice":
       subject = t.vars.subject;

@@ -2,10 +2,11 @@
 
 import { Bell } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSession } from "@/components/panel/session";
 import { Alert, Button, Card, Empty, PageHeader, Spinner, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
-import { dateTimeTr } from "@/lib/format";
+import { dateTimeTr, isoDay } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { StaffPushCard } from "./push-card";
 
@@ -15,8 +16,9 @@ type Prefs = { newAppointments: boolean; cancellations: boolean; changes: boolea
 
 /** Uygulama içi bildirim merkezi: yalnız oturumdaki kullanıcıya ait bildirimler. */
 export default function NotificationCenterPage() {
-  const { can } = useSession();
+  const { can, pwa } = useSession();
   const toast = useToast();
+  const router = useRouter();
   const list = useApi<{ items: N[]; unread: number }>("/pwa/notifications");
   const prefs = useApi<Prefs>("/pwa/preferences");
   const channels = useApi<AlertChannels>("/pwa/alert-channels");
@@ -25,8 +27,18 @@ export default function NotificationCenterPage() {
     await api("/pwa/notifications/read-all", { method: "POST" });
     await list.reload();
   }
+  /** Bildirime tıklanınca okundu yapılır; randevuyla ilgiliyse takvimde o randevu açılır (onayla / reddet / başka saat). */
   async function open(n: N) {
     if (!n.readAt) await api(`/pwa/notifications/${n.id}/read`, { method: "POST" }).catch(() => undefined);
+    if (n.appointmentId) {
+      try {
+        const a = await api<{ startsAt: string }>(`/appointments/${n.appointmentId}`);
+        router.push(`/panel/takvim?gorunum=gun&tarih=${isoDay(new Date(a.startsAt))}&randevu=${n.appointmentId}`);
+        return;
+      } catch {
+        toast("Randevu bulunamadı (silinmiş ya da size kapalı olabilir)", "amber");
+      }
+    }
     await list.reload();
   }
   async function toggle(key: keyof Prefs, value: boolean) {
@@ -74,7 +86,11 @@ export default function NotificationCenterPage() {
               </ul>
             </Card>
           )}
-          <p className="mt-4 text-sm"><Link href="/panel/bugun" className="text-brand-700 underline">Bugünün planına git</Link></p>
+          <p className="mt-4 text-sm">
+            {pwa?.businessPwaEnabled
+              ? <Link href="/panel/bugun" className="text-brand-700 underline">Bugünün planına git</Link>
+              : <Link href="/panel/takvim" className="text-brand-700 underline">Takvime git</Link>}
+          </p>
         </div>
         <div className="space-y-4">
           {channels.data && (
@@ -91,13 +107,10 @@ export default function NotificationCenterPage() {
                   {channels.data.push.available ? "aşağıdan bu cihazda açabilirsiniz." : "salon uygulaması (pilot) açık işletmelerde kullanılabilir."}
                 </li>
                 <li>
-                  <b>Müşteriye WhatsApp onayı:</b>{" "}
-                  {channels.data.whatsapp.connected ? "açık." : (
-                    <>
-                      <span className="text-amber-700">gönderilmiyor (WhatsApp bağlı değil).</span>{" "}
-                      Müşteri formda e-posta yazdıysa onay ve iptal bağlantısı e-postayla gider.
-                    </>
-                  )}
+                  <b>Müşteriye bilgi:</b>{" "}
+                  {channels.data.whatsapp.connected
+                    ? "WhatsApp ve (formda yazdıysa) e-posta ile."
+                    : "müşteri formda e-posta yazdıysa randevu, onay, ret ve saat değişikliği e-postayla gider. E-posta yoksa onay bekleyenler listesinden arayabilir ya da kendi WhatsApp'ınızdan yazabilirsiniz."}
                 </li>
               </ul>
             </Card>

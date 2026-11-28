@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { AppointmentDetail, NewAppointment, TimeOffDialog } from "@/components/calendar/dialogs";
+import { PendingApprovals } from "@/components/panel/pending-approvals";
 import { END_H, layoutLanes, movable, PX_PER_MIN, SNAP, START_H, STATUS_DOT, STATUS_STYLE, TimeOff } from "@/components/calendar/shared";
 import { useSession } from "@/components/panel/session";
 import type { Appointment, Staff } from "@/components/panel/types";
@@ -68,7 +69,9 @@ function CalendarInner() {
     if (hit) setSelected(hit);
     setFocused(true);
   }, [focusId, focused, appts.data]);
+  const [version, setVersion] = useState(0);
   const reload = () => {
+    setVersion((v) => v + 1);
     appts.reload();
     offs.reload();
   };
@@ -136,6 +139,8 @@ function CalendarInner() {
           <input type="checkbox" checked={showCancelled} onChange={(e) => setShowCancelled(e.target.checked)} className="accent-brand-600" /> İptalleri göster
         </label>
       </div>
+
+      <PendingApprovals className="mb-4" onChange={reload} version={version} />
 
       <div className="mb-3 flex flex-wrap gap-3 text-xs text-neutral-600" aria-label="Durum renkleri">
         {["BOOKED", "CONFIRMED", "COMPLETED", "NO_SHOW"].map((s) => (

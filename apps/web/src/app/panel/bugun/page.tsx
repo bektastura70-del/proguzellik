@@ -3,6 +3,7 @@
 import { ChevronLeft, ChevronRight, Phone } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { PendingApprovals } from "@/components/panel/pending-approvals";
 import { useSession } from "@/components/panel/session";
 import { Alert, Badge, Button, Card, Empty, PageHeader, Spinner, statusTone, useToast } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -15,7 +16,6 @@ type Item = {
   service: { id: string; name: string };
   mine: boolean; canChangeStatus: boolean;
 };
-type Pending = { id: string; startsAt: string; createdAt: string; source: string; customer: { firstName: string; lastName: string }; staff: { displayName: string }; service: { name: string } };
 
 /** Günlük çalışma planı (mobil öncelikli). Personel yalnız kendi randevularını görür ve yalnız onlarda işlem yapar. */
 export default function TodayPage() {
@@ -23,7 +23,7 @@ export default function TodayPage() {
   const toast = useToast();
   const [day, setDay] = useState(isoDay());
   const agenda = useApi<{ own: boolean; items: Item[] }>(pwa?.businessPwaEnabled ? `/pwa/agenda?date=${day}` : null, [tenantId]);
-  const pending = useApi<Pending[]>(pwa?.businessPwaEnabled ? "/pwa/pending" : null, [tenantId]);
+  const [version, setVersion] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
 
   if (pwa && !pwa.businessPwaEnabled) {
@@ -36,7 +36,8 @@ export default function TodayPage() {
     try {
       await api(`/appointments/${id}/status`, { method: "POST", body: { status }, tenant: tenantId });
       toast(STATUS_TR[status] ?? "Güncellendi");
-      await Promise.all([agenda.reload(), pending.reload()]);
+      setVersion((v) => v + 1);
+      await agenda.reload();
     } catch (e) {
       toast((e as Error).message, "red");
     } finally {
@@ -56,22 +57,7 @@ export default function TodayPage() {
         <span className="ml-auto text-sm text-neutral-500">{active.length} randevu</span>
       </div>
 
-      {!!pending.data?.length && (
-        <Card className="mb-4 p-4">
-          <h2 className="font-semibold">Onay bekleyen yeni randevular</h2>
-          <ul className="mt-3 divide-y divide-sand-100">
-            {pending.data.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
-                <div className="min-w-0 text-sm">
-                  <div className="font-medium">{p.customer.firstName} {p.customer.lastName} {p.source === "ONLINE" && <Badge tone="brand">Online</Badge>}</div>
-                  <div className="text-neutral-500">{dateTr(p.startsAt, { day: "numeric", month: "short", weekday: "short" })} {timeTr(p.startsAt)} · {p.service.name} · {p.staff.displayName}</div>
-                </div>
-                <Button size="sm" onClick={() => void setStatus(p.id, "CONFIRMED")} disabled={busy === p.id}>Onayla</Button>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
+      <PendingApprovals className="mb-4" onChange={() => void agenda.reload()} version={version} />
 
       {agenda.error && <Alert>{agenda.error.message}</Alert>}
       {agenda.loading && !agenda.data ? <Spinner /> : items.length === 0 ? (

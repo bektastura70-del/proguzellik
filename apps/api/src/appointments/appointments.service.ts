@@ -7,6 +7,7 @@ import { addMinutes } from "../common/time";
 import { PrismaService, Tx } from "../prisma/prisma.service";
 import { PackagesService } from "../packages/packages.service";
 import { StockService } from "../stock/stock.service";
+import { BOOKING_EMAIL } from "../notifications/booking-email.constants";
 import { AvailabilityService } from "./availability.service";
 
 export interface AppointmentInput {
@@ -69,11 +70,7 @@ export class AppointmentsService {
           ...(q.customerId ? { customerId: q.customerId } : {}),
         },
         orderBy: { startsAt: "asc" },
-        include: {
-          customer: { select: { id: true, firstName: true, lastName: true, phone: true } },
-          staff: { select: { id: true, displayName: true, color: true, userId: true } },
-          service: { select: { id: true, name: true, durationMin: true, color: true } },
-        },
+        include: AppointmentsService.INCLUDE,
       });
       // Personel (STAFF) takvimde herkesi görür ama başka personelin müşterisinin telefonunu görmez (KVKK: veri minimizasyonu).
       return rows.map(({ staff: { userId, ...staff }, ...a }) => ({
@@ -81,6 +78,51 @@ export class AppointmentsService {
         staff,
         customer: t.role === "STAFF" && userId !== t.userId ? { ...a.customer, phone: null } : a.customer,
       }));
+    });
+  }
+
+  private static readonly INCLUDE = {
+    customer: { select: { id: true, firstName: true, lastName: true, phone: true } },
+    staff: { select: { id: true, displayName: true, color: true, userId: true } },
+    service: { select: { id: true, name: true, durationMin: true, color: true } },
+  } as const;
+
+  /** Tek randevu (bildirimden takvimde açmak için); takvim listesiyle aynı alanlar ve aynı telefon kuralı. */
+  get(t: TenantInfo, id: string) {
+    return this.prisma.withTenant(t, async (tx) => {
+      const a = await tx.appointment.findUnique({ where: { id }, include: AppointmentsService.INCLUDE });
+      if (!a) throw new NotFoundException("Randevu bulunamadı");
+      const { staff: { userId, ...staff }, ...rest } = a;
+      // Salonun kararı (onay/ret/saat) müşteriye e-postayla bildirilebilir mi: online formda e-posta verilmiş mi.
+      const customerEmail = (await tx.notification.count({ where: { appointmentId: id, channel: "EMAIL", template: BOOKING_EMAIL.customerConfirm } })) > 0;
+      return { ...rest, staff, customerEmail, customer: t.role === "STAFF" && userId !== t.userId ? { ...a.customer, phone: null } : a.customer };
+    });
+  }
+
+  /**
+   * Onay bekleyen randevular: müşterinin aldığı (kaynak PANEL değil) gelecekteki BOOKED kayıtlar, en yakın tarih önce.
+   * Salon uygulaması (PWA) bayrağına bağlı değildir; her işletmede panelde gösterilir.
+   * Personel (STAFF) yalnız kendisine atananları görür (kendi randevusunda durum değiştirebilir).
+   * customerEmail: salonun kararı müşteriye e-postayla bildirilebilir mi (online formda e-posta verilmiş mi).
+   */
+  pending(t: TenantInfo) {
+    return this.prisma.withTenant(t, async (tx) => {
+      const own = t.role === "STAFF" ? (await tx.staffMember.findMany({ where: { userId: t.userId }, select: { id: true } })).map((s) => s.id) : null;
+      if (own && own.length === 0) return [];
+      const rows = await tx.appointment.findMany({
+        // Salonun panelden kendi açtığı randevular onay beklemez; yalnız müşterinin aldıkları (online, uygulama, WhatsApp/Instagram).
+        where: { status: "BOOKED", source: { not: "PANEL" }, startsAt: { gt: new Date() }, ...(own ? { staffId: { in: own } } : {}) },
+        orderBy: [{ startsAt: "asc" }],
+        take: 50,
+        include: AppointmentsService.INCLUDE,
+      });
+      const withEmail = new Set(
+        (await tx.notification.findMany({
+          where: { appointmentId: { in: rows.map((r) => r.id) }, channel: "EMAIL", template: BOOKING_EMAIL.customerConfirm },
+          select: { appointmentId: true },
+        })).map((n) => n.appointmentId),
+      );
+      return rows.map(({ staff: { userId: _u, ...staff }, ...a }) => ({ ...a, staff, customerEmail: withEmail.has(a.id) }));
     });
   }
 

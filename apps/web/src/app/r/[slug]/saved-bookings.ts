@@ -42,18 +42,21 @@ export const cancelHref = (slug: string, b: { id: string; token: string }) => `/
 
 const REFRESH_KEY = (slug: string) => `pg_bookings_checked:${slug}`;
 const REFRESH_EVERY_MS = 10 * 60_000;
+/** Salonun onayını bekleyen (BOOKED) gelecek randevu varken daha sık bakılır: onay/ret kısa sürede görünsün. */
+const REFRESH_PENDING_MS = 2 * 60_000;
 
 /**
  * Kayıtlı randevuların güncel durumunu ve saatini iptal bağlantısıyla sunucudan okur (salon iptal ettiyse
  * ya da saati değiştirdiyse liste doğru görünür). Ad/telefon dönmez. Aynı sekmede 10 dakikada bir yapılır;
- * ağ hatasında eldeki liste korunur. Bağlantısı geçersiz ya da silinmiş randevu listeden düşer.
+ * ağ hatasında eldeki liste korunur. Onay bekleyen randevu varken 2 dakikada bir. Bağlantısı geçersiz ya da silinmiş randevu listeden düşer.
  */
 export async function refreshSavedBookings(slug: string, force = false): Promise<SavedBooking[]> {
   const list = loadSavedBookings(slug);
   if (!list.length) return list;
   try {
     const last = Number(sessionStorage.getItem(REFRESH_KEY(slug)) ?? 0);
-    if (!force && Date.now() - last < REFRESH_EVERY_MS) return list;
+    const pending = list.some((b) => (b.status ?? "BOOKED") === "BOOKED" && new Date(b.startsAt).getTime() > Date.now());
+    if (!force && Date.now() - last < (pending ? REFRESH_PENDING_MS : REFRESH_EVERY_MS)) return list;
     sessionStorage.setItem(REFRESH_KEY(slug), String(Date.now()));
   } catch {
     /* depolama kapalı: yine de yenilenir */

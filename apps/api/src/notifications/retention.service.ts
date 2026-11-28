@@ -4,6 +4,8 @@ import { toZoned, zonedTime } from "../common/time";
 import { loadEnv, renewalRemindersOn } from "../config/env";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotificationQueue } from "./notification-queue";
+import { whatsappDeliverable } from "./whatsapp-deliverable";
+import { WhatsAppProvider } from "./whatsapp.provider";
 
 /** Gece çalışan görevin planladığı mesajlar müşteriye en erken bu saatte (yerel) gider. */
 const SEND_AT_MIN = 11 * 60;
@@ -23,6 +25,7 @@ export class RetentionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly queue: NotificationQueue,
+    private readonly whatsapp: WhatsAppProvider,
   ) {}
 
   async run(now = new Date()) {
@@ -48,6 +51,8 @@ export class RetentionService {
   async forTenant(tenantId: string, now = new Date()) {
     const created: { id: string; at: Date }[] = [];
     const counts = await this.prisma.withTenant({ tenantId, userId: "" }, async (tx) => {
+      // WhatsApp bağlı değilse paket/tekrar randevu WhatsApp hatırlatması planlanmaz (atlanan kayıt oluşmaz).
+      if (!(await whatsappDeliverable(tx, tenantId, this.whatsapp))) return { packages: 0, rebook: 0 };
       const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true, timezone: true, packageReminderDays: true, renewalRemindersEnabled: true, renewalRemindersAllowed: true } });
       const tz = tenant.timezone;
       const local = toZoned(now, tz);

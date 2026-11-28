@@ -142,8 +142,8 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
       : conf?.whatsapp
         ? "Onay mesajı WhatsApp üzerinden gönderilecek."
         : conf?.email
-          ? "Onay ve iptal bağlantısı e-posta adresinize gönderildi."
-          : "Randevunuz işletmeye iletildi.";
+          ? "Onay ve iptal bağlantısı e-posta adresinize gönderildi. İşletme randevuyu onaylarsa ya da saatini değiştirirse yine e-postayla bilgi alırsınız."
+          : "Randevunuz işletmeye iletildi. İşletme onayladığında bu sayfayı yeniden açtığınızda Randevularınız bölümünde görürsünüz; gerekirse işletme sizi arar.";
     return (
       <div className="mx-auto max-w-md px-5 py-16">
         <Card className="p-6 text-center">
@@ -279,7 +279,7 @@ export function BookingClient({ params }: { params: Promise<{ slug: string }> })
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Cep telefonu"><Input name="phone" type="tel" required autoComplete="tel" placeholder="05xx xxx xx xx" defaultValue={contact?.phone} /></Field>
-                <Field label="E-posta (isteğe bağlı)" hint="Onay ve iptal bağlantısı e-postanıza gönderilir."><Input name="email" type="email" autoComplete="email" defaultValue={contact?.email} /></Field>
+                <Field label="E-posta (isteğe bağlı, önerilir)" hint="Randevu bilgisi, işletmenin onayı ve iptal bağlantısı e-postanıza gönderilir."><Input name="email" type="email" autoComplete="email" defaultValue={contact?.email} /></Field>
               </div>
               <Field label="Not (isteğe bağlı)"><Textarea name="notes" maxLength={500} /></Field>
               <label className="flex items-start gap-3 text-sm text-neutral-600">

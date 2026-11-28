@@ -5,7 +5,8 @@ import { Tx } from "../prisma/prisma.service";
 import { BookingEmailPlanner } from "./booking-email.planner";
 import { NotificationQueue } from "./notification-queue";
 import { PUSH_REMINDER_TEMPLATES, PushPlanner } from "./push/push.planner";
-import { TemplateName } from "./whatsapp.provider";
+import { whatsappDeliverable } from "./whatsapp-deliverable";
+import { TemplateName, WhatsAppProvider } from "./whatsapp.provider";
 
 const REMINDER_HOURS = 24;
 
@@ -21,6 +22,7 @@ export class NotificationHooks extends AppointmentHooks {
     private readonly queue: NotificationQueue,
     private readonly push: PushPlanner,
     private readonly emails: BookingEmailPlanner,
+    private readonly whatsapp: WhatsAppProvider,
   ) {
     super();
   }
@@ -33,6 +35,8 @@ export class NotificationHooks extends AppointmentHooks {
     if (!appt) return null;
     const tenant = await tx.tenant.findUnique({ where: { id: appt.tenantId }, include: { plan: true } });
     if (!tenant || !tenant.plan.features.includes("WHATSAPP") || !appt.customer.phone) return null;
+    // WhatsApp bağlı değilse (ve platform sağlayıcısı kapalıysa) mesaj kaydı açılmaz: atlanan kayıt/hata satırı oluşmaz.
+    if (!(await whatsappDeliverable(tx, tenant.id, this.whatsapp))) return null;
     const fmt = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("tr-TR", { timeZone: tenant.timezone, ...o }).format(appt.startsAt);
     const params = [
       appt.customer.firstName,
@@ -81,10 +85,17 @@ export class NotificationHooks extends AppointmentHooks {
     const c = await this.context(tx, appt.id);
     if (c && c.appt.startsAt.getTime() !== previous.startsAt.getTime()) await this.scheduleReminder(tx, c);
     await this.push.plan(tx, appt.id, "rescheduled", by, { previous, actorId });
+    // Salon saati değiştirdi ("başka saat öner"): online randevu alan kişiye e-posta (WhatsApp'a bağlı değil).
+    if (by === "STAFF") await this.emails.rescheduledBySalon(tx, appt.id, previous.startsAt);
   }
 
   async onStatusChanged(tx: Tx, appt: { id: string; status: AppointmentStatus }, actorId?: string, by?: ActorKind) {
-    if (appt.status === "CONFIRMED") return this.push.plan(tx, appt.id, "confirmed", by, { actorId });
+    if (appt.status === "CONFIRMED") {
+      await this.push.plan(tx, appt.id, "confirmed", by, { actorId });
+      // Salon onayladı: online randevu alan kişiye e-posta (WhatsApp'a bağlı değil).
+      if (by === "STAFF") await this.emails.confirmedBySalon(tx, appt.id);
+      return;
+    }
     if (appt.status !== "CANCELLED") return;
     // Bekleyen tüm bildirimler (WhatsApp ve push hatırlatmaları) iptal; iptal bildirimleri bundan SONRA planlanır.
     await tx.notification.updateMany({ where: { appointmentId: appt.id, status: "QUEUED" }, data: { status: "SKIPPED" } });
@@ -93,5 +104,7 @@ export class NotificationHooks extends AppointmentHooks {
     const future = await tx.appointment.findUnique({ where: { id: appt.id }, select: { startsAt: true } });
     if (future && future.startsAt > new Date()) await this.push.plan(tx, appt.id, "cancelled", by, { actorId });
     if (by === "CUSTOMER") await this.emails.cancelledByCustomer(tx, appt.id);
+    // Salon iptal etti / reddetti: online randevu alan kişiye gerekçeyle e-posta.
+    if (by === "STAFF") await this.emails.declinedBySalon(tx, appt.id);
   }
 }

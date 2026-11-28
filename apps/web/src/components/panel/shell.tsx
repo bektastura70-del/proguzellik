@@ -31,7 +31,7 @@ const NAV: Item[] = [
   { href: "/panel/mesajlar", label: "Mesajlar", icon: MessageCircle, roles: ["OWNER", "MANAGER", "RECEPTION"], feature: "WHATSAPP" },
   { href: "/panel/kampanyalar", label: "Kampanyalar", icon: Megaphone, roles: ["OWNER", "MANAGER", "RECEPTION"] },
   { href: "/panel/kanallar", label: "WhatsApp & Instagram", icon: Link2, roles: ["OWNER", "MANAGER"], feature: "WHATSAPP" },
-  { href: "/panel/bildirimler", label: "Bildirimler", icon: Bell, roles: ["OWNER", "MANAGER", "RECEPTION"], feature: "WHATSAPP" },
+  { href: "/panel/bildirimler", label: "WhatsApp mesajları", icon: Bell, roles: ["OWNER", "MANAGER", "RECEPTION"], feature: "WHATSAPP" },
   { href: "/panel/asistan", label: "Asistan", icon: Sparkles, roles: ["OWNER", "MANAGER"], feature: "AI_ASSISTANT" },
   { href: "/panel/abonelik", label: "Abonelik", icon: CreditCard, roles: ["OWNER", "MANAGER"] },
   { href: "/panel/bildirim-merkezi", label: "Bildirim merkezi", icon: BellRing },

@@ -100,7 +100,10 @@ export class BusinessPwaService {
     });
   }
 
-  /** Onay bekleyen yeni randevular (gelecekteki BOOKED). Personel yalnız kendisine atananları görür. */
+  /**
+   * Onay bekleyen yeni randevular (gelecekteki BOOKED). Personel yalnız kendisine atananları görür.
+   * Uygulama dışında aynı liste her işletmede GET /appointments/pending ile gelir.
+   */
   async pending(t: TenantInfo) {
     await this.requireBusinessPwa(t);
     return this.prisma.withTenant(t, async (tx) => {

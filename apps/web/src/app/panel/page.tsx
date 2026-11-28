@@ -3,7 +3,7 @@
 import { AlertTriangle, CalendarDays, CalendarPlus, Coins, Copy, PackagePlus, UserPlus, Users, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useSession } from "@/components/panel/session";
-import { WhatsAppNotice } from "@/components/panel/whatsapp-notice";
+import { PendingApprovals } from "@/components/panel/pending-approvals";
 import type { Appointment, Onboarding } from "@/components/panel/types";
 import { Badge, Button, Card, CardBody, CardHeader, Empty, PageHeader, Spinner, Stat, statusTone, useToast } from "@/components/ui";
 import { buttonVariants } from "@/components/ui";
@@ -69,7 +69,7 @@ export default function Overview() {
           </CardBody>
         </Card>
       )}
-      {can("OWNER", "MANAGER") && <WhatsAppNotice />}
+      <PendingApprovals className="mb-6" onChange={() => void appts.reload()} />
       {can("OWNER", "MANAGER", "RECEPTION") && (
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
